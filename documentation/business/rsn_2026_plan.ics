@@ -1,0 +1,52 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Roboter Schlafen Nicht//RSN 2026 Plan//EN
+CALSCALE:GREGORIAN
+
+BEGIN:VEVENT
+UID:rsn-2026-q1@example.com
+DTSTAMP:20260208T160000Z
+DTSTART;VALUE=DATE:20260201
+DTEND;VALUE=DATE:20260401
+SUMMARY:RSN Q1 2026 – Foundation & Breakout-71 Vertical Slice
+DESCRIPTION:Financial baseline; YOLO perception and heuristic agent for Breakout-71; logging/replay; repo cleanup.
+END:VEVENT
+
+BEGIN:VEVENT
+UID:rsn-2026-q2@example.com
+DTSTAMP:20260208T160000Z
+DTSTART;VALUE=DATE:20260401
+DTEND;VALUE=DATE:20260701
+SUMMARY:RSN Q2 2026 – Productize Breakout-71 Stack
+DESCRIPTION:RL integration; twin dataset loop; usability docs; internal demo; H2 freelance planning.
+END:VEVENT
+
+BEGIN:VEVENT
+UID:rsn-2026-q3@example.com
+DTSTAMP:20260208T160000Z
+DTSTART;VALUE=DATE:20260701
+DTEND;VALUE=DATE:20261001
+SUMMARY:RSN Q3 2026 – Early Testers & Feedback
+DESCRIPTION:Alpha program; structured feedback; telemetry; business story & pricing draft.
+END:VEVENT
+
+BEGIN:VEVENT
+UID:rsn-2026-q4@example.com
+DTSTAMP:20260208T160000Z
+DTSTART;VALUE=DATE:20261001
+DTEND;VALUE=DATE:20270101
+SUMMARY:RSN Q4 2026 – Pre-Launch & Company Setup
+DESCRIPTION:Paid beta; licensing; legal & accounting; Jan 2027 beta build and public materials.
+END:VEVENT
+
+BEGIN:VEVENT
+UID:rsn-2026-weekend@example.com
+DTSTAMP:20260208T160000Z
+DTSTART:20260213T110000
+DTEND:20260213T170000
+RRULE:FREQ=WEEKLY;BYDAY=FR,SA,SU;UNTIL=20261231T235959
+SUMMARY:RSN Weekend Block (Fri–Sun)
+DESCRIPTION:RSN deep/light work blocks and Sunday review, 11:00–17:00.
+END:VEVENT
+
+END:VCALENDAR
