@@ -1,14 +1,21 @@
 # help_bot_loop.py
 import time
 import random
+import json
+from pathlib import Path
+import datetime as dt
 import torch
 import cv2
 import numpy as np
 from controllers.last_war_controller import LastWarController
 from policies.help_policy import HelpOnlyPolicy
+from policies.rl_help_policy import RLHelpPolicy
 
 ADB_PATH = ("C:\\Users\\human\\AppData\\Local\\Android\\Sdk\\platform-tools"
             "\\adb.exe")
+
+LOG_DIR = Path("data/live_logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def jitter_point(x: int, y: int, radius_px: int = 8) -> tuple[int, int]:
@@ -17,6 +24,56 @@ def jitter_point(x: int, y: int, radius_px: int = 8) -> tuple[int, int]:
         x + random.randint(-radius_px, radius_px),
         y + random.randint(-radius_px, radius_px),
     )
+
+
+def make_run_log_dir(tag: str | None = None) -> Path:
+    ts = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%S")
+    suffix = f"_{tag}" if tag else ""
+    run_dir = LOG_DIR / f"run_{ts}{suffix}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
+
+
+def save_event(
+    frame_np: np.ndarray,
+    step: int,
+    det: dict | None,
+    will_click: bool,
+    reason: str,
+    dry_run: bool,
+    rl_action: int | None = None,
+    rl_reason: str | None = None,
+    log_dir: Path = LOG_DIR,
+) -> None:
+    """Save a frame + JSON metadata for v2 twin dataset building."""
+    ts = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+    base = f"frame_{step:06d}_{ts}"
+    img_path = log_dir / f"{base}.png"
+    meta_path = log_dir / f"{base}.json"
+
+    # Save image
+    cv2.imwrite(str(img_path), frame_np)
+
+    det_payload = None
+    if det is not None:
+        det_payload = {
+            "cx": int(det["cx"]),
+            "cy": int(det["cy"]),
+            "conf": float(det["conf"]),
+            "bbox": [float(x) for x in det["bbox"]],
+        }
+
+    meta = {
+        "step": step,
+        "timestamp": ts,
+        "will_click": will_click,
+        "reason": reason,
+        "dry_run": dry_run,
+        "det": det_payload,
+        "rl_action": rl_action,
+        "rl_reason": rl_reason,
+    }
+    meta_path.write_text(json.dumps(meta))
 
 
 def run_help_bot(
@@ -29,6 +86,9 @@ def run_help_bot(
     observe_delay_range: tuple[float, float] = (0.4, 1.0),
     click_delay_range: tuple[float, float] = (0.5, 1.5),
     jitter_radius_px: int = 10,
+    rl_model_path: str | None = None,
+    shadow_rl: bool = False,
+    log_tag: str | None = None,
 ):
     """
     Simple HELP-only loop.
@@ -45,11 +105,22 @@ def run_help_bot(
     ctrl.connect_tcp()
     ctrl.ensure_device()
 
+    log_dir = make_run_log_dir(log_tag)
+    print(f"[HELP BOT] Logging to {log_dir}")
+
     policy = HelpOnlyPolicy(
         model_path=model_path,
         device=device,
         conf_thres=conf_thres,
     )
+
+    rl_policy = None
+    if rl_model_path is not None:
+        rl_policy = RLHelpPolicy(
+            model_path=rl_model_path,
+            since_last_clip=60.0,
+            device="cpu",  # PPO MLP on CPU is fine
+        )
 
     min_interval = 60.0 / max(actions_per_minute, 1)
     last_action_ts = 0.0
@@ -68,6 +139,19 @@ def run_help_bot(
 
         det = policy.infer(frame)
 
+        # --- RL shadow decision (does NOT act) ---
+        rl_action = None
+        rl_reason = None
+        now = time.time()
+        if rl_policy is not None:
+            rl_action = rl_policy.decide(det, now)
+            if rl_action == 0:
+                rl_reason = "rl_noop"
+            elif rl_action == 1:
+                rl_reason = "rl_click_help"
+            elif rl_action == 2:
+                rl_reason = "rl_random_swipe"
+
         if det is None:
             # Occasionally hit back like a human trying to recover
             if step % 200 == 0:
@@ -79,8 +163,9 @@ def run_help_bot(
             continue
 
         MIN_CONF = 0.5  # or 0.6, tune as you like
-        if det.conf < MIN_CONF:
-            print(f"[{step}] HELP detected at conf={det.conf:.2f} but below MIN_CONF={MIN_CONF:.2f}, ignoring.")
+        print(det)
+        if det["conf"] < MIN_CONF:
+            print(f"[{step}] HELP detected at conf={det['conf']:.2f} but below MIN_CONF={MIN_CONF:.2f}, ignoring.")
             continue
 
         now = time.time()
@@ -111,9 +196,17 @@ def run_help_bot(
             f"interval={since_last:.1f}s"
         )
 
+        save_event(frame, step, det, True, "click_help", dry_run,
+                   rl_action, rl_reason, log_dir)
+
         if not dry_run:
             ctrl.tap(tx, ty)
             last_action_ts = time.time()
+            # tell RL that a help was actually clicked (for its
+            # internal since_last_help)
+            if rl_policy is not None:
+                rl_policy.notify_help_clicked(last_action_ts)
+
             time.sleep(random.uniform(*click_delay_range))
         else:
             # In dry-run, just simulate the timing
@@ -123,5 +216,8 @@ def run_help_bot(
 if __name__ == "__main__":
     # Start in shadow mode; switch dry_run=False once you like the behavior
     run_help_bot(
-        "F:\\work\\LastWarRobot\\runs\\detect\\train12\\weights\\best.pt",
-        dry_run=False)
+        "E:\\trainingdata\\last-war-robot\\runs\\detect\\train12\\weights\\best.pt",
+        dry_run=False,
+        rl_model_path="F:\\work\\LastWarRobot\\runs\\rl_help_v3\\ppo_lastwar_help.zip",
+        shadow_rl=True,
+        log_tag="rl_help_shadowrun",)

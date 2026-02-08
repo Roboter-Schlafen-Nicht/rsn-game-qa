@@ -1,0 +1,173 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Roboter Schlafen Nicht//Planning//EN
+CALSCALE:GREGORIAN
+
+BEGIN:VTIMEZONE
+TZID:Europe/Berlin
+X-LIC-LOCATION:Europe/Berlin
+BEGIN:STANDARD
+TZOFFSETFROM:+0200
+TZOFFSETTO:+0100
+TZNAME:CET
+DTSTART:20251026T030000
+END:STANDARD
+BEGIN:DAYLIGHT
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0200
+TZNAME:CEST
+DTSTART:20260329T020000
+END:DAYLIGHT
+END:VTIMEZONE
+
+####################################
+# PHASE 1: Feb–Jun 2026
+# Heavy freelance, startup on Fri–Sun
+####################################
+
+# Freelance: Mon–Thu 09:00–15:00 (6h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20260209T090000
+DTEND;TZID=Europe/Berlin:20260209T150000
+RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH;UNTIL=20260630T215959Z
+SUMMARY:Freelance – Core Block (Phase 1)
+DESCRIPTION:Main freelance contract work.
+END:VEVENT
+
+# Freelance: Fri 09:00–12:00 (3h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20260213T090000
+DTEND;TZID=Europe/Berlin:20260213T120000
+RRULE:FREQ=WEEKLY;BYDAY=FR;UNTIL=20260630T215959Z
+SUMMARY:Freelance – Friday Morning (Phase 1)
+DESCRIPTION:Additional freelance hours.
+END:VEVENT
+
+# Startup: Fri 13:00–18:00 (5h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20260213T130000
+DTEND;TZID=Europe/Berlin:20260213T180000
+RRULE:FREQ=WEEKLY;BYDAY=FR;UNTIL=20260630T215959Z
+SUMMARY:Startup – RSN Friday Build (Phase 1)
+DESCRIPTION:Roboter Schlafen Nicht – product and research.
+END:VEVENT
+
+# Startup: Sat 10:00–18:00 (8h, with self-managed breaks)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20260214T100000
+DTEND;TZID=Europe/Berlin:20260214T180000
+RRULE:FREQ=WEEKLY;BYDAY=SA;UNTIL=20260630T215959Z
+SUMMARY:Startup – RSN Deep Work Saturday (Phase 1)
+DESCRIPTION:Long deep work session. Delete/shorten on rare social weekends.
+END:VEVENT
+
+# Startup: Sun 10:00–16:00 (6h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20260215T100000
+DTEND;TZID=Europe/Berlin:20260215T160000
+RRULE:FREQ=WEEKLY;BYDAY=SU;UNTIL=20260630T215959Z
+SUMMARY:Startup – RSN Sunday Focus (Phase 1)
+DESCRIPTION:Planning, cleanup, and lighter tasks for RSN.
+END:VEVENT
+
+####################################
+# PHASE 2: Jul–Dec 2026
+# Slightly less freelance, keep Fri–Sun for startup
+####################################
+
+# Freelance: Mon–Wed 09:00–15:00 (6h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20260701T090000
+DTEND;TZID=Europe/Berlin:20260701T150000
+RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE;UNTIL=20261231T215959Z
+SUMMARY:Freelance – Core Block (Phase 2)
+DESCRIPTION:Reduced freelance to free more startup time.
+END:VEVENT
+
+# Freelance: Thu 09:00–12:00 (3h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20260702T090000
+DTEND;TZID=Europe/Berlin:20260702T120000
+RRULE:FREQ=WEEKLY;BYDAY=TH;UNTIL=20261231T215959Z
+SUMMARY:Freelance – Thursday Morning (Phase 2)
+DESCRIPTION:Additional freelance hours to stay near target.
+END:VEVENT
+
+# Startup: Fri 13:00–19:00 (6h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20260703T130000
+DTEND;TZID=Europe/Berlin:20260703T190000
+RRULE:FREQ=WEEKLY;BYDAY=FR;UNTIL=20261231T215959Z
+SUMMARY:Startup – RSN Friday Build (Phase 2)
+DESCRIPTION:Main Friday RSN block.
+END:VEVENT
+
+# Startup: Sat 10:00–18:00 (8h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20260704T100000
+DTEND;TZID=Europe/Berlin:20260704T180000
+RRULE:FREQ=WEEKLY;BYDAY=SA;UNTIL=20261231T215959Z
+SUMMARY:Startup – RSN Deep Work Saturday (Phase 2)
+DESCRIPTION:Long deep work for product and users.
+END:VEVENT
+
+# Startup: Sun 10:00–16:00 (6h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20260705T100000
+DTEND;TZID=Europe/Berlin:20260705T160000
+RRULE:FREQ=WEEKLY;BYDAY=SU;UNTIL=20261231T215959Z
+SUMMARY:Startup – RSN Sunday Focus (Phase 2)
+DESCRIPTION:Strategy, content, and planning.
+END:VEVENT
+
+####################################
+# 2027: Balanced mode
+# Keep weekdays lighter; RSN Fri–Sun
+####################################
+
+# Freelance: Mon–Tue 09:00–15:00 (6h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20270104T090000
+DTEND;TZID=Europe/Berlin:20270104T150000
+RRULE:FREQ=WEEKLY;BYDAY=MO,TU;UNTIL=20271231T215959Z
+SUMMARY:Freelance – Core Days (2027)
+DESCRIPTION:Freelance blocks to cover living costs.
+END:VEVENT
+
+# Freelance: Wed 09:00–12:00 (3h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20270106T090000
+DTEND;TZID=Europe/Berlin:20270106T120000
+RRULE:FREQ=WEEKLY;BYDAY=WE;UNTIL=20271231T215959Z
+SUMMARY:Freelance – Wednesday Morning (2027)
+DESCRIPTION:Top-up hours to stay near ~85h/month (flexible).
+END:VEVENT
+
+# Startup: Fri 09:00–18:00 (9h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20270108T090000
+DTEND;TZID=Europe/Berlin:20270108T180000
+RRULE:FREQ=WEEKLY;BYDAY=FR;UNTIL=20271231T215959Z
+SUMMARY:Startup – RSN Full Friday (2027)
+DESCRIPTION:End-to-end RSN day: coding, research, users, content.
+END:VEVENT
+
+# Startup: Sat 10:00–18:00 (8h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20270109T100000
+DTEND;TZID=Europe/Berlin:20270109T180000
+RRULE:FREQ=WEEKLY;BYDAY=SA;UNTIL=20271231T215959Z
+SUMMARY:Startup – RSN Deep Work Saturday (2027)
+DESCRIPTION:Heavy RSN work. Delete/shorten on rare social Saturdays.
+END:VEVENT
+
+# Startup: Sun 10:00–16:00 (6h)
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20270110T100000
+DTEND;TZID=Europe/Berlin:20270110T160000
+RRULE:FREQ=WEEKLY;BYDAY=SU;UNTIL=20271231T215959Z
+SUMMARY:Startup – RSN Sunday Focus (2027)
+DESCRIPTION:Planning, cleanup, documentation, and lighter tasks.
+END:VEVENT
+
+END:VCALENDAR
