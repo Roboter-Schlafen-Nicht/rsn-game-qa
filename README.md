@@ -46,3 +46,19 @@ The controller simulates this by using long swipes at the bottom of the screen:
 ```bash
 python src/agents/run_breakout_controller.py
 ```
+
+## Environment setup
+
+Use the conda export to recreate the environment:
+
+```bash
+conda env create -f environment.yml
+```
+
+Note: `environment.yml` currently uses the exported name `base`. To create it as `yolo`, run:
+
+```bash
+conda env create -n yolo -f environment.yml
+```
+
+Note: `environment.yml` includes the PyTorch XPU pip index URL to install the `torch`/`torchvision`/`torchaudio` wheels.
