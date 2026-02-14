@@ -11,9 +11,9 @@ from typing import Optional
 import numpy as np
 
 try:
-    import win32gui
-    import win32ui
-    import win32con
+    import win32gui  # noqa: F401
+    import win32ui  # noqa: F401
+    import win32con  # noqa: F401
 
     _PYWIN32_AVAILABLE = True
 except ImportError:

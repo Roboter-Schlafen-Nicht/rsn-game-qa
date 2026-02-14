@@ -1,12 +1,12 @@
-""" v1 breakout bot for testing and dataset collection.
-    No ML model, just a simple scripted controller. """
+"""v1 breakout bot for testing and dataset collection.
+No ML model, just a simple scripted controller."""
+
 from pathlib import Path
 import datetime as dt
 import torch
 from controllers.breakout_71_controller import BreakOut71Controller
 
-ADB_PATH = ("C:\\Users\\human\\AppData\\Local\\Android\\Sdk\\platform-tools"
-            "\\adb.exe")
+ADB_PATH = "C:\\Users\\human\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe"
 
 LOG_DIR = Path("data/live_logs")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -54,6 +54,4 @@ def run_breakout_bot(
 
 
 if __name__ == "__main__":
-    run_breakout_bot(
-        dry_run=False,
-        log_tag="breakout_71_v1")
+    run_breakout_bot(dry_run=False, log_tag="breakout_71_v1")

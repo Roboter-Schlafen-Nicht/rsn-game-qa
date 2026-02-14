@@ -18,16 +18,15 @@ class LastWarController(EmulatorController):
         coords: Optional[Dict[str, Tuple[int, int]]] = None,
     ):
         super().__init__(
-            adb_path=adb_path,
-            serial=serial,
-            default_timeout=default_timeout)
+            adb_path=adb_path, serial=serial, default_timeout=default_timeout
+        )
 
         # Default coordinate mapping (example values, adjust to your emulator!)
         self.coords: Dict[str, Tuple[int, int]] = {
-            "DAILY": (1000, 1800),      # daily/events icon in bottom/right bar
-            "ALLIANCE": (100, 1800),    # alliance icon in bottom/left bar
-            "MAIL": (1000, 120),        # mail icon at top-right
-            "CLOSE": (1040, 80),        # generic close 'X' at top-right
+            "DAILY": (1000, 1800),  # daily/events icon in bottom/right bar
+            "ALLIANCE": (100, 1800),  # alliance icon in bottom/left bar
+            "MAIL": (1000, 120),  # mail icon at top-right
+            "CLOSE": (1040, 80),  # generic close 'X' at top-right
             "SAFE_CENTER": (540, 960),  # safe tap in center
         }
         if coords:

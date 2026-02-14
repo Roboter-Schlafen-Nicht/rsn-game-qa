@@ -1,7 +1,5 @@
 """Tests for the env module (Breakout71Env)."""
 
-import pytest
-
 
 class TestBreakout71Env:
     """Placeholder tests for Breakout71Env."""
@@ -20,9 +18,9 @@ class TestBreakout71Env:
 
         env = Breakout71Env()
         # Positions [0,1], velocities [-1,1], bricks_norm [0,1]
-        assert env.observation_space.low[0] == 0.0   # paddle_x low
-        assert env.observation_space.low[3] == -1.0   # ball_vx low
-        assert env.observation_space.high[5] == 1.0   # bricks_norm high
+        assert env.observation_space.low[0] == 0.0  # paddle_x low
+        assert env.observation_space.low[3] == -1.0  # ball_vx low
+        assert env.observation_space.high[5] == 1.0  # bricks_norm high
 
     def test_action_space_no_fire(self):
         """Action space should be Discrete(3) with no FIRE action."""

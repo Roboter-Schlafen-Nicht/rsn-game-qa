@@ -11,13 +11,16 @@ class RLHelpPolicy:
     Input obs: [has_help, help_conf, since_last_help_norm].
     """
 
-    def __init__(self, model_path: str, since_last_clip: float = 60.0, device: str = "cpu"):
+    def __init__(
+        self, model_path: str, since_last_clip: float = 60.0, device: str = "cpu"
+    ):
         self.model_path = Path(model_path)
         self.model = PPO.load(str(self.model_path), device=device)
         self.since_last_clip = since_last_clip
 
-        self.last_help_ts: float | None = None  # wall-clock seconds when last click_help happened
-
+        self.last_help_ts: float | None = (
+            None  # wall-clock seconds when last click_help happened
+        )
 
     def build_obs(self, det: dict | None, now: float) -> np.ndarray:
         has_help = 1.0 if det is not None else 0.0
@@ -31,7 +34,6 @@ class RLHelpPolicy:
         since_last_norm = min(since_last / self.since_last_clip, 1.0)
         return np.array([has_help, help_conf, since_last_norm], dtype=np.float32)
 
-
     def decide(self, det: dict | None, now: float) -> int:
         """
         Return discrete action id used in env:
@@ -40,7 +42,6 @@ class RLHelpPolicy:
         obs = self.build_obs(det, now)
         action, _ = self.model.predict(obs, deterministic=True)
         return int(action)
-
 
     def notify_help_clicked(self, now: float) -> None:
         self.last_help_ts = now
