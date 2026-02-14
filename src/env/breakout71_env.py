@@ -7,13 +7,14 @@ battery of ``Oracle`` instances for bug detection.
 
 Observation vector layout (from session1.md spec)::
 
-    [paddle_x, ball_x, ball_y, ball_vx, ball_vy, *bricks_norm]
+    [paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm]
 
-Where:
-- paddle_x   : normalised x-position of the paddle  [0.0, 1.0]
-- ball_x/y   : normalised position of the ball       [0.0, 1.0]
-- ball_vx/vy : estimated velocity (delta between frames), normalised
-- bricks_norm: flattened grid of brick presence (1=alive, 0=destroyed)
+6-element vector where:
+
+- paddle_x    : normalised x-position of the paddle centre  [0.0, 1.0]
+- ball_x/y    : normalised position of the ball centre       [0.0, 1.0]
+- ball_vx/vy  : estimated velocity (frame delta), clipped    [-1.0, 1.0]
+- bricks_norm : fraction of bricks remaining (count/initial) [0.0, 1.0]
 """
 
 from __future__ import annotations
@@ -41,8 +42,6 @@ class Breakout71Env(gym.Env):
         Default is ``"Breakout - 71"``.
     yolo_weights : str or Path
         Path to the trained YOLOv8 weights file.
-    brick_grid_shape : tuple[int, int]
-        (rows, cols) of the brick grid.  Default is ``(6, 10)``.
     max_steps : int
         Maximum steps per episode before truncation.  Default is 10000.
     render_mode : str, optional
@@ -54,10 +53,12 @@ class Breakout71Env(gym.Env):
     Attributes
     ----------
     observation_space : gym.spaces.Box
-        Continuous observation vector of length
-        ``5 + brick_grid_shape[0] * brick_grid_shape[1]``.
+        6-element continuous observation vector:
+        ``[paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm]``.
+        Positions in [0, 1], velocities in [-1, 1].
     action_space : gym.spaces.Discrete
-        Discrete(4): NOOP, LEFT, RIGHT, FIRE.
+        Discrete(3): 0=NOOP, 1=LEFT, 2=RIGHT.
+        FIRE/Space is only used in ``reset()`` to start a new game.
     """
 
     metadata = {"render_modes": ["human", "rgb_array"]}
@@ -66,7 +67,6 @@ class Breakout71Env(gym.Env):
         self,
         window_title: str = "Breakout - 71",
         yolo_weights: str | Path = "weights/best.pt",
-        brick_grid_shape: tuple[int, int] = (6, 10),
         max_steps: int = 10_000,
         render_mode: Optional[str] = None,
         oracles: Optional[list[Any]] = None,
@@ -75,23 +75,26 @@ class Breakout71Env(gym.Env):
 
         self.window_title = window_title
         self.yolo_weights = Path(yolo_weights)
-        self.brick_grid_shape = brick_grid_shape
         self.max_steps = max_steps
         self.render_mode = render_mode
 
-        # Observation: paddle_x + ball_x + ball_y + ball_vx + ball_vy + brick_grid
-        n_bricks = brick_grid_shape[0] * brick_grid_shape[1]
-        obs_size = 5 + n_bricks
+        # Observation: 6-element vector
+        # [paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm]
+        # Positions in [0, 1], velocities in [-1, 1], bricks_norm in [0, 1]
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(obs_size,), dtype=np.float32
+            low=np.array([0.0, 0.0, 0.0, -1.0, -1.0, 0.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
+            dtype=np.float32,
         )
 
-        # Actions: 0=NOOP, 1=LEFT, 2=RIGHT, 3=FIRE
-        self.action_space = spaces.Discrete(4)
+        # Actions: 0=NOOP, 1=LEFT, 2=RIGHT
+        # FIRE/Space is only used in reset() to start a new game
+        self.action_space = spaces.Discrete(3)
 
         # Internal state
         self._step_count: int = 0
         self._prev_ball_pos: tuple[float, float] | None = None
+        self._bricks_total: int | None = None  # set on first reset
         self._oracles: list[Any] = oracles or []
         self._last_frame: np.ndarray | None = None
 
@@ -143,7 +146,7 @@ class Breakout71Env(gym.Env):
         Parameters
         ----------
         action : int
-            Discrete action (0=NOOP, 1=LEFT, 2=RIGHT, 3=FIRE).
+            Discrete action (0=NOOP, 1=LEFT, 2=RIGHT).
 
         Returns
         -------
@@ -187,7 +190,7 @@ class Breakout71Env(gym.Env):
         Returns
         -------
         np.ndarray
-            BGR image of the game window's client area.
+            RGB image of the game window's client area.
         """
         raise NotImplementedError("Frame capture not yet implemented")
 
@@ -219,8 +222,8 @@ class Breakout71Env(gym.Env):
         Returns
         -------
         np.ndarray
-            Float32 observation vector:
-            ``[paddle_x, ball_x, ball_y, ball_vx, ball_vy, *brick_grid]``.
+            Float32 observation vector (6 elements):
+            ``[paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm]``.
         """
         raise NotImplementedError("Observation building not yet implemented")
 
