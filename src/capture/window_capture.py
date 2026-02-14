@@ -53,7 +53,7 @@ class WindowCapture:
             )
 
         self.window_title = window_title
-        self.hwnd: int = hwnd or 0
+        self.hwnd: int = hwnd if hwnd is not None else 0
         self.width: int = 0
         self.height: int = 0
 

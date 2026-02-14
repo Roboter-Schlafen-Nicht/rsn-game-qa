@@ -170,7 +170,7 @@ class Breakout71Env(gym.Env):
         Returns
         -------
         np.ndarray or None
-            BGR frame if ``render_mode="rgb_array"``, else None.
+            RGB frame if ``render_mode="rgb_array"``, else None.
         """
         if self.render_mode == "rgb_array":
             return self._last_frame
