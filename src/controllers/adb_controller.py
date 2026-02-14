@@ -1,4 +1,5 @@
 """Controller for Android emulator/device interaction via ADB."""
+
 import subprocess
 import time
 from typing import Optional, List, Tuple
@@ -70,9 +71,7 @@ class EmulatorController:
         out = proc.stdout.decode(errors="replace")
         err = proc.stderr.decode(errors="replace")
         if check and proc.returncode != 0:
-            raise AdbError(
-                f"ADB failed ({proc.returncode}): {' '.join(cmd)}\n{err}"
-            )
+            raise AdbError(f"ADB failed ({proc.returncode}): {' '.join(cmd)}\n{err}")
         return out
 
     # ---------- device / connection ----------
@@ -114,11 +113,7 @@ class EmulatorController:
         err = proc.stderr.decode(errors="replace")
         # Example output: "connected to 127.0.0.1:5555"
         if proc.returncode != 0:
-            msg = (
-                f"Failed to connect to {host}:{port} "
-                f"(rc={proc.returncode}): "
-                + err
-            )
+            msg = f"Failed to connect to {host}:{port} (rc={proc.returncode}): " + err
             raise AdbError(msg)
         if "connected to" not in out and "already connected" not in out:
             raise AdbError(f"Failed to connect to {host}:{port}: {out}{err}")
@@ -136,9 +131,7 @@ class EmulatorController:
         if len(ready) == 0:
             raise AdbError("No ADB devices in 'device' state.")
         if len(ready) > 1:
-            raise AdbError(
-                "Multiple devices attached; specify serial explicitly."
-            )
+            raise AdbError("Multiple devices attached; specify serial explicitly.")
         self.serial = ready[0][0]
 
     # ---------- shell / input ----------
@@ -196,9 +189,7 @@ class EmulatorController:
 
     # ---------- screencap ----------
 
-    def screencap(
-        self, timeout: Optional[float] = None
-    ) -> bytes:
+    def screencap(self, timeout: Optional[float] = None) -> bytes:
         """
         Capture the current screen and save as PNG.
         Uses 'adb shell screencap -p' for direct PNG bytes.

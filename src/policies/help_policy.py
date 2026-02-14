@@ -7,13 +7,9 @@ CLASS_BTN_HELP = 2
 
 class HelpOnlyPolicy:
     """Thin wrapper around YOLO to get the best BTN_HELP detection from
-       a frame."""
+    a frame."""
 
-    def __init__(
-            self,
-            model_path: str,
-            device: str = "cpu",
-            conf_thres: float = 0.4):
+    def __init__(self, model_path: str, device: str = "cpu", conf_thres: float = 0.4):
         """
         model_path: path to YOLO weights (e.g.
                     runs/detect/train9/weights/best.pt)

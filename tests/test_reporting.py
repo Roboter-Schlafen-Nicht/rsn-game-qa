@@ -1,13 +1,9 @@
 """Tests for the reporting module (ReportGenerator + DashboardRenderer)."""
 
-import pytest
-
 from src.reporting.report import (
-    EpisodeMetrics,
     EpisodeReport,
     FindingReport,
     ReportGenerator,
-    SessionReport,
 )
 
 

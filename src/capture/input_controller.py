@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Optional
 
 try:
-    import pydirectinput
+    import pydirectinput  # noqa: F401
 
     _PYDIRECTINPUT_AVAILABLE = True
 except ImportError:

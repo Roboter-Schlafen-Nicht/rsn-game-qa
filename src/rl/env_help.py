@@ -83,7 +83,9 @@ class LastWarHelpEnv(gym.Env):
     def _get_obs(self) -> np.ndarray:
         has_help = 1.0 if self._help_visible else 0.0
         conf = self._help_conf if self._help_visible else 0.0
-        since_norm = min(self._since_last_help, self.since_last_clip) / self.since_last_clip
+        since_norm = (
+            min(self._since_last_help, self.since_last_clip) / self.since_last_clip
+        )
         return np.array([has_help, conf, since_norm], dtype=np.float32)
 
     def _transition_help_visibility(self, action: int) -> None:

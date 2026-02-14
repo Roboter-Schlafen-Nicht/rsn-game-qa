@@ -14,11 +14,11 @@ OUT_LBL.mkdir(parents=True, exist_ok=True)
 
 # Use your current good HELP model
 MODEL_PATH = "E:\\trainingdata\\last-war-robot\\runs\\detect\\train12\\weights\\best.pt"
-HELP_CLASS_ID = 2      # BTN_HELP
-CONF_MIN = 0.75         # stricter than runtime
+HELP_CLASS_ID = 2  # BTN_HELP
+CONF_MIN = 0.75  # stricter than runtime
 
 LOG_DIR = Path("F:/work/lastwarrobot/data/live_logs")
-print(LOG_DIR.exists(), len(list(LOG_DIR.glob('*.png'))))
+print(LOG_DIR.exists(), len(list(LOG_DIR.glob("*.png"))))
 
 
 def to_yolo_line(x1, y1, x2, y2, w, h, class_id):

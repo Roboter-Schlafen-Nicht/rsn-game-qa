@@ -11,8 +11,7 @@ from controllers.last_war_controller import LastWarController
 from policies.help_policy import HelpOnlyPolicy
 from policies.rl_help_policy import RLHelpPolicy
 
-ADB_PATH = ("C:\\Users\\human\\AppData\\Local\\Android\\Sdk\\platform-tools"
-            "\\adb.exe")
+ADB_PATH = "C:\\Users\\human\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe"
 
 LOG_DIR = Path("data/live_logs")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -165,7 +164,9 @@ def run_help_bot(
         MIN_CONF = 0.5  # or 0.6, tune as you like
         print(det)
         if det["conf"] < MIN_CONF:
-            print(f"[{step}] HELP detected at conf={det['conf']:.2f} but below MIN_CONF={MIN_CONF:.2f}, ignoring.")
+            print(
+                f"[{step}] HELP detected at conf={det['conf']:.2f} but below MIN_CONF={MIN_CONF:.2f}, ignoring."
+            )
             continue
 
         now = time.time()
@@ -196,8 +197,9 @@ def run_help_bot(
             f"interval={since_last:.1f}s"
         )
 
-        save_event(frame, step, det, True, "click_help", dry_run,
-                   rl_action, rl_reason, log_dir)
+        save_event(
+            frame, step, det, True, "click_help", dry_run, rl_action, rl_reason, log_dir
+        )
 
         if not dry_run:
             ctrl.tap(tx, ty)
@@ -220,4 +222,5 @@ if __name__ == "__main__":
         dry_run=False,
         rl_model_path="F:\\work\\LastWarRobot\\runs\\rl_help_v3\\ppo_lastwar_help.zip",
         shadow_rl=True,
-        log_tag="rl_help_shadowrun",)
+        log_tag="rl_help_shadowrun",
+    )

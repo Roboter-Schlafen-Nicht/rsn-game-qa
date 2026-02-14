@@ -23,9 +23,7 @@ class BreakOut71Controller(EmulatorController):
         default_timeout: float = 10.0,
     ) -> None:
         super().__init__(
-            adb_path=adb_path,
-            serial=serial,
-            default_timeout=default_timeout
+            adb_path=adb_path, serial=serial, default_timeout=default_timeout
         )
 
     # ---------- low-level "hold" helpers ----------

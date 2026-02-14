@@ -138,9 +138,7 @@ class Breakout71Env(gym.Env):
         """
         raise NotImplementedError("Breakout71Env.reset not yet implemented")
 
-    def step(
-        self, action: int
-    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Execute one action and return the resulting transition.
 
         Parameters

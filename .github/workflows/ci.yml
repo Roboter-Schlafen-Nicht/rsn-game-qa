@@ -9,44 +9,64 @@ on:
 jobs:
   lint:
     name: Lint
-    runs-on: self-hosted
-    defaults:
-      run:
-        shell: cmd
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Activate conda env and run ruff check
-        run: |
-          call conda activate yolo
-          python -m ruff check src/ tests/ --output-format=github
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff==0.11.12
+
+      - name: Run ruff check
+        run: ruff check src/ tests/ --output-format=github
 
       - name: Run ruff format check
-        run: |
-          call conda activate yolo
-          python -m ruff format --check src/ tests/
+        run: ruff format --check src/ tests/
 
   test:
     name: Test
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: lint
-    defaults:
-      run:
-        shell: cmd
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run pytest
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
         run: |
-          call conda activate yolo
-          python -m pytest tests/ -v --tb=short --junitxml=reports/junit.xml
+          pip install pytest==9.0.2 \
+            gymnasium==1.2.3 \
+            numpy==2.4.2 \
+            opencv-python-headless==4.13.0.90 \
+            pillow==12.0.0 \
+            imagehash==4.3.2 \
+            psutil==7.2.2 \
+            pandas==3.0.0 \
+            polars==1.37.1 \
+            jinja2==3.1.6 \
+            rich==14.3.2 \
+            pygame==2.6.1 \
+            ultralytics==8.4.9 \
+            stable-baselines3==2.7.1 \
+            scipy==1.17.0 \
+            matplotlib==3.10.8
+
+      - name: Run pytest
+        run: python -m pytest tests/ -v --tb=short --junitxml=reports/junit.xml
 
       - name: Upload test results
-        if: always()
+        if: always() && !env.ACT
         uses: actions/upload-artifact@v4
         with:
           name: test-results
@@ -55,19 +75,38 @@ jobs:
 
   build:
     name: Build Check
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: test
-    defaults:
-      run:
-        shell: cmd
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install gymnasium==1.2.3 \
+            numpy==2.4.2 \
+            opencv-python-headless==4.13.0.90 \
+            pillow==12.0.0 \
+            imagehash==4.3.2 \
+            psutil==7.2.2 \
+            pandas==3.0.0 \
+            polars==1.37.1 \
+            jinja2==3.1.6 \
+            rich==14.3.2 \
+            pygame==2.6.1 \
+            ultralytics==8.4.9 \
+            stable-baselines3==2.7.1 \
+            scipy==1.17.0 \
+            matplotlib==3.10.8
+
       - name: Verify imports
         run: |
-          call conda activate yolo
           python -c "from src.capture import WindowCapture, InputController; print('capture: OK')"
           python -c "from src.oracles import Oracle, CrashOracle, StuckOracle, ScoreAnomalyOracle, VisualGlitchOracle, PerformanceOracle; print('oracles: OK')"
           python -c "from src.env import Breakout71Env; print('env: OK')"
@@ -76,22 +115,45 @@ jobs:
 
   docs:
     name: Build Docs
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: build
-    defaults:
-      run:
-        shell: cmd
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build Sphinx HTML docs
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
         run: |
-          call conda activate yolo
-          python -m sphinx.cmd.build -b html docs docs/_build/html -W
+          pip install sphinx==9.1.0 \
+            myst-parser==5.0.0 \
+            sphinx-autodoc-typehints==3.6.2 \
+            furo==2025.12.19 \
+            gymnasium==1.2.3 \
+            numpy==2.4.2 \
+            opencv-python-headless==4.13.0.90 \
+            pillow==12.0.0 \
+            imagehash==4.3.2 \
+            psutil==7.2.2 \
+            pandas==3.0.0 \
+            polars==1.37.1 \
+            jinja2==3.1.6 \
+            rich==14.3.2 \
+            pygame==2.6.1 \
+            ultralytics==8.4.9 \
+            stable-baselines3==2.7.1 \
+            scipy==1.17.0 \
+            matplotlib==3.10.8
+
+      - name: Build Sphinx HTML docs
+        run: python -m sphinx.cmd.build -b html docs docs/_build/html -W
 
       - name: Upload docs artifact
+        if: ${{ !env.ACT }}
         uses: actions/upload-artifact@v4
         with:
           name: docs-html

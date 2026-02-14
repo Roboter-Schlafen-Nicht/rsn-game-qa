@@ -14,7 +14,7 @@ from typing import Any, Optional
 import numpy as np
 
 try:
-    from ultralytics import YOLO
+    from ultralytics import YOLO  # noqa: F401
 
     _ULTRALYTICS_AVAILABLE = True
 except ImportError:
@@ -148,9 +148,7 @@ class YoloDetector:
             - ``"powerups"``: list of ``(cx_norm, cy_norm, w_norm, h_norm)``
             - ``"raw_detections"``: full detection list
         """
-        raise NotImplementedError(
-            "Game state extraction not yet implemented"
-        )
+        raise NotImplementedError("Game state extraction not yet implemented")
 
     def is_loaded(self) -> bool:
         """Check if the model has been loaded.

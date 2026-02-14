@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from jinja2 import Environment, FileSystemLoader, select_autoescape
+    from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: F401
 
     _JINJA2_AVAILABLE = True
 except ImportError:

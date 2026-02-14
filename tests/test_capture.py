@@ -1,7 +1,5 @@
 """Tests for the capture module (WindowCapture + InputController)."""
 
-import pytest
-
 
 class TestWindowCapture:
     """Placeholder tests for WindowCapture."""
