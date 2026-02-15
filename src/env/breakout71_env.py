@@ -5,20 +5,29 @@ Uses ``WindowCapture`` for frame acquisition, ``YoloDetector`` for
 object detection, ``InputController`` for action injection, and a
 battery of ``Oracle`` instances for bug detection.
 
-Observation vector layout (from session1.md spec)::
+Observation vector layout (8 elements)::
 
-    [paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm]
+    [paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm,
+     coins_norm, score_norm]
 
-6-element vector where:
+Where:
 
 - paddle_x    : normalised x-position of the paddle centre  [0.0, 1.0]
 - ball_x/y    : normalised position of the ball centre       [0.0, 1.0]
 - ball_vx/vy  : estimated velocity (frame delta), clipped    [-1.0, 1.0]
 - bricks_norm : fraction of bricks remaining (count/initial) [0.0, 1.0]
+- coins_norm  : normalised coin count on screen (v1: 0.0)    [0.0, 1.0]
+- score_norm  : normalised score delta since last step (v1: 0.0) [0.0, 1.0]
+
+Note: The game uses coin-based scoring (bricks spawn coins caught by
+paddle), not direct brick-based scoring.  The ``coins_norm`` and
+``score_norm`` slots are placeholders for v1 and will be populated once
+YOLO coin tracking or OCR/JS bridge is available.
 """
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -47,14 +56,14 @@ class Breakout71Env(gym.Env):
     render_mode : str, optional
         Gymnasium render mode (``"human"`` or ``"rgb_array"``).
     oracles : list, optional
-        List of ``Oracle`` instances to attach.  If None, all default
-        oracles are used.
+        List of ``Oracle`` instances to attach.  If None, no oracles
+        are used.
 
     Attributes
     ----------
     observation_space : gym.spaces.Box
-        6-element continuous observation vector:
-        ``[paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm]``.
+        8-element continuous observation vector with layout
+        ``[paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm, coins_norm, score_norm]``.
         Positions in [0, 1], velocities in [-1, 1].
     action_space : gym.spaces.Discrete
         Discrete(3): 0=NOOP, 1=LEFT, 2=RIGHT.
@@ -62,6 +71,13 @@ class Breakout71Env(gym.Env):
     """
 
     metadata = {"render_modes": ["human", "rgb_array"]}
+
+    # Termination thresholds
+    _BALL_LOST_THRESHOLD: int = 5
+    """Consecutive frames without ball detection before game-over."""
+
+    _LEVEL_CLEAR_THRESHOLD: int = 3
+    """Consecutive frames with zero bricks before level-cleared."""
 
     def __init__(
         self,
@@ -78,12 +94,12 @@ class Breakout71Env(gym.Env):
         self.max_steps = max_steps
         self.render_mode = render_mode
 
-        # Observation: 6-element vector
-        # [paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm]
-        # Positions in [0, 1], velocities in [-1, 1], bricks_norm in [0, 1]
+        # Observation: 8-element vector
+        # [paddle_x, ball_x, ball_y, ball_vx, ball_vy,
+        #  bricks_norm, coins_norm, score_norm]
         self.observation_space = spaces.Box(
-            low=np.array([0.0, 0.0, 0.0, -1.0, -1.0, 0.0], dtype=np.float32),
-            high=np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
+            low=np.array([0.0, 0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32,
         )
 
@@ -95,13 +111,19 @@ class Breakout71Env(gym.Env):
         self._step_count: int = 0
         self._prev_ball_pos: tuple[float, float] | None = None
         self._bricks_total: int | None = None  # set on first reset
+        self._prev_bricks_norm: float = 1.0
         self._oracles: list[Any] = oracles or []
         self._last_frame: np.ndarray | None = None
+
+        # Termination counters
+        self._no_ball_count: int = 0
+        self._no_bricks_count: int = 0
 
         # Sub-components (initialised lazily)
         self._capture = None  # WindowCapture instance
         self._detector = None  # YoloDetector instance
         self._input = None  # InputController instance
+        self._initialized: bool = False
 
     def _lazy_init(self) -> None:
         """Lazily initialise capture, detector, and input sub-components.
@@ -109,10 +131,22 @@ class Breakout71Env(gym.Env):
         Called on the first ``reset()`` so that the env can be
         constructed without requiring a live game window (e.g. for
         testing or config validation).
+
+        All imports are performed inside this method to avoid breaking
+        CI in Docker where pywin32 and pydirectinput are unavailable.
         """
-        raise NotImplementedError(
-            "Lazy initialisation of capture/detector/input not yet implemented"
-        )
+        if self._initialized:
+            return
+
+        from src.capture.input_controller import InputController
+        from src.capture.window_capture import WindowCapture
+        from src.perception.yolo_detector import YoloDetector
+
+        self._capture = WindowCapture(window_title=self.window_title)
+        self._detector = YoloDetector(weights_path=self.yolo_weights)
+        self._detector.load()
+        self._input = InputController()
+        self._initialized = True
 
     def reset(
         self,
@@ -132,11 +166,41 @@ class Breakout71Env(gym.Env):
         Returns
         -------
         obs : np.ndarray
-            Initial observation vector.
+            Initial observation vector (8 elements).
         info : dict[str, Any]
             Auxiliary information (``"frame"``, ``"detections"``, etc.).
         """
-        raise NotImplementedError("Breakout71Env.reset not yet implemented")
+        super().reset(seed=seed)
+
+        if not self._initialized:
+            self._lazy_init()
+
+        # Press Space to start a new game
+        self._input.apply_action(3)  # ACTION_FIRE
+        time.sleep(0.5)
+
+        # Capture first frame and detect objects
+        frame = self._capture_frame()
+        detections = self._detect_objects(frame)
+
+        # Build observation with reset semantics
+        obs = self._build_observation(detections, reset=True)
+
+        # Reset episode counters
+        self._step_count = 0
+        self._prev_bricks_norm = 1.0
+        self._no_ball_count = 0
+        self._no_bricks_count = 0
+
+        # Build info dict
+        info = self._build_info(detections)
+
+        # Clear and notify oracles
+        for oracle in self._oracles:
+            oracle.clear()
+            oracle.on_reset(obs, info)
+
+        return obs, info
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Execute one action and return the resulting transition.
@@ -149,18 +213,67 @@ class Breakout71Env(gym.Env):
         Returns
         -------
         obs : np.ndarray
-            Observation vector after the action.
+            Observation vector after the action (8 elements).
         reward : float
-            Reward signal (e.g. +1 per brick destroyed, -1 on life lost).
+            Reward signal.
         terminated : bool
-            True if the game is over (all lives lost or all bricks cleared).
+            True if the game is over (ball lost or level cleared).
         truncated : bool
             True if ``max_steps`` has been reached.
         info : dict[str, Any]
             Auxiliary information including ``"frame"``, ``"score"``,
             ``"oracle_findings"``.
         """
-        raise NotImplementedError("Breakout71Env.step not yet implemented")
+        # Apply action and wait for next frame
+        self._apply_action(action)
+        time.sleep(1.0 / 30.0)
+
+        # Capture and detect
+        frame = self._capture_frame()
+        detections = self._detect_objects(frame)
+
+        # Build observation
+        obs = self._build_observation(detections)
+
+        # Update termination counters
+        ball_detected = detections.get("ball") is not None
+        brick_count = len(detections.get("bricks", []))
+
+        if not ball_detected:
+            self._no_ball_count += 1
+        else:
+            self._no_ball_count = 0
+
+        if brick_count == 0 and self._bricks_total is not None:
+            self._no_bricks_count += 1
+        else:
+            self._no_bricks_count = 0
+
+        # Increment step counter (before truncation check so max_steps is
+        # the exact number of transitions allowed per episode)
+        self._step_count += 1
+
+        # Determine termination
+        level_cleared = self._no_bricks_count >= self._LEVEL_CLEAR_THRESHOLD
+        game_over = (
+            self._no_ball_count >= self._BALL_LOST_THRESHOLD
+            and self._bricks_total is not None
+            and brick_count == self._prev_brick_count()
+        )
+        terminated = level_cleared or game_over
+        truncated = self._step_count >= self.max_steps
+
+        # Compute reward
+        reward = self._compute_reward(detections, terminated, level_cleared)
+
+        # Build info dict
+        info = self._build_info(detections)
+
+        # Run oracles
+        findings = self._run_oracles(obs, reward, terminated, truncated, info)
+        info["oracle_findings"] = findings
+
+        return obs, reward, terminated, truncated, info
 
     def render(self) -> np.ndarray | None:
         """Render the current frame.
@@ -182,15 +295,19 @@ class Breakout71Env(gym.Env):
         self._detector = None
         self._input = None
 
+    # -- Private helpers -------------------------------------------------------
+
     def _capture_frame(self) -> np.ndarray:
         """Capture a frame from the game window.
 
         Returns
         -------
         np.ndarray
-            RGB image of the game window's client area.
+            BGR image of the game window's client area.
         """
-        raise NotImplementedError("Frame capture not yet implemented")
+        frame = self._capture.capture_frame()
+        self._last_frame = frame
+        return frame
 
     def _detect_objects(self, frame: np.ndarray) -> dict[str, Any]:
         """Run YOLO inference on a frame and extract detections.
@@ -203,30 +320,85 @@ class Breakout71Env(gym.Env):
         Returns
         -------
         dict[str, Any]
-            Detection results keyed by class name:
-            ``{"paddle": (cx, cy, w, h), "ball": (cx, cy, w, h),
-              "bricks": [(cx, cy, w, h), ...], ...}``.
+            Detection results from ``YoloDetector.detect_to_game_state``.
         """
-        raise NotImplementedError("Object detection not yet implemented")
+        h, w = frame.shape[:2]
+        return self._detector.detect_to_game_state(frame, w, h)
 
-    def _build_observation(self, detections: dict[str, Any]) -> np.ndarray:
+    def _build_observation(
+        self, detections: dict[str, Any], *, reset: bool = False
+    ) -> np.ndarray:
         """Convert YOLO detections into the flat observation vector.
 
         Parameters
         ----------
         detections : dict[str, Any]
             Detection results from ``_detect_objects``.
+        reset : bool
+            If True, zero velocities and set ``_bricks_total`` from
+            the current brick count (first frame of episode).
 
         Returns
         -------
         np.ndarray
-            Float32 observation vector (6 elements):
-            ``[paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm]``.
+            Float32 observation vector (8 elements).
         """
-        raise NotImplementedError("Observation building not yet implemented")
+        # Extract paddle position (normalised cx)
+        paddle = detections.get("paddle")
+        paddle_x = paddle[0] if paddle is not None else 0.5
+
+        # Extract ball position (normalised cx, cy)
+        ball = detections.get("ball")
+        ball_x = ball[0] if ball is not None else 0.5
+        ball_y = ball[1] if ball is not None else 0.5
+
+        # Compute velocity from frame delta
+        if reset or self._prev_ball_pos is None or ball is None:
+            ball_vx, ball_vy = 0.0, 0.0
+        else:
+            ball_vx = ball_x - self._prev_ball_pos[0]
+            ball_vy = ball_y - self._prev_ball_pos[1]
+
+        # Update previous ball position
+        if ball is not None:
+            self._prev_ball_pos = (ball_x, ball_y)
+        elif reset:
+            self._prev_ball_pos = None
+
+        # Brick normalisation
+        bricks = detections.get("bricks", [])
+        bricks_left = len(bricks)
+
+        if reset or self._bricks_total is None:
+            self._bricks_total = max(bricks_left, 1)
+
+        bricks_norm = bricks_left / self._bricks_total
+
+        # Placeholder slots for v1
+        coins_norm = 0.0
+        score_norm = 0.0
+
+        obs = np.array(
+            [
+                paddle_x,
+                ball_x,
+                ball_y,
+                np.clip(ball_vx, -1.0, 1.0),
+                np.clip(ball_vy, -1.0, 1.0),
+                np.clip(bricks_norm, 0.0, 1.0),
+                coins_norm,
+                score_norm,
+            ],
+            dtype=np.float32,
+        )
+
+        return obs
 
     def _compute_reward(
-        self, detections: dict[str, Any], info: dict[str, Any]
+        self,
+        detections: dict[str, Any],
+        terminated: bool,
+        level_cleared: bool,
     ) -> float:
         """Compute the reward for the current step.
 
@@ -234,15 +406,40 @@ class Breakout71Env(gym.Env):
         ----------
         detections : dict[str, Any]
             Current detections.
-        info : dict[str, Any]
-            Current step info.
+        terminated : bool
+            Whether the episode ended this step.
+        level_cleared : bool
+            Whether the level was cleared (all bricks destroyed).
 
         Returns
         -------
         float
             Reward signal.
         """
-        raise NotImplementedError("Reward computation not yet implemented")
+        # Brick destruction reward
+        bricks_left = len(detections.get("bricks", []))
+        bricks_total = self._bricks_total if self._bricks_total else 1
+        bricks_norm = bricks_left / bricks_total
+        brick_delta = self._prev_bricks_norm - bricks_norm
+        reward = brick_delta * 10.0
+
+        # Score delta reward (placeholder -- will activate with OCR/JS bridge)
+        score_delta = 0.0
+        reward += score_delta * 0.01
+
+        # Time penalty
+        reward -= 0.01
+
+        # Terminal rewards
+        if terminated and level_cleared:
+            reward += 5.0
+        elif terminated:
+            reward -= 5.0
+
+        # Update state for next step
+        self._prev_bricks_norm = bricks_norm
+
+        return reward
 
     def _apply_action(self, action: int) -> None:
         """Send the chosen action to the game via InputController.
@@ -250,9 +447,9 @@ class Breakout71Env(gym.Env):
         Parameters
         ----------
         action : int
-            Discrete action to apply.
+            Discrete action to apply (0=NOOP, 1=LEFT, 2=RIGHT).
         """
-        raise NotImplementedError("Action application not yet implemented")
+        self._input.apply_action(action)
 
     def _run_oracles(
         self,
@@ -279,7 +476,49 @@ class Breakout71Env(gym.Env):
 
         Returns
         -------
-        list[Finding]
+        list
             Aggregated findings from all oracles.
         """
-        raise NotImplementedError("Oracle execution not yet implemented")
+        findings: list[Any] = []
+        for oracle in self._oracles:
+            oracle.on_step(obs, reward, terminated, truncated, info)
+            findings.extend(oracle.get_findings())
+        return findings
+
+    def _build_info(self, detections: dict[str, Any]) -> dict[str, Any]:
+        """Build the info dict returned by reset/step.
+
+        Parameters
+        ----------
+        detections : dict[str, Any]
+            Current YOLO detections.
+
+        Returns
+        -------
+        dict[str, Any]
+            Info dict with frame, detections, positions, counts.
+        """
+        paddle = detections.get("paddle")
+        ball = detections.get("ball")
+
+        return {
+            "frame": self._last_frame,
+            "detections": detections,
+            "ball_pos": [ball[0], ball[1]] if ball is not None else None,
+            "paddle_pos": [paddle[0], paddle[1]] if paddle is not None else None,
+            "brick_count": len(detections.get("bricks", [])),
+            "step": self._step_count,
+            "score": 0.0,  # placeholder for v1
+        }
+
+    def _prev_brick_count(self) -> int:
+        """Return the previous brick count based on ``_prev_bricks_norm``.
+
+        Returns
+        -------
+        int
+            Estimated previous brick count.
+        """
+        if self._bricks_total is None:
+            return 0
+        return round(self._prev_bricks_norm * self._bricks_total)

@@ -52,22 +52,39 @@
 - [ ] YOLO training script for Breakout 71 classes (`paddle`, `ball`, `brick`, `powerup`, `wall`)
 - [ ] Trained weights validation (mAP threshold)
 
-### 2. Breakout71 Gymnasium environment (`src/env/`)
-- [ ] Check `environment.yml` has `gymnasium` (already present)
-- [ ] Implement `Breakout71Env` core methods
-  - [ ] `_lazy_init` -- wire capture + perception + game loader
-  - [ ] `reset` -- start episode, return initial observation
-  - [ ] `step` -- apply action, capture, detect, build obs, compute reward, run oracles
-  - [ ] `_capture_frame`, `_detect_objects`, `_build_observation`
-  - [ ] `_compute_reward`, `_apply_action`, `_run_oracles`
-- [ ] Replace placeholder tests with real tests
-- [ ] Update Sphinx docs if needed
-- [ ] Update README (remove `[stub]`, update test count)
+### 2. Breakout71 Gymnasium environment v1 (`src/env/`) — session 8
+- [x] Check `environment.yml` has `gymnasium` (already present)
+- [x] Study Breakout 71 game source to understand actual mechanics
+  - [x] Discovered: coin-based scoring (not brick-based), no traditional lives, perk system, level transitions
+  - [x] Android version is identical game logic in Kotlin WebView wrapper
+- [x] Rewrite spec (`documentation/specs/breakout71_env_spec.md`) with actual game mechanics
+- [x] Update observation space from 6 to 8 elements (add `coins_norm`, `score_norm` placeholders)
+- [x] Implement `Breakout71Env` core methods
+  - [x] `_lazy_init` -- wire capture + perception + input (lazy imports for CI safety)
+  - [x] `_capture_frame` -- delegate to `WindowCapture.capture_frame()`
+  - [x] `_detect_objects` -- delegate to `YoloDetector.detect_to_game_state()`
+  - [x] `_build_observation(detections, *, reset=False)` -- extract positions, compute velocity, normalize bricks
+  - [x] `_compute_reward(detections, terminated, level_cleared)` -- brick delta + time penalty + terminal rewards + score_delta placeholder
+  - [x] `_apply_action` -- delegate to `InputController.apply_action()`
+  - [x] `_run_oracles` -- call `on_step` on all oracles, collect findings
+  - [x] `reset` -- lazy init, fire space, capture, build obs (reset=True), clear oracles
+  - [x] `step` -- apply action, sleep, capture, detect, build obs, compute reward, check termination (ball-lost / level-cleared / max_steps), run oracles
+- [x] Termination logic: ball not detected for N frames = game over; 0 bricks for M frames = level cleared
+- [x] Replace placeholder tests with comprehensive unit tests (~50 tests, all mocked)
+- [x] Update Sphinx docs if needed
+- [x] Update README (remove `[stub]`, update test count)
 - [ ] Commit, push, create PR, request review from Copilot, evaluate review and create issues if necessary, merge (`--delete-branch`), delete local branch
 - [ ] Post-merge admin (no Copilot review needed):
   - [ ] Update this checklist (move item to Completed, record PR number)
-  - [ ] Create session log in `documentation/sessions/sessionN-<topic>.md`
+  - [ ] Create session log in `documentation/sessions/session8-env.md`
   - [ ] Update `AGENTS.md` (session list, project structure, discoveries, what's next)
+
+#### v1 scoping decisions
+- **Episode = single level** (perk selection between levels not part of action space)
+- **8-element observation**: paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm, coins_norm (placeholder 0.0), score_norm (placeholder 0.0)
+- **Reward**: brick-based for v1, score_delta slot prepared for future OCR/JS bridge
+- **Action space**: Discrete(3) — NOOP, LEFT, RIGHT (keyboard arrow keys via InputController)
+- **Out of scope for v1**: coin observation, score observation, perk selection, multi-level episodes, continuous action space, multiple ball tracking
 
 ### 3. Integration & end-to-end
 - [x] Add integration tests (PR #15 — 12 tests × 2 browsers)
