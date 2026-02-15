@@ -62,6 +62,12 @@
   - [x] `.env` / `python-dotenv` for API keys
   - [x] 41 unit tests (398 total unit + 24 integration)
   - [x] Copilot review: 8 fixes (flag semantics, zero checks, dead code, docstring, error recovery)
+- [x] **Data collection pipeline & auto-annotation** (PR #21)
+  - [x] Enhanced `capture_dataset.py` — JS-based game state detection, auto-dismiss modals, random paddle actions
+  - [x] `auto_annotate.py` — HSV color segmentation (11 groups, 21 palette colors), frame differencing, UI masks, deduplication
+  - [x] Captured 300 frames, auto-annotated 297 with 222 paddles, 278 balls, 4445 bricks, 987 coins, 566 walls
+  - [x] Window height changed to 1024 for maximum game area
+  - [x] Copilot review: 6 fixes (constants, docstrings, dead code, comment accuracy)
 
 ## To Do
 
@@ -73,8 +79,9 @@
 - [x] Config-driven architecture (PR #19)
 - [x] `.env` / `python-dotenv` for API keys (PR #19)
 - [x] 41 unit tests (PR #19)
-- [ ] Capture ~500 frames from live game
-- [ ] Annotate frames in Roboflow
+- [x] Capture ~300 frames from live game (PR #21)
+- [x] Auto-annotate frames with OpenCV (PR #21)
+- [ ] Upload annotated frames to Roboflow for human review/correction
 - [ ] Train and validate model
 
 ### 2. Integration & end-to-end
