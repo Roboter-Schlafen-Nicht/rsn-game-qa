@@ -68,6 +68,15 @@
   - [x] Captured 300 frames, auto-annotated 297 with 222 paddles, 278 balls, 4445 bricks, 987 coins, 566 walls
   - [x] Window height changed to 1024 for maximum game area
   - [x] Copilot review: 6 fixes (constants, docstrings, dead code, comment accuracy)
+- [x] **Annotation pipeline improvements** (PR #23)
+  - [x] Ball-in-brick false positive fix (brick bbox exclusion from white mask before dilation)
+  - [x] `_find_ball_head` scoring changed to `circularity² * area`
+  - [x] Paddle-zone exclusion fix (paddle bbox masking instead of fixed 15% cut) — 288/297 → 297/297 ball detection
+  - [x] Game-zone wall detection fix (brightness > 200 peaks, edge column margin)
+  - [x] Roboflow annotation upload support (`single_upload` with `annotation_path` + `_build_labelmap`)
+  - [x] `classes.txt` generation in auto_annotate.py
+  - [x] 8 new tests (49 training pipeline tests, 430 total)
+  - [x] Copilot review: 8 fixes (docstrings, error handling, test tolerance, progress tracking, test count)
 
 ## To Do
 
@@ -81,7 +90,7 @@
 - [x] 41 unit tests (PR #19)
 - [x] Capture ~300 frames from live game (PR #21)
 - [x] Auto-annotate frames with OpenCV (PR #21)
-- [ ] Upload annotated frames to Roboflow for human review/correction
+- [x] Upload annotated frames to Roboflow for human review/correction (PR #23)
 - [ ] Train and validate model
 
 ### 2. Integration & end-to-end
