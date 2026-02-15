@@ -95,15 +95,20 @@ def _build_labelmap(dataset_dir: Path) -> dict[int, str] | None:
     # Try classes.txt in labels dir
     classes_file = dataset_dir / "labels" / "classes.txt"
     if classes_file.exists():
-        lines = [
-            line.strip()
-            for line in classes_file.read_text().splitlines()
-            if line.strip()
-        ]
-        if lines:
-            labelmap = {i: name for i, name in enumerate(lines)}
-            logger.info("Loaded labelmap from %s: %s", classes_file, labelmap)
-            return labelmap
+        try:
+            lines = [
+                line.strip()
+                for line in classes_file.read_text().splitlines()
+                if line.strip()
+            ]
+            if lines:
+                labelmap = {i: name for i, name in enumerate(lines)}
+                logger.info("Loaded labelmap from %s: %s", classes_file, labelmap)
+                return labelmap
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.warning(
+                "Failed to read %s: %s — falling back to config", classes_file, exc
+            )
 
     # Fall back to training config
     import yaml
@@ -115,13 +120,16 @@ def _build_labelmap(dataset_dir: Path) -> dict[int, str] | None:
         / "breakout-71.yaml"
     )
     if config_path.exists():
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
-        classes = config.get("classes", [])
-        if classes:
-            labelmap = {i: name for i, name in enumerate(classes)}
-            logger.info("Loaded labelmap from %s: %s", config_path, labelmap)
-            return labelmap
+        try:
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+            classes = config.get("classes", [])
+            if classes:
+                labelmap = {i: name for i, name in enumerate(classes)}
+                logger.info("Loaded labelmap from %s: %s", config_path, labelmap)
+                return labelmap
+        except (OSError, yaml.YAMLError) as exc:
+            logger.warning("Failed to read config %s: %s", config_path, exc)
 
     logger.warning("No labelmap found — annotations will use numeric class indices")
     return None
@@ -235,7 +243,7 @@ def upload_directory(
             stats["failed"] += 1
 
         # Periodic progress + state save
-        done = stats["uploaded"] + stats["skipped"]
+        done = stats["uploaded"] + stats["skipped"] + stats["failed"]
         if done % batch_size == 0 or i == len(frames) - 1:
             _save_upload_state(state_path, uploaded)
             logger.info(

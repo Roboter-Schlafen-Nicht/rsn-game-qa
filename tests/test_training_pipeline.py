@@ -527,8 +527,8 @@ class TestFindBallHead:
 
         cx, cy = self._find_ball_head(roi)
         # Center should be near the circle (20, 40), not near the rectangle center (55, 40)
-        assert abs(cx - 20) < 12, f"Expected cx near 20, got {cx}"
-        assert abs(cy - 40) < 12, f"Expected cy near 40, got {cy}"
+        assert abs(cx - 20) < 5, f"Expected cx near 20, got {cx}"
+        assert abs(cy - 40) < 5, f"Expected cy near 40, got {cy}"
 
     def test_single_blob_returns_its_center(self):
         """A single circular blob should return its center."""

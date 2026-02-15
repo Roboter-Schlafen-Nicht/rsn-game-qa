@@ -134,7 +134,7 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 10. **Session 10** — Data collection pipeline: 300-frame capture with game state detection, auto-annotation with OpenCV (PR #21)
 11. **Session 11** — Annotation pipeline improvements: ball-in-brick fix, paddle-zone fix, game-zone wall detection, Roboflow annotation upload, 100% ball detection (PR #23)
 
-Total: **406 tests** (406 unit + 24 integration), 6 subsystems + training pipeline complete.
+Total: **430 tests** (406 unit + 24 integration), 6 subsystems + training pipeline complete.
 
 ## What's Next
 

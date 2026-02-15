@@ -648,8 +648,9 @@ def _find_ball_head(roi: np.ndarray) -> tuple[float, float]:
     the actual ball, which is the **most circular blob** in the region.
     Trail particles may merge into larger-area but elongated shapes, so
     pure area is unreliable.  This function scores each sub-contour by
-    ``circularity * area`` — the round ball scores highest because it
-    combines decent area with high circularity.
+    ``circularity**2 * area`` — the round ball scores highest because it
+    combines decent area with very high circularity, which is weighted
+    more strongly than area.
 
     Parameters
     ----------
@@ -808,9 +809,9 @@ def _detect_ball(
 
         # --- Locate the actual ball head within the merged blob ---
         # Go back to the UNDILATED white_mask within this bounding box
-        # and find the largest sub-contour.  The ball head is the
-        # biggest circular blob; the trail particles are smaller
-        # scattered fragments.
+        # and find the most circular sub-contour.  The ball head is the
+        # most circular blob (highest circularity² * area score); the
+        # trail particles are smaller scattered fragments.
         roi = white_mask[y : y + h, x : x + w]
         ball_cx, ball_cy = _find_ball_head(roi)
         # Convert ROI-local coords back to image coords
