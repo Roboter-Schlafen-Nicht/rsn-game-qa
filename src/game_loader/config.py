@@ -63,6 +63,11 @@ class GameLoaderConfig:
     window_title : str, optional
         Expected browser window/tab title once the game is loaded.
         Used by ``WindowCapture`` to locate the game surface.
+    window_width : int
+        Desired browser window width in pixels.  Used by
+        ``BrowserInstance`` to set the initial window size.
+    window_height : int
+        Desired browser window height in pixels.
     env_vars : dict[str, str]
         Extra environment variables to set for the serve process.
     """
@@ -82,6 +87,8 @@ class GameLoaderConfig:
 
     # Window identification (for capture layer)
     window_title: Optional[str] = None
+    window_width: int = 1280
+    window_height: int = 720
 
     # Extra env for the serve process
     env_vars: dict[str, str] = field(default_factory=dict)
