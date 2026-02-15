@@ -249,6 +249,10 @@ class Breakout71Env(gym.Env):
         else:
             self._no_bricks_count = 0
 
+        # Increment step counter (before truncation check so max_steps is
+        # the exact number of transitions allowed per episode)
+        self._step_count += 1
+
         # Determine termination
         level_cleared = self._no_bricks_count >= self._LEVEL_CLEAR_THRESHOLD
         game_over = (
@@ -261,9 +265,6 @@ class Breakout71Env(gym.Env):
 
         # Compute reward
         reward = self._compute_reward(detections, terminated, level_cleared)
-
-        # Increment step counter
-        self._step_count += 1
 
         # Build info dict
         info = self._build_info(detections)

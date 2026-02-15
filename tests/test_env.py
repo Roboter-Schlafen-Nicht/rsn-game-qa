@@ -787,7 +787,7 @@ class TestStep:
         """step() should set truncated=True when max_steps is reached."""
         env = self._make_env_ready()
         env.max_steps = 5
-        env._step_count = 5  # at the limit
+        env._step_count = 4  # will become 5 after increment → equals max_steps
 
         _, _, terminated, truncated, _ = env.step(0)
 
