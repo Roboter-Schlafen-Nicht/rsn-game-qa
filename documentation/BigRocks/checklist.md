@@ -30,6 +30,11 @@
   - [x] `YoloDetector` -- `load` (weights validation, XPU→CPU fallback), `detect` (inference + result parsing), `detect_to_game_state` (grouping, normalization)
   - [x] `breakout_capture.py` -- `grab_frame` (visibility check), `detect_objects` (auto-infer dimensions)
   - [x] 41 tests (170 total), Sphinx docs updated
+- [x] **Oracle `on_step` detection logic** (PR #13)
+  - [x] Implemented `on_step` for 5 original oracles: CrashOracle, StuckOracle, ScoreAnomalyOracle, VisualGlitchOracle, PerformanceOracle
+  - [x] Added 7 new research-backed oracles: PhysicsViolationOracle, BoundaryOracle, StateTransitionOracle, EpisodeLengthOracle, TemporalAnomalyOracle, RewardConsistencyOracle, SoakOracle
+  - [x] Finding dedup (black frame, frozen frame, negative score), flicker cooldown, cv2 import guards (Copilot review)
+  - [x] 132 oracle tests (293 total), Sphinx docs, README updated
 
 ## To Do
 
@@ -39,20 +44,7 @@
 - [ ] YOLO training script for Breakout 71 classes (`paddle`, `ball`, `brick`, `powerup`, `wall`)
 - [ ] Trained weights validation (mAP threshold)
 
-### 2. Oracle `on_step` detection logic (`src/oracles/`)
-- [ ] Check `environment.yml` for any new deps (imagehash, numpy -- already present)
-- [ ] Implement `CrashOracle.on_step`
-- [ ] Implement `StuckOracle.on_step`
-- [ ] Implement `ScoreAnomalyOracle.on_step`
-- [ ] Implement `VisualGlitchOracle.on_step`
-- [ ] Implement `PerformanceOracle.on_step`
-- [ ] Replace placeholder tests with real tests
-- [ ] Update Sphinx docs if needed
-- [ ] Update README (remove `[stub on_step]`, update test count)
-- [ ] Commit, push, create PR, request review from Copilot, evaluate review and create issues if necessary, merge (`--delete-branch`), delete local branch
-- [ ] Update this checklist (move item to Completed, record PR number)
-
-### 3. Breakout71 Gymnasium environment (`src/env/`)
+### 2. Breakout71 Gymnasium environment (`src/env/`)
 - [ ] Check `environment.yml` has `gymnasium` (already present)
 - [ ] Implement `Breakout71Env` core methods
   - [ ] `_lazy_init` -- wire capture + perception + game loader
@@ -66,7 +58,7 @@
 - [ ] Commit, push, create PR, request review from Copilot, evaluate review and create issues if necessary, merge (`--delete-branch`), delete local branch
 - [ ] Update this checklist (move item to Completed, record PR number)
 
-### 4. Integration & end-to-end
+### 3. Integration & end-to-end
 - [ ] Wire all subsystems: loader -> capture -> perception -> env -> oracles -> reporting
 - [ ] Run Breakout 71 env for N episodes, generate session report + dashboard
 - [ ] Add integration tests
