@@ -55,7 +55,7 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **Selenium `execute_script()` IIFE bug** — Must use `return (function() { ... })();` — outer `return` required for Selenium to capture IIFE return value. Without it, returns `null`.
 - **Browser chrome ~130px** — Tab bar + URL bar + "Chrome is being controlled" banner at top of captured frames. Must account for when mapping game coordinates.
 - **21 palette colors → 11 HSV groups** — `palette.json` defines 21 brick colors; mapped to 11 HSV detection ranges (blue, yellow, red, orange, green, cyan, purple, pink, beige, white, gray). Adjacent same-color bricks merge — grid-splitting logic handles this.
-- **Ball particle trail** — Ball emits multiple white fragments. Solution: dilate to merge nearby blobs, pick smallest confirmed candidate.
+- **Ball particle trail** — Ball emits multiple white fragments. Solution: dilate to merge nearby blobs, use `_find_ball_head()` to locate the most circular sub-contour within the merged blob.
 - **UI false positives** — "Level 1/7" button, "$0/$10" score, coin counter icon all trigger false detections. Eliminated via UI mask zones + frame differencing.
 - **White/gray brick detection** — Must restrict to "brick zone" (upper 65% of game area) to avoid false-positiving on paddle, ball, or background.
 - **Game zone boundaries** — Columns ~324 to ~956 (632px wide) at 1280x1024. Coins/ball must be within these boundaries.
@@ -77,6 +77,15 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **Ball physics** — speed normalizes toward `baseSpeed * sqrt(2)` each tick; multiple sub-steps per frame to prevent tunneling; bounce angle depends on paddle hit position and `concave_puck` perk.
 - **YOLO class `"powerup"` maps to coins** in the perception subsystem.
 
+### Annotation Pipeline Improvements (session 11)
+
+- **Ball-in-brick false positive** — White/gray bricks (~79x79px, circularity ~0.81) merge into giant blobs during dilation. `_find_ball_head` then picks a brick sub-contour as the "ball head." Fix: pass `brick_detections` to `_detect_ball()` and zero out brick bounding boxes (with 4px padding) from the white mask before dilation.
+- **`_find_ball_head` scoring** — Changed from `circularity * area` to `circularity² * area` to prevent large elongated trail blobs from outscoring the smaller but circular ball.
+- **Paddle zone exclusion killed near-paddle balls** — Fixed bottom-15% cut (`y > 0.85 * img_h`) masked out balls near the paddle. Fix: `_detect_ball` now accepts `paddle_detections` and masks only the paddle's bounding box (6px padding). Fallback when no paddle detected: conservative 5% bottom cut. Ball detection went from 288/297 to 297/297 (100%).
+- **`_detect_game_zone` left-wall bug** — Returned `left=0` because browser chrome columns 0-7 had brightness ~32, above the relative threshold. Fix: primarily detect wall peaks (brightness > 200), fallback skips first/last 10 columns.
+- **Roboflow annotation upload** — `project.single_upload(annotation_path=..., annotation_labelmap=...)` works for YOLO `.txt` pre-labels. `search_all()` returns a generator of batches (lists of dicts), not a flat list.
+- **`classes.txt` convention** — `auto_annotate.py` now writes `labels/classes.txt` (standard YOLO class-name file). `upload_to_roboflow.py` reads it via `_build_labelmap()` with YAML config fallback.
+
 ## Project Structure
 
 ```
@@ -93,7 +102,7 @@ configs/
 tests/
   conftest.py             # Integration test fixtures (Selenium browser parameterization)
   test_integration.py     # 12 integration tests × 2 browsers
-  test_training_pipeline.py  # 41 training pipeline tests
+  test_training_pipeline.py  # 49 training pipeline tests
 scripts/
   _smoke_utils.py         # BrowserInstance (Selenium), get_available_browsers(), utilities
   smoke_launch.py         # Game launch + proof screenshot
@@ -107,11 +116,11 @@ scripts/
 documentation/
   BigRocks/checklist.md   # Master checklist — the source of truth for what's done and what's next
   specs/                  # Canonical spec files
-  sessions/               # Session logs (gitignored)
+  sessions/               # Session logs (private, gitignored — never commit)
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-10)
+## What's Done (sessions 1-11)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -123,16 +132,16 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 8. **Session 8** — Game source study, revised env design, Breakout71Env v1 implementation (PR #17)
 9. **Session 9** — Config-driven YOLO training pipeline: capture, upload, train, validate (PR #19)
 10. **Session 10** — Data collection pipeline: 300-frame capture with game state detection, auto-annotation with OpenCV (PR #21)
+11. **Session 11** — Annotation pipeline improvements: ball-in-brick fix, paddle-zone fix, game-zone wall detection, Roboflow annotation upload, 100% ball detection (PR #23)
 
-Total: **398 tests** (398 unit + 24 integration), 6 subsystems + training pipeline complete.
+Total: **430 tests** (406 unit + 24 integration), 6 subsystems + training pipeline complete.
 
 ## What's Next
 
 Read `documentation/BigRocks/checklist.md` for the full breakdown. In order:
 
-1. **Roboflow upload + review** — upload 300 auto-annotated frames, human review/correction
-2. **Train + validate YOLO model** — train on reviewed annotations, validate mAP thresholds
-3. **Integration & E2E** — wire all subsystems, run episodes, generate reports
+1. **Train + validate YOLO model** — train on reviewed annotations, validate mAP thresholds
+2. **Integration & E2E** — wire all subsystems, run episodes, generate reports
 
 ## Reference Files
 

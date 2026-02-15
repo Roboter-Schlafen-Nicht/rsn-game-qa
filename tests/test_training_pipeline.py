@@ -26,6 +26,7 @@ from scripts.train_model import (
     train,
 )
 from scripts.upload_to_roboflow import (
+    _build_labelmap,
     _load_upload_state,
     _save_upload_state,
 )
@@ -495,3 +496,119 @@ class TestPipelineIntegration:
 
         # mAP50 threshold should be >= mAP50-95 threshold
         assert cfg["min_map50"] >= cfg["min_map50_95"]
+
+
+# ---------------------------------------------------------------------------
+# Ball Head Detection (_find_ball_head)
+# ---------------------------------------------------------------------------
+
+
+class TestFindBallHead:
+    """Tests for _find_ball_head in auto_annotate."""
+
+    @pytest.fixture(autouse=True)
+    def _import_deps(self):
+        """Lazily import cv2/numpy — only available in yolo env."""
+        np = pytest.importorskip("numpy")
+        cv2 = pytest.importorskip("cv2")
+        from scripts.auto_annotate import _find_ball_head
+
+        self.np = np
+        self.cv2 = cv2
+        self._find_ball_head = _find_ball_head
+
+    def test_picks_circular_blob_over_elongated(self):
+        """Ball head (circular) should win over an elongated trail blob."""
+        roi = self.np.zeros((80, 80), dtype=self.np.uint8)
+        # Draw a circle (the ball) — radius 8
+        self.cv2.circle(roi, (20, 40), 8, 255, -1)
+        # Draw an elongated rectangle (the trail) — 40x6
+        self.cv2.rectangle(roi, (35, 37), (75, 43), 255, -1)
+
+        cx, cy = self._find_ball_head(roi)
+        # Center should be near the circle (20, 40), not near the rectangle center (55, 40)
+        assert abs(cx - 20) < 5, f"Expected cx near 20, got {cx}"
+        assert abs(cy - 40) < 5, f"Expected cy near 40, got {cy}"
+
+    def test_single_blob_returns_its_center(self):
+        """A single circular blob should return its center."""
+        roi = self.np.zeros((50, 50), dtype=self.np.uint8)
+        self.cv2.circle(roi, (25, 25), 10, 255, -1)
+
+        cx, cy = self._find_ball_head(roi)
+        assert abs(cx - 25) < 5
+        assert abs(cy - 25) < 5
+
+    def test_empty_roi_returns_center(self):
+        """An empty ROI should fall back to the ROI center."""
+        roi = self.np.zeros((60, 40), dtype=self.np.uint8)
+
+        cx, cy = self._find_ball_head(roi)
+        assert cx == 20.0  # w/2
+        assert cy == 30.0  # h/2
+
+    def test_ignores_noise_pixels(self):
+        """Very small contours (< 3px area) should be ignored."""
+        roi = self.np.zeros((50, 50), dtype=self.np.uint8)
+        # Single noise pixel
+        roi[10, 10] = 255
+        # Actual ball
+        self.cv2.circle(roi, (30, 30), 7, 255, -1)
+
+        cx, cy = self._find_ball_head(roi)
+        assert abs(cx - 30) < 5
+        assert abs(cy - 30) < 5
+
+
+# ---------------------------------------------------------------------------
+# Labelmap Builder (_build_labelmap)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildLabelmap:
+    """Tests for _build_labelmap in upload_to_roboflow."""
+
+    def test_reads_classes_txt(self, tmp_path):
+        """Prefers classes.txt when present in labels/ dir."""
+        labels_dir = tmp_path / "labels"
+        labels_dir.mkdir()
+        (labels_dir / "classes.txt").write_text("paddle\nball\nbrick\npowerup\nwall\n")
+
+        result = _build_labelmap(tmp_path)
+        assert result == {0: "paddle", 1: "ball", 2: "brick", 3: "powerup", 4: "wall"}
+
+    def test_falls_back_to_training_config(self, tmp_path):
+        """Falls back to training config YAML when no classes.txt exists."""
+        labels_dir = tmp_path / "labels"
+        labels_dir.mkdir()
+        # No classes.txt — should fall back to configs/training/breakout-71.yaml
+
+        result = _build_labelmap(tmp_path)
+        # The YAML config has the 5 classes
+        assert result is not None
+        assert result[0] == "paddle"
+        assert result[1] == "ball"
+        assert len(result) == 5
+
+    def test_returns_none_when_no_source(self, tmp_path, monkeypatch):
+        """Returns None when neither classes.txt nor config exists."""
+        labels_dir = tmp_path / "labels"
+        labels_dir.mkdir()
+
+        # Monkeypatch __file__ in the module to point to a nonexistent dir
+        # so the YAML fallback also fails
+        import scripts.upload_to_roboflow as upload_mod
+
+        monkeypatch.setattr(upload_mod, "__file__", str(tmp_path / "fake.py"))
+
+        result = _build_labelmap(tmp_path)
+        assert result is None
+
+    def test_ignores_blank_lines_in_classes_txt(self, tmp_path):
+        """Blank lines in classes.txt should be skipped."""
+        labels_dir = tmp_path / "labels"
+        labels_dir.mkdir()
+        (labels_dir / "classes.txt").write_text("paddle\n\nball\n\n\nbrick\n")
+
+        result = _build_labelmap(tmp_path)
+        assert result == {0: "paddle", 1: "ball", 2: "brick"}

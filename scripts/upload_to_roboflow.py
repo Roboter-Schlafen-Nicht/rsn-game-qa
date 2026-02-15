@@ -76,6 +76,65 @@ def _save_upload_state(state_path: Path, uploaded: set[str]) -> None:
         json.dump({"uploaded": sorted(uploaded)}, f, indent=2)
 
 
+def _build_labelmap(dataset_dir: Path) -> dict[int, str] | None:
+    """Build a class-index-to-name labelmap from a training config or labels dir.
+
+    Searches for a ``classes.txt`` in the labels directory first, then falls
+    back to the training config at ``configs/training/breakout-71.yaml``.
+
+    Parameters
+    ----------
+    dataset_dir : Path
+        Dataset directory (may contain ``labels/classes.txt``).
+
+    Returns
+    -------
+    dict[int, str] | None
+        Mapping of class index to class name, or ``None`` if unavailable.
+    """
+    # Try classes.txt in labels dir
+    classes_file = dataset_dir / "labels" / "classes.txt"
+    if classes_file.exists():
+        try:
+            lines = [
+                line.strip()
+                for line in classes_file.read_text().splitlines()
+                if line.strip()
+            ]
+            if lines:
+                labelmap = {i: name for i, name in enumerate(lines)}
+                logger.info("Loaded labelmap from %s: %s", classes_file, labelmap)
+                return labelmap
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.warning(
+                "Failed to read %s: %s — falling back to config", classes_file, exc
+            )
+
+    # Fall back to training config
+    import yaml
+
+    config_path = (
+        Path(__file__).resolve().parent.parent
+        / "configs"
+        / "training"
+        / "breakout-71.yaml"
+    )
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+            classes = config.get("classes", [])
+            if classes:
+                labelmap = {i: name for i, name in enumerate(classes)}
+                logger.info("Loaded labelmap from %s: %s", config_path, labelmap)
+                return labelmap
+        except (OSError, yaml.YAMLError) as exc:
+            logger.warning("Failed to read config %s: %s", config_path, exc)
+
+    logger.warning("No labelmap found — annotations will use numeric class indices")
+    return None
+
+
 def upload_directory(
     dataset_dir: Path,
     api_key: str,
@@ -85,6 +144,10 @@ def upload_directory(
     split: str = "train",
 ) -> dict:
     """Upload all PNG frames from a dataset directory to Roboflow.
+
+    When a ``labels/`` subdirectory exists with YOLO-format ``.txt`` files,
+    annotations are uploaded alongside each frame as pre-labels.  A labelmap
+    is auto-detected from ``labels/classes.txt`` or the training config.
 
     Parameters
     ----------
@@ -104,7 +167,8 @@ def upload_directory(
     Returns
     -------
     dict
-        Summary with keys ``uploaded``, ``skipped``, ``failed``, ``total``.
+        Summary with keys ``uploaded``, ``skipped``, ``failed``, ``total``,
+        ``annotated``.
     """
     try:
         from roboflow import Roboflow
@@ -126,40 +190,68 @@ def upload_directory(
     frames = sorted(dataset_dir.glob("frame_*.png"))
     if not frames:
         logger.warning("No frame_*.png files found in %s", dataset_dir)
-        return {"uploaded": 0, "skipped": 0, "failed": 0, "total": 0}
+        return {"uploaded": 0, "skipped": 0, "failed": 0, "total": 0, "annotated": 0}
+
+    # Check for labels directory and build labelmap
+    labels_dir = dataset_dir / "labels"
+    has_labels = labels_dir.is_dir()
+    labelmap = _build_labelmap(dataset_dir) if has_labels else None
+    if has_labels:
+        logger.info("Labels directory found — will upload annotations as pre-labels")
+    else:
+        logger.info("No labels directory — uploading images only")
 
     # Load upload state for resume support
     state_path = dataset_dir / ".upload_state.json"
     uploaded = _load_upload_state(state_path)
     logger.info("Found %d frames, %d already uploaded", len(frames), len(uploaded))
 
-    stats = {"uploaded": 0, "skipped": 0, "failed": 0, "total": len(frames)}
+    stats = {
+        "uploaded": 0,
+        "skipped": 0,
+        "failed": 0,
+        "total": len(frames),
+        "annotated": 0,
+    }
 
     for i, frame_path in enumerate(frames):
         if frame_path.name in uploaded:
             stats["skipped"] += 1
             continue
 
+        # Check for matching annotation file
+        annotation_path = None
+        if has_labels:
+            label_file = labels_dir / frame_path.with_suffix(".txt").name
+            if label_file.exists():
+                annotation_path = str(label_file)
+
         try:
-            project.upload(
+            project.single_upload(
                 image_path=str(frame_path),
+                annotation_path=annotation_path,
+                annotation_labelmap=labelmap,
                 split=split,
+                num_retry_uploads=3,
             )
             uploaded.add(frame_path.name)
             stats["uploaded"] += 1
+            if annotation_path:
+                stats["annotated"] += 1
         except Exception as exc:
             logger.error("Failed to upload %s: %s", frame_path.name, exc)
             stats["failed"] += 1
 
         # Periodic progress + state save
-        done = stats["uploaded"] + stats["skipped"]
+        done = stats["uploaded"] + stats["skipped"] + stats["failed"]
         if done % batch_size == 0 or i == len(frames) - 1:
             _save_upload_state(state_path, uploaded)
             logger.info(
-                "Progress: %d/%d (uploaded=%d, skipped=%d, failed=%d)",
+                "Progress: %d/%d (uploaded=%d, annotated=%d, skipped=%d, failed=%d)",
                 done,
                 stats["total"],
                 stats["uploaded"],
+                stats["annotated"],
                 stats["skipped"],
                 stats["failed"],
             )
@@ -260,6 +352,7 @@ def main() -> int:
     logger.info("--- Upload Summary ---")
     logger.info("Total frames  : %d", stats["total"])
     logger.info("Uploaded      : %d", stats["uploaded"])
+    logger.info("Annotated     : %d", stats["annotated"])
     logger.info("Skipped       : %d", stats["skipped"])
     logger.info("Failed        : %d", stats["failed"])
     return 0 if stats["failed"] == 0 else 1
