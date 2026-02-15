@@ -5,8 +5,8 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 ## Workflow
 
 - Work on feature branches from `main` (pattern: `feature/...`, `docs/...`)
-- Implement → commit → push → create PR → **request review from Copilot** → evaluate review, create issues if needed → merge with `--delete-branch` → delete local branch → **update `documentation/BigRocks/checklist.md`** (move item to Completed, record PR number)
-- **Checklist updates are admin** — no Copilot review needed; commit, push, PR, merge directly
+- Implement → commit → push → create PR → **request review from Copilot** → evaluate review, create issues if needed → merge with `--delete-branch` → delete local branch → **post-merge admin** (update `documentation/BigRocks/checklist.md`, create session log in `documentation/sessions/`, update `AGENTS.md`)
+- **Post-merge admin is checklist-only** — no Copilot review needed; commit, push, PR, merge directly
 - Pre-commit hook runs the full CI pipeline via `act` (Docker-based GitHub Actions). **This can take 5+ minutes.** Use `timeout` of 600000ms for commit commands; check `git log` afterward to verify.
 
 ## Conventions
@@ -33,6 +33,12 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **`git pull` times out** — use `git fetch origin main && git reset --hard origin/main`
 - **`gh pr merge` times out** but often succeeds — verify with `gh pr view N --json state,mergedAt`
 - LSP unresolved import errors (cv2, gymnasium, pydirectinput, etc.) are pre-existing and harmless
+- **`import cv2` at module top level breaks CI** — Docker container lacks `libGL.so.1`; must use lazy imports inside methods
+- **Firefox subprocess cleanup impossible** — Firefox hands off to a separate main process; Selenium WebDriver solves this
+- **Firefox first-run issues** — Fresh profile triggers Welcome tab; `-width`/`-height` CLI flags don't exist (Firefox interprets `1280` as a URL). Use Selenium Options API instead.
+- **`BitBlt` all-black for Chromium** — GPU-accelerated compositing prevents capture; use `PrintWindow` with `PW_RENDERFULLCONTENT` (flag=2)
+- **Selenium 4.40.0 has built-in Selenium Manager** — handles driver binaries automatically; no `webdriver-manager` needed
+- **`selenium` is imported lazily** inside `BrowserInstance.__init__` only — no CI impact
 
 ## Project Structure
 
@@ -42,31 +48,40 @@ src/
   reporting/      # DONE — JSON reports, HTML dashboard (26 tests)
   capture/        # DONE — BitBlt window capture, pydirectinput input (37 tests)
   perception/     # DONE — YoloDetector, breakout_capture (41 tests)
-  oracles/        # STUB on_step — base.py complete, 5 oracle stubs
+  oracles/        # DONE — 12 oracles with on_step detection (132 tests)
   env/            # STUB — Breakout71Env gymnasium wrapper
 tests/
+  conftest.py             # Integration test fixtures (Selenium browser parameterization)
+  test_integration.py     # 12 integration tests × 2 browsers
+scripts/
+  _smoke_utils.py         # BrowserInstance (Selenium), get_available_browsers(), utilities
+  smoke_launch.py         # Game launch + proof screenshot
+  smoke_capture.py        # Multi-frame capture verification
+  smoke_oracle.py         # Oracle run + JSON report
 documentation/
   BigRocks/checklist.md   # Master checklist — the source of truth for what's done and what's next
   specs/                  # Canonical spec files
-  sessions/               # Local-only session logs (gitignored)
+  sessions/               # Session logs (gitignored)
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-5)
+## What's Done (sessions 1-7)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
 3. **Session 3** — Reporting subsystem (PR #7, #8)
 4. **Session 4** — Capture & Input subsystem (PR #9, #10, #11)
 5. **Session 5** — Perception subsystem (PR #12)
+6. **Session 6** — Oracle `on_step` detection logic, 12 oracles (PR #13)
+7. **Session 7** — Smoke scripts, integration tests, Selenium browser management (PR #15)
 
-Total: **170 tests passing**, 4 subsystems complete.
+Total: **316 tests** (293 unit + 23 integration), 5 subsystems complete.
 
 ## What's Next
 
 Read `documentation/BigRocks/checklist.md` for the full breakdown. In order:
 
-1. **Oracle `on_step`** (`src/oracles/`) — detection logic for all 5 oracles
+1. **Data collection & YOLO training pipeline** — automated capture, annotation, training
 2. **Breakout71 Env** (`src/env/`) — Gymnasium env core methods
 3. **Integration & E2E** — wire all subsystems, run episodes, generate reports
 
