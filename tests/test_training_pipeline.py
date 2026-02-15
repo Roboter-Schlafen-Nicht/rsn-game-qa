@@ -218,9 +218,12 @@ class TestTrainValidation:
 class TestValidateModel:
     """Tests for validate_model input validation."""
 
-    def test_raises_without_weights(self):
+    def test_raises_without_weights(self, tmp_path):
         """validate_model raises RuntimeError when weights not found."""
         cfg = load_training_config("breakout-71")
+        # Point output_dir to an empty tmp dir so default weights path resolves
+        # to a nonexistent file — test must not depend on local filesystem state.
+        cfg["output_dir"] = str(tmp_path / "no_weights_here")
 
         with pytest.raises(RuntimeError, match="Weights file not found"):
             validate_model(cfg)
