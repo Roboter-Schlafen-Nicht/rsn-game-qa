@@ -9,4 +9,5 @@ breakout71_env
 oracle_system
 capture_and_input
 reporting_system
+game_loader
 ```

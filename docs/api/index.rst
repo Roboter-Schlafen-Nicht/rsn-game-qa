@@ -11,3 +11,4 @@ Auto-generated documentation from source code docstrings and type hints.
    env
    perception
    reporting
+   game_loader

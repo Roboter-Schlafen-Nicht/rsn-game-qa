@@ -1,0 +1,29 @@
+# Breakout 71 — browser game loader configuration
+#
+# Roguelite breakout game served by Parcel dev server.
+# Source: https://gitlab.com/lecarore/breakout71
+# Testbed fork: F:\work\breakout71-testbed
+#
+# Usage:
+#   from src.game_loader import load_game_config, create_loader
+#   config = load_game_config("breakout-71")
+#   loader = create_loader(config)
+#   loader.start()
+
+name: breakout-71
+game_dir: F:\work\breakout71-testbed
+loader_type: breakout-71
+
+# -- Build / serve -----------------------------------------------------
+install_command: npm install
+serve_command: npx parcel src/index.html --no-cache
+serve_port: 1234
+url: http://localhost:1234
+readiness_endpoint: http://localhost:1234
+
+# -- Readiness ---------------------------------------------------------
+readiness_timeout_s: 120.0
+readiness_poll_interval_s: 2.0
+
+# -- Window identification (for WindowCapture) -------------------------
+window_title: Breakout
