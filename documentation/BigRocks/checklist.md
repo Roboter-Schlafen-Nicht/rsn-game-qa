@@ -38,7 +38,7 @@
 - [ ] Replace placeholder tests with real tests
 - [ ] Update Sphinx docs if needed
 - [ ] Update README (remove `[stub]`, update test count)
-- [ ] Commit, push, create PR, review (`--comment`), merge (`--delete-branch`), delete local branch
+- [ ] Commit, push, create PR, request review from Copilot, evaluate review and create issues if necessary, merge (`--delete-branch`), delete local branch
 - [ ] Update this checklist (move item to Completed, record PR number)
 
 ### 2. Oracle `on_step` detection logic (`src/oracles/`)
@@ -51,7 +51,7 @@
 - [ ] Replace placeholder tests with real tests
 - [ ] Update Sphinx docs if needed
 - [ ] Update README (remove `[stub on_step]`, update test count)
-- [ ] Commit, push, create PR, review (`--comment`), merge (`--delete-branch`), delete local branch
+- [ ] Commit, push, create PR, request review from Copilot, evaluate review and create issues if necessary, merge (`--delete-branch`), delete local branch
 - [ ] Update this checklist (move item to Completed, record PR number)
 
 ### 3. Breakout71 Gymnasium environment (`src/env/`)
@@ -65,7 +65,7 @@
 - [ ] Replace placeholder tests with real tests
 - [ ] Update Sphinx docs if needed
 - [ ] Update README (remove `[stub]`, update test count)
-- [ ] Commit, push, create PR, review (`--comment`), merge (`--delete-branch`), delete local branch
+- [ ] Commit, push, create PR, request review from Copilot, evaluate review and create issues if necessary, merge (`--delete-branch`), delete local branch
 - [ ] Update this checklist (move item to Completed, record PR number)
 
 ### 4. Integration & end-to-end
@@ -73,5 +73,5 @@
 - [ ] Run Breakout 71 env for N episodes, generate session report + dashboard
 - [ ] Add integration tests
 - [ ] Update README and docs
-- [ ] Commit, push, create PR, review (`--comment`), merge (`--delete-branch`), delete local branch
+- [ ] Commit, push, create PR, request review from Copilot, evaluate review and create issues if necessary, merge (`--delete-branch`), delete local branch
 - [ ] Update this checklist (move item to Completed, record PR number)
