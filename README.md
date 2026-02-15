@@ -41,7 +41,7 @@ src/
   oracles/              Bug-detection oracles (crash, stuck, score, visual, perf) [stub on_step]
   perception/           YOLO detector wrapper [stub]
   policies/             YOLO-based + RL-based policies for Last War
-  reporting/            Episode/session reports + Jinja2 dashboard [stub]
+  reporting/            Episode/session reports + Jinja2 HTML dashboard
   rl/                   RL training env + PPO training script for help policy
 configs/
   games/                Game loader YAML configs (breakout-71.yaml, ...)
