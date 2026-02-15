@@ -35,6 +35,14 @@
   - [x] Added 7 new research-backed oracles: PhysicsViolationOracle, BoundaryOracle, StateTransitionOracle, EpisodeLengthOracle, TemporalAnomalyOracle, RewardConsistencyOracle, SoakOracle
   - [x] Finding dedup (black frame, frozen frame, negative score), flicker cooldown, cv2 import guards (Copilot review)
   - [x] 132 oracle tests (293 total), Sphinx docs, README updated
+- [x] **Smoke scripts & integration tests** (PR #15)
+  - [x] Selenium-based `BrowserInstance` (Chrome/Edge/Firefox) replacing subprocess approach
+  - [x] Smoke scripts: `smoke_launch.py`, `smoke_capture.py`, `smoke_oracle.py`
+  - [x] 12 integration tests × 2 browsers (Chrome, Firefox) — lifecycle, capture, oracle
+  - [x] PrintWindow with `PW_RENDERFULLCONTENT` for GPU-composited windows + BitBlt fallback
+  - [x] `window_width`/`window_height` config fields, `pyproject.toml` pytest config
+  - [x] selenium added to `environment.yml`, guarded import (Copilot review)
+  - [x] 23 integration tests pass + 293 unit tests (316 total)
 
 ## To Do
 
@@ -56,12 +64,19 @@
 - [ ] Update Sphinx docs if needed
 - [ ] Update README (remove `[stub]`, update test count)
 - [ ] Commit, push, create PR, request review from Copilot, evaluate review and create issues if necessary, merge (`--delete-branch`), delete local branch
-- [ ] Update this checklist (move item to Completed, record PR number)
+- [ ] Post-merge admin (no Copilot review needed):
+  - [ ] Update this checklist (move item to Completed, record PR number)
+  - [ ] Create session log in `documentation/sessions/sessionN-<topic>.md`
+  - [ ] Update `AGENTS.md` (session list, project structure, discoveries, what's next)
 
 ### 3. Integration & end-to-end
+- [x] Add integration tests (PR #15 — 12 tests × 2 browsers)
+- [x] Add smoke scripts for manual verification (PR #15)
 - [ ] Wire all subsystems: loader -> capture -> perception -> env -> oracles -> reporting
 - [ ] Run Breakout 71 env for N episodes, generate session report + dashboard
-- [ ] Add integration tests
 - [ ] Update README and docs
 - [ ] Commit, push, create PR, request review from Copilot, evaluate review and create issues if necessary, merge (`--delete-branch`), delete local branch
-- [ ] Update this checklist (move item to Completed, record PR number)
+- [ ] Post-merge admin (no Copilot review needed):
+  - [ ] Update this checklist (move item to Completed, record PR number)
+  - [ ] Create session log in `documentation/sessions/sessionN-<topic>.md`
+  - [ ] Update `AGENTS.md` (session list, project structure, discoveries, what's next)
