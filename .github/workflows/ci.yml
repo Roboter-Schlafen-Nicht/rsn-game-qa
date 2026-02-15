@@ -63,7 +63,7 @@ jobs:
             matplotlib==3.10.8
 
       - name: Run pytest
-        run: python -m pytest tests/ -v --tb=short --junitxml=reports/junit.xml
+        run: python -m pytest tests/ -v --tb=short --junitxml=reports/junit.xml -m "not integration"
 
       - name: Upload test results
         if: always() && !env.ACT

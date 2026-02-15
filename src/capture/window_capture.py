@@ -1,7 +1,11 @@
-"""Window frame capture using Windows GDI/BitBlt via pywin32.
+"""Window frame capture using Windows GDI via pywin32.
 
 Captures frames from a target window by its title or HWND handle,
 returning BGR numpy arrays suitable for YOLO inference or CV processing.
+
+Uses ``PrintWindow`` with ``PW_RENDERFULLCONTENT`` (flag 2) to capture
+hardware-accelerated / composited windows (e.g. Chromium browsers)
+that return black frames with plain BitBlt.
 """
 
 from __future__ import annotations
@@ -118,8 +122,10 @@ class WindowCapture:
     def capture_frame(self) -> np.ndarray:
         """Capture a single frame from the target window.
 
-        Uses BitBlt to copy the window's client area into a device-independent
-        bitmap, then converts to a numpy array.
+        Uses ``PrintWindow`` with ``PW_RENDERFULLCONTENT`` (flag 2) to
+        request the window to paint itself into an off-screen bitmap.
+        This works reliably with hardware-accelerated Chromium browsers
+        that return all-black frames with plain ``BitBlt``.
 
         Returns
         -------
@@ -143,6 +149,10 @@ class WindowCapture:
                 "The window may be minimised."
             )
 
+        # PW_RENDERFULLCONTENT = 2 — tells the window to render its full
+        # content (including hardware-accelerated layers) into the DC.
+        PW_RENDERFULLCONTENT = 2  # noqa: N806
+
         hwnd_dc = None
         mfc_dc = None
         save_dc = None
@@ -156,14 +166,32 @@ class WindowCapture:
             bitmap.CreateCompatibleBitmap(mfc_dc, self.width, self.height)
             save_dc.SelectObject(bitmap)
 
-            # BitBlt from window DC to memory DC.
-            save_dc.BitBlt(
-                (0, 0),
-                (self.width, self.height),
-                mfc_dc,
-                (0, 0),
-                win32con.SRCCOPY,
-            )
+            # Try PrintWindow first (works with composited / GPU-accelerated
+            # windows).  Fall back to BitBlt if PrintWindow is unavailable
+            # or fails (e.g. in unit tests with mocked GDI objects).
+            captured = False
+            try:
+                import ctypes
+
+                result = ctypes.windll.user32.PrintWindow(
+                    int(self.hwnd),
+                    int(save_dc.GetSafeHdc()),
+                    PW_RENDERFULLCONTENT,
+                )
+                captured = bool(result)
+            except (TypeError, ValueError, OSError, AttributeError):
+                pass
+
+            if not captured:
+                # Fallback: plain BitBlt (works in unit tests and for
+                # software-rendered windows).
+                save_dc.BitBlt(
+                    (0, 0),
+                    (self.width, self.height),
+                    mfc_dc,
+                    (0, 0),
+                    win32con.SRCCOPY,
+                )
 
             # Convert bitmap bits to numpy array.
             bmpstr = bitmap.GetBitmapBits(True)

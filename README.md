@@ -52,8 +52,8 @@ src/
   rl/                   RL training env + PPO training script for help policy
 configs/
   games/                Game loader YAML configs (breakout-71.yaml, ...)
-scripts/                YOLO training, dataset dedup, ADB test
-tests/                  pytest suite (293 tests)
+scripts/                YOLO training, dataset dedup, ADB test, smoke tests
+tests/                  pytest suite (293 unit + 12 integration tests)
 docs/                   Sphinx docs (Furo theme, MyST Markdown)
 documentation/
   specs/                Design specs for env, oracles, capture, reporting, game loader
@@ -148,7 +148,7 @@ GitHub Actions runs on every push to `main` or `big-rock-*` branches and on PRs 
 | Job | What it does |
 |-----|-------------|
 | **Lint** | `ruff check` + `ruff format --check` |
-| **Test** | `pytest` (293 passed) |
+| **Test** | `pytest -m "not integration"` (293 passed) |
 | **Build Check** | Verifies all module imports succeed |
 | **Build Docs** | Sphinx HTML build with `-W` (warnings as errors) |
 
@@ -157,8 +157,36 @@ A pre-commit hook runs the full CI pipeline locally via [`act`](https://github.c
 ## Tests
 
 ```bash
+# Unit tests (run in CI, no game required)
 python -m pytest tests/ -v
+
+# Integration tests (requires live Breakout 71 on Windows)
+python -m pytest tests/ -m integration -v
 ```
+
+## Smoke scripts
+
+Standalone scripts for manual progress verification. Run from the project root
+on Windows with the Breakout 71 testbed available:
+
+| Script | What it does |
+|--------|-------------|
+| `scripts/smoke_launch.py` | Start game, verify readiness, capture proof screenshot, wait, shut down |
+| `scripts/smoke_capture.py` | Capture N frames at configurable interval, save PNGs, log latency/FPS |
+| `scripts/smoke_oracle.py` | Run oracles against live frames for M steps, save JSON report + findings |
+
+```bash
+# Quick launch test (30s wait, skip npm install)
+python scripts/smoke_launch.py --wait 30 --skip-setup
+
+# Capture 20 frames at 0.5s intervals
+python scripts/smoke_capture.py --frames 20 --interval 0.5 --skip-setup
+
+# Run oracles for 100 steps
+python scripts/smoke_oracle.py --steps 100 --skip-setup
+```
+
+Artifacts are saved to `output/` (gitignored).
 
 ## Docs
 

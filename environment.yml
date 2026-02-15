@@ -83,6 +83,8 @@ dependencies:
       - pydirectinput==1.0.4
       # Game loader configuration
       - pyyaml==6.0.3
+      # Browser automation (smoke scripts / integration tests)
+      - selenium==4.40.0
       # Templating (for reporting dashboard)
       - jinja2==3.1.6
       # Documentation
