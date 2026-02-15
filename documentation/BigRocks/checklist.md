@@ -22,22 +22,14 @@
 - [x] **Reporting spec alignment** (PR #8)
   - [x] Updated spec to match implementation (severity naming, `build_id`, `seed`)
   - [x] README updated to remove `[stub]` from reporting
+- [x] **Capture & Input subsystem** (PR #9)
+  - [x] `WindowCapture` -- BitBlt/GDI via pywin32 (`_find_window`, `capture_frame`, `is_window_visible`, `release`)
+  - [x] `InputController` -- pydirectinput (`apply_action`, `move_mouse_to`, `click`, `press_key`, `hold_key`, `release_key`)
+  - [x] 37 tests (133 total), Sphinx docs, `pydirectinput` added to `autodoc_mock_imports`
 
 ## To Do
 
-### 1. Capture & Input subsystem (`src/capture/`)
-- [ ] Check `environment.yml` has `pywin32` and `pydirectinput` (already present)
-- [ ] Implement `WindowCapture` (BitBlt/GDI via pywin32)
-  - [ ] `_find_window`, `_update_dimensions`, `capture_frame`, `is_window_visible`, `release`
-- [ ] Implement `InputController` (pydirectinput)
-  - [ ] `apply_action`, `move_mouse_to`, `click`, `press_key`, `hold_key`, `release_key`
-- [ ] Replace placeholder tests with real tests (mock pywin32/pydirectinput)
-- [ ] Update Sphinx docs if needed
-- [ ] Update README (remove `[stub]`, update test count)
-- [ ] Commit, push, create PR, review (`--comment`), merge (`--delete-branch`), delete local branch
-- [ ] Update this checklist (move item to Completed, record PR number)
-
-### 2. Perception subsystem (`src/perception/`)
+### 1. Perception subsystem (`src/perception/`)
 - [ ] Check `environment.yml` has `ultralytics` and `opencv-python` (already present)
 - [ ] Implement `YoloDetector` -- `load`, `detect`, `detect_to_game_state`
 - [ ] Add Breakout 71 perception module (`breakout_capture.py`)
@@ -49,7 +41,7 @@
 - [ ] Commit, push, create PR, review (`--comment`), merge (`--delete-branch`), delete local branch
 - [ ] Update this checklist (move item to Completed, record PR number)
 
-### 3. Oracle `on_step` detection logic (`src/oracles/`)
+### 2. Oracle `on_step` detection logic (`src/oracles/`)
 - [ ] Check `environment.yml` for any new deps (imagehash, numpy -- already present)
 - [ ] Implement `CrashOracle.on_step`
 - [ ] Implement `StuckOracle.on_step`
@@ -62,7 +54,7 @@
 - [ ] Commit, push, create PR, review (`--comment`), merge (`--delete-branch`), delete local branch
 - [ ] Update this checklist (move item to Completed, record PR number)
 
-### 4. Breakout71 Gymnasium environment (`src/env/`)
+### 3. Breakout71 Gymnasium environment (`src/env/`)
 - [ ] Check `environment.yml` has `gymnasium` (already present)
 - [ ] Implement `Breakout71Env` core methods
   - [ ] `_lazy_init` -- wire capture + perception + game loader
@@ -76,7 +68,7 @@
 - [ ] Commit, push, create PR, review (`--comment`), merge (`--delete-branch`), delete local branch
 - [ ] Update this checklist (move item to Completed, record PR number)
 
-### 5. Integration & end-to-end
+### 4. Integration & end-to-end
 - [ ] Wire all subsystems: loader -> capture -> perception -> env -> oracles -> reporting
 - [ ] Run Breakout 71 env for N episodes, generate session report + dashboard
 - [ ] Add integration tests
