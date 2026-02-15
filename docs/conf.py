@@ -53,6 +53,7 @@ autodoc_mock_imports = [
     "win32ui",
     "win32con",
     "win32api",
+    "pydirectinput",
     "ctypes",
     "PIL",
     "imagehash",

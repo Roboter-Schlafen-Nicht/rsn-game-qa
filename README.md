@@ -34,7 +34,7 @@ The system uses a two-layer design:
 ```
 src/
   agents/               Bot runners (help_bot, breakout controller)
-  capture/              Window capture (GDI) + input controller (pydirectinput) [stub]
+  capture/              Window capture (GDI) + input controller (pydirectinput)
   controllers/          ADB emulator controller, game-specific controllers
   env/                  Gymnasium environments (Breakout71Env [stub])
   game_loader/          Configurable game loading (browser dev server lifecycle)
@@ -46,7 +46,7 @@ src/
 configs/
   games/                Game loader YAML configs (breakout-71.yaml, ...)
 scripts/                YOLO training, dataset dedup, ADB test
-tests/                  pytest suite (102 tests)
+tests/                  pytest suite (133 tests)
 docs/                   Sphinx docs (Furo theme, MyST Markdown)
 documentation/
   specs/                Design specs for env, oracles, capture, reporting, game loader
@@ -141,7 +141,7 @@ GitHub Actions runs on every push to `main` or `big-rock-*` branches and on PRs 
 | Job | What it does |
 |-----|-------------|
 | **Lint** | `ruff check` + `ruff format --check` |
-| **Test** | `pytest` (102 passed) |
+| **Test** | `pytest` (133 passed) |
 | **Build Check** | Verifies all module imports succeed |
 | **Build Docs** | Sphinx HTML build with `-W` (warnings as errors) |
 

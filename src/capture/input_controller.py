@@ -7,10 +7,11 @@ the active game window.
 
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 try:
-    import pydirectinput  # noqa: F401
+    import pydirectinput
 
     _PYDIRECTINPUT_AVAILABLE = True
 except ImportError:
@@ -43,6 +44,13 @@ class InputController:
     ACTION_RIGHT = 2
     ACTION_FIRE = 3
 
+    # Maps discrete actions to pydirectinput key names.
+    _ACTION_KEY_MAP: dict[int, str] = {
+        ACTION_LEFT: "left",
+        ACTION_RIGHT: "right",
+        ACTION_FIRE: "space",
+    }
+
     def __init__(
         self,
         window_rect: Optional[tuple[int, int, int, int]] = None,
@@ -55,8 +63,35 @@ class InputController:
 
         self.window_rect = window_rect or (0, 0, 800, 600)
 
+    # -- Helpers ---------------------------------------------------------------
+
+    def _to_screen_coords(self, x_norm: float, y_norm: float) -> tuple[int, int]:
+        """Convert normalised (0-1) position to absolute screen pixel coords.
+
+        Parameters
+        ----------
+        x_norm : float
+            Horizontal position in [0.0, 1.0] (left to right).
+        y_norm : float
+            Vertical position in [0.0, 1.0] (top to bottom).
+
+        Returns
+        -------
+        tuple[int, int]
+            ``(x_abs, y_abs)`` in screen pixels.
+        """
+        left, top, right, bottom = self.window_rect
+        x_abs = int(left + x_norm * (right - left))
+        y_abs = int(top + y_norm * (bottom - top))
+        return x_abs, y_abs
+
+    # -- Public API ------------------------------------------------------------
+
     def apply_action(self, action: int) -> None:
         """Apply a discrete action to the game.
+
+        For movement actions, the key is held briefly (~30 ms) to produce
+        a smooth one-frame movement impulse.
 
         Parameters
         ----------
@@ -69,7 +104,21 @@ class InputController:
         ValueError
             If the action is not recognized.
         """
-        raise NotImplementedError("Discrete action injection not yet implemented")
+        if action == self.ACTION_NOOP:
+            return
+
+        key = self._ACTION_KEY_MAP.get(action)
+        if key is None:
+            raise ValueError(
+                f"Unrecognised action {action!r}. "
+                f"Expected one of NOOP({self.ACTION_NOOP}), "
+                f"LEFT({self.ACTION_LEFT}), RIGHT({self.ACTION_RIGHT}), "
+                f"FIRE({self.ACTION_FIRE})."
+            )
+
+        pydirectinput.keyDown(key)
+        time.sleep(0.03)  # ~1-2 frames of input at 30 FPS
+        pydirectinput.keyUp(key)
 
     def move_mouse_to(self, x_norm: float, y_norm: float) -> None:
         """Move the mouse to a normalised position within the game window.
@@ -81,7 +130,8 @@ class InputController:
         y_norm : float
             Vertical position in [0.0, 1.0] (top to bottom).
         """
-        raise NotImplementedError("Mouse movement not yet implemented")
+        x_abs, y_abs = self._to_screen_coords(x_norm, y_norm)
+        pydirectinput.moveTo(x_abs, y_abs)
 
     def click(
         self, x_norm: float = 0.5, y_norm: float = 0.5, button: str = "left"
@@ -97,7 +147,8 @@ class InputController:
         button : str
             Mouse button: ``"left"``, ``"right"``, or ``"middle"``.
         """
-        raise NotImplementedError("Click injection not yet implemented")
+        x_abs, y_abs = self._to_screen_coords(x_norm, y_norm)
+        pydirectinput.click(x=x_abs, y=y_abs, button=button)
 
     def press_key(self, key: str, duration: float = 0.05) -> None:
         """Press and release a keyboard key.
@@ -110,7 +161,9 @@ class InputController:
         duration : float
             How long to hold the key in seconds.
         """
-        raise NotImplementedError("Key press injection not yet implemented")
+        pydirectinput.keyDown(key)
+        time.sleep(duration)
+        pydirectinput.keyUp(key)
 
     def hold_key(self, key: str) -> None:
         """Press and hold a key (call ``release_key`` to let go).
@@ -120,7 +173,7 @@ class InputController:
         key : str
             Key name recognised by pydirectinput.
         """
-        raise NotImplementedError("Key hold not yet implemented")
+        pydirectinput.keyDown(key)
 
     def release_key(self, key: str) -> None:
         """Release a previously held key.
@@ -130,4 +183,4 @@ class InputController:
         key : str
             Key name recognised by pydirectinput.
         """
-        raise NotImplementedError("Key release not yet implemented")
+        pydirectinput.keyUp(key)
