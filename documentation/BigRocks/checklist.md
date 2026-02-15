@@ -26,20 +26,18 @@
   - [x] `WindowCapture` -- BitBlt/GDI via pywin32 (`_find_window`, `capture_frame`, `is_window_visible`, `release`)
   - [x] `InputController` -- pydirectinput (`apply_action`, `move_mouse_to`, `click`, `press_key`, `hold_key`, `release_key`)
   - [x] 37 tests (133 total), Sphinx docs, `pydirectinput` added to `autodoc_mock_imports`
+- [x] **Perception subsystem** (PR #TBD)
+  - [x] `YoloDetector` -- `load` (weights validation, XPU→CPU fallback), `detect` (inference + result parsing), `detect_to_game_state` (grouping, normalization)
+  - [x] `breakout_capture.py` -- `grab_frame` (visibility check), `detect_objects` (auto-infer dimensions)
+  - [x] 40 tests (169 total), Sphinx docs updated
 
 ## To Do
 
-### 1. Perception subsystem (`src/perception/`)
-- [ ] Check `environment.yml` has `ultralytics` and `opencv-python` (already present)
-- [ ] Implement `YoloDetector` -- `load`, `detect`, `detect_to_game_state`
-- [ ] Add Breakout 71 perception module (`breakout_capture.py`)
-  - [ ] `grab_frame` using `WindowCapture`
-  - [ ] `detect_objects` stub with YOLO TODOs
-- [ ] Replace placeholder tests with real tests
-- [ ] Update Sphinx docs if needed
-- [ ] Update README (remove `[stub]`, update test count)
-- [ ] Commit, push, create PR, request review from Copilot, evaluate review and create issues if necessary, merge (`--delete-branch`), delete local branch
-- [ ] Update this checklist (move item to Completed, record PR number)
+### 1. Data collection & YOLO training pipeline
+- [ ] Automated frame capture during gameplay (save frames + metadata)
+- [ ] Annotation tooling integration (Roboflow upload / labeling)
+- [ ] YOLO training script for Breakout 71 classes (`paddle`, `ball`, `brick`, `powerup`, `wall`)
+- [ ] Trained weights validation (mAP threshold)
 
 ### 2. Oracle `on_step` detection logic (`src/oracles/`)
 - [ ] Check `environment.yml` for any new deps (imagehash, numpy -- already present)
