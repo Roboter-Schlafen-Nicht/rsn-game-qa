@@ -16,10 +16,7 @@ def demo():
         (e.g. if adb is not available, no device is found, or the screenshot
             path cannot be written).
     """
-    adb_path = (
-        "C:/Users/human/AppData/Local/Android/"
-        "Sdk/platform-tools/adb.exe"
-    )
+    adb_path = "C:/Users/human/AppData/Local/Android/Sdk/platform-tools/adb.exe"
     adb = EmulatorController(adb_path=adb_path)
     adb.ensure_device()
 

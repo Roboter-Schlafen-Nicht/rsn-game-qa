@@ -1,11 +1,14 @@
 """HTML dashboard renderer — converts session reports to visual dashboards.
 
 Uses Jinja2 templating to produce a self-contained HTML file with
-episode summaries, finding details, and basic metrics charts.
+episode summaries, finding details, and basic metrics.  Falls back to
+a built-in minimal template when the configured template file does not
+exist on disk.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -16,9 +19,101 @@ try:
 except ImportError:
     _JINJA2_AVAILABLE = False
 
+#: Minimal self-contained Bootstrap 5 dashboard template.
+#: Used as a fallback when no external template file is provided.
+_BUILTIN_TEMPLATE = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RSN Game QA Dashboard</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet">
+<style>
+  .severity-critical { color: #dc3545; font-weight: bold; }
+  .severity-warning  { color: #fd7e14; }
+  .severity-info     { color: #198754; }
+  .badge-pass { background-color: #198754; }
+  .badge-fail { background-color: #dc3545; }
+</style>
+</head>
+<body>
+<div class="container my-4">
+  <h1>RSN Game QA &mdash; Dashboard</h1>
+
+  {% for run in runs %}
+  <div class="card my-3">
+    <div class="card-header">
+      <strong>{{ run.game }}</strong>
+      &mdash; Session {{ run.session_id[:8] }}
+      &mdash; Build <code>{{ run.build_id }}</code>
+      <span class="text-muted float-end">{{ run.timestamp }}</span>
+    </div>
+    <div class="card-body">
+
+      {# ── Summary row ── #}
+      {% if run.summary %}
+      <div class="row mb-3">
+        <div class="col">Episodes: <strong>{{ run.summary.total_episodes }}</strong></div>
+        <div class="col">Failed: <strong>{{ run.summary.episodes_failed }}</strong></div>
+        <div class="col">Critical: <strong>{{ run.summary.critical_findings }}</strong></div>
+        <div class="col">Warnings: <strong>{{ run.summary.warning_findings }}</strong></div>
+        <div class="col">Info: <strong>{{ run.summary.info_findings }}</strong></div>
+      </div>
+      {% endif %}
+
+      {# ── Episodes table ── #}
+      <table class="table table-sm table-striped">
+        <thead>
+          <tr>
+            <th>#</th><th>Status</th><th>Steps</th><th>Reward</th>
+            <th>Findings</th><th>FPS (avg)</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for ep in run.episodes %}
+          {% set failed = ep.findings | selectattr("severity", "equalto", "critical") | list | length > 0 %}
+          <tr>
+            <td>{{ ep.episode_id }}</td>
+            <td><span class="badge {{ 'badge-fail' if failed else 'badge-pass' }}">
+              {{ "FAIL" if failed else "PASS" }}
+            </span></td>
+            <td>{{ ep.steps }}</td>
+            <td>{{ "%.1f" | format(ep.total_reward) }}</td>
+            <td>
+              {% for f in ep.findings %}
+              <span class="severity-{{ f.severity }}">{{ f.oracle_name }}: {{ f.description }}</span><br>
+              {% endfor %}
+              {% if not ep.findings %}&mdash;{% endif %}
+            </td>
+            <td>{{ "%.1f" | format(ep.metrics.mean_fps) if ep.metrics.mean_fps is not none else "&mdash;" }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if not runs %}
+  <div class="alert alert-info">No reports found.</div>
+  {% endif %}
+
+</div>
+</body>
+</html>
+"""
+
 
 class DashboardRenderer:
     """Renders QA session reports as HTML dashboards.
+
+    The renderer first looks for a Jinja2 template file at
+    ``template_dir/template_name``.  If the file does not exist it
+    falls back to a built-in Bootstrap 5 template so that dashboards
+    can always be generated without an external template directory.
 
     Parameters
     ----------
@@ -49,8 +144,31 @@ class DashboardRenderer:
         self.template_dir = Path(template_dir)
         self.template_name = template_name
 
+    def _get_template(self) -> "jinja2.Template":  # type: ignore[name-defined]  # noqa: F821
+        """Load the Jinja2 template, falling back to the built-in one.
+
+        Returns
+        -------
+        jinja2.Template
+            A compiled Jinja2 template ready for rendering.
+        """
+        template_path = self.template_dir / self.template_name
+        if template_path.is_file():
+            env = Environment(
+                loader=FileSystemLoader(str(self.template_dir)),
+                autoescape=select_autoescape(["html"]),
+            )
+            return env.get_template(self.template_name)
+
+        # Fall back to built-in template
+        env = Environment(autoescape=select_autoescape(["html"]))
+        return env.from_string(_BUILTIN_TEMPLATE)
+
     def render(self, report_data: dict[str, Any]) -> str:
         """Render a session report dict to an HTML string.
+
+        The report data is wrapped in a single-element ``runs`` list
+        so the template can iterate uniformly over one or many runs.
 
         Parameters
         ----------
@@ -63,7 +181,8 @@ class DashboardRenderer:
         str
             Complete HTML document as a string.
         """
-        raise NotImplementedError("Dashboard rendering not yet implemented")
+        template = self._get_template()
+        return template.render(runs=[report_data])
 
     def render_to_file(
         self,
@@ -71,6 +190,8 @@ class DashboardRenderer:
         output_path: str | Path,
     ) -> Path:
         """Render a session report and write it to an HTML file.
+
+        Creates parent directories if they do not exist.
 
         Parameters
         ----------
@@ -84,7 +205,11 @@ class DashboardRenderer:
         Path
             Path to the written HTML file.
         """
-        raise NotImplementedError("Dashboard file writing not yet implemented")
+        html = self.render(report_data)
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(html, encoding="utf-8")
+        return out
 
     def generate_dashboard(
         self,
@@ -110,5 +235,20 @@ class DashboardRenderer:
         -------
         Path
             Path to the written HTML file.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the JSON report file does not exist.
         """
-        raise NotImplementedError("Dashboard generation not yet implemented")
+        json_path = Path(report_json_path)
+        if not json_path.is_file():
+            raise FileNotFoundError(f"Report file not found: {json_path}")
+
+        with open(json_path, encoding="utf-8") as fh:
+            report_data = json.load(fh)
+
+        if output_path is None:
+            output_path = json_path.with_suffix(".html")
+
+        return self.render_to_file(report_data, output_path)

@@ -24,7 +24,7 @@ handles the mechanics.
 
 ```
                       ┌─────────────────┐
-                      │ GameLoaderConfig │  ← YAML file (configs/games/*.yaml)
+                      │ GameLoaderConfig│  ← YAML file (configs/games/*.yaml)
                       └────────┬────────┘
                                │
                       ┌────────▼────────┐

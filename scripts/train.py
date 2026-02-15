@@ -1,8 +1,8 @@
 from ultralytics import YOLO
 import torch
 
-if __name__ == '__main__':
-    device = torch.device('xpu' if torch.xpu.is_available() else 'cpu')
+if __name__ == "__main__":
+    device = torch.device("xpu" if torch.xpu.is_available() else "cpu")
     print(device)
 
     model = YOLO("yolov8n.pt").to(device)
@@ -12,7 +12,7 @@ if __name__ == '__main__':
         epochs=100,
         imgsz=640,
         device=device,
-        amp=False
+        amp=False,
     )
 
     print(results)
