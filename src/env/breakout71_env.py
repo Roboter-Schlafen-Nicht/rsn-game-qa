@@ -81,7 +81,7 @@ class Breakout71Env(gym.Env):
 
     def __init__(
         self,
-        window_title: str = "Breakout - 71",
+        window_title: str = "Breakout",
         yolo_weights: str | Path = "weights/best.pt",
         max_steps: int = 10_000,
         render_mode: Optional[str] = None,
@@ -175,13 +175,24 @@ class Breakout71Env(gym.Env):
         if not self._initialized:
             self._lazy_init()
 
-        # Press Space to start a new game
-        self._input.apply_action(3)  # ACTION_FIRE
-        time.sleep(0.5)
+        # Press Space to start a new game, with retry loop to verify
+        # the ball is actually present (game may take time to restart)
+        detections: dict[str, Any] = {}
+        for attempt in range(5):
+            self._input.apply_action(3)  # ACTION_FIRE
+            time.sleep(0.5)
 
-        # Capture first frame and detect objects
-        frame = self._capture_frame()
-        detections = self._detect_objects(frame)
+            frame = self._capture_frame()
+            detections = self._detect_objects(frame)
+
+            if detections.get("ball") is not None:
+                break
+
+        if detections.get("ball") is None:
+            raise RuntimeError(
+                "Breakout71Env.reset() failed to detect a ball after 5 attempts; "
+                "the game may not have initialized correctly."
+            )
 
         # Build observation with reset semantics
         obs = self._build_observation(detections, reset=True)
@@ -287,6 +298,17 @@ class Breakout71Env(gym.Env):
             return self._last_frame
         return None
 
+    @property
+    def step_count(self) -> int:
+        """Return the current step count (read-only).
+
+        Returns
+        -------
+        int
+            Number of steps taken in the current episode.
+        """
+        return self._step_count
+
     def close(self) -> None:
         """Release capture and input resources."""
         if self._capture is not None:
@@ -294,6 +316,7 @@ class Breakout71Env(gym.Env):
         self._capture = None
         self._detector = None
         self._input = None
+        self._initialized = False
 
     # -- Private helpers -------------------------------------------------------
 
@@ -370,6 +393,19 @@ class Breakout71Env(gym.Env):
         bricks_left = len(bricks)
 
         if reset or self._bricks_total is None:
+            # Retry detection if 0 bricks on first frame (transition
+            # screen or slow render can cause false zero).
+            # Guard: only retry when subsystems are initialized.
+            if reset and bricks_left == 0 and self._initialized:
+                for _retry in range(3):
+                    time.sleep(0.2)
+                    retry_frame = self._capture_frame()
+                    retry_dets = self._detect_objects(retry_frame)
+                    retry_bricks = len(retry_dets.get("bricks", []))
+                    if retry_bricks > 0:
+                        bricks_left = retry_bricks
+                        bricks = retry_dets.get("bricks", [])
+                        break
             self._bricks_total = max(bricks_left, 1)
 
         bricks_norm = bricks_left / self._bricks_total

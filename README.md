@@ -12,44 +12,39 @@ The system uses a two-layer design:
 2. **Bug-detection oracles** inspect traces and flag anomalies (crashes, stuck states, score anomalies, visual glitches, performance drops, physics violations, boundary violations, state transitions, episode length anomalies, temporal anomalies, reward inconsistencies, soak test degradation)
 
 ```
- Game Loader      Capture          Perception        Policy / RL         Oracles           Reporting
-+------------+   +-----------+    +------------+    +-------------+    +-------------+    +-----------+
-| Config     |   | Window    |--->| YOLO       |--->| Help Policy |    | Crash       |    | Episode   |
-| (YAML)     |-->| Capture   |    | Detector   |    | RL Policy   |--->| Stuck       |--->| Report    |
-| Browser    |   | ADB       |    |            |    | PPO (SB3)   |    | ScoreAnom.  |    | Dashboard |
-| Loader     |   +-----------+    +------------+    +-------------+    | VisGlitch   |    +-----------+
-+------------+                                                         | Performance |
-                                                                       | Physics     |
-                                                                       | Boundary    |
-                                                                       | StateTransn |
-                                                                       | EpisodeLen  |
-                                                                       | TemporalAn. |
-                                                                       | RewardCons. |
-                                                                       | Soak        |
-                                                                       +-------------+
+ Game Loader      Capture          Perception        Policy / RL       Oracles           Reporting
++------------+   +-----------+    +------------+    +-----------+    +-------------+    +-----------+
+| Config     |   | Window    |--->| YOLO       |--->| PPO (SB3) |    | Crash       |    | Episode   |
+| (YAML)     |-->| Capture   |    | Detector   |    |           |--->| Stuck       |--->| Report    |
+| Browser    |   |           |    |            |    |           |    | ScoreAnom.  |    | Dashboard |
+| Loader     |   +-----------+    +------------+    +-----------+    | VisGlitch   |    +-----------+
++------------+                                                       | Performance |
+                                                                     | Physics     |
+                                                                     | Boundary    |
+                                                                     | StateTransn |
+                                                                     | EpisodeLen  |
+                                                                     | TemporalAn. |
+                                                                     | RewardCons. |
+                                                                     | Soak        |
+                                                                     +-------------+
 ```
 
 ## Target games
 
 | Game | Interface | Status |
 |------|-----------|--------|
-| **Last War** (mobile) | Android emulator via ADB | Working -- YOLO detection + RL help-button policy + live bot loop |
 | **Breakout 71** (browser) | Windows native window (GDI) | In progress -- env v1, capture, perception, oracles implemented |
 
 ## Project structure
 
 ```
 src/
-  agents/               Bot runners (help_bot, breakout controller)
   capture/              Window capture (GDI) + input controller (pydirectinput)
-  controllers/          ADB emulator controller, game-specific controllers
   env/                  Gymnasium environments (Breakout71Env)
   game_loader/          Configurable game loading (browser dev server lifecycle)
   oracles/              Bug-detection oracles (crash, stuck, score, visual, perf, physics, boundary, state, episode_length, temporal, reward, soak)
   perception/           YOLO detector wrapper + Breakout 71 capture helpers
-  policies/             YOLO-based + RL-based policies for Last War
   reporting/            Episode/session reports + Jinja2 HTML dashboard
-  rl/                   RL training env + PPO training script for help policy
 configs/
   games/                Game loader YAML configs (breakout-71.yaml, ...)
   training/             YOLO training configs per game (breakout-71.yaml, ...)
@@ -60,11 +55,6 @@ documentation/
   specs/                Design specs for env, oracles, capture, reporting, game loader
   sessions/             Development session notes
   business/             2026 plan
-data/
-  twin_dataset/         YOLO training images + labels
-  live_logs/            Bot run logs (frames + JSON metadata)
-runs/
-  rl_help_v3/           Trained PPO model (ppo_lastwar_help.zip)
 ```
 
 ## Hardware
@@ -113,34 +103,6 @@ loader.stop()
 ```
 
 To add a new browser game, drop a YAML file in `configs/games/` — no Python code needed if it follows the standard Node dev server pattern (npm install + serve command).
-
-### Last War help bot (requires Android emulator + ADB)
-
-```bash
-python src/agents/run_help_bot.py
-```
-
-Captures frames via ADB, runs YOLO inference, applies RL shadow decisions, and logs events with screenshots + JSON metadata.
-
-### Breakout 71 random controller (requires Android emulator + ADB)
-
-```bash
-python src/agents/run_breakout_controller.py
-```
-
-### Train the RL help policy
-
-```bash
-python src/rl/train_help.py
-```
-
-Trains a PPO agent in the simulated `LastWarHelpEnv` to decide NOOP / CLICK_HELP / RANDOM_SWIPE.
-
-### Build YOLO training dataset from logs
-
-```bash
-python src/build_twin_dataset.py
-```
 
 ## CI
 
