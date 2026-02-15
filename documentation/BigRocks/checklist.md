@@ -77,6 +77,15 @@
   - [x] `classes.txt` generation in auto_annotate.py
   - [x] 8 new tests (49 training pipeline tests, 430 total)
   - [x] Copilot review: 8 fixes (docstrings, error handling, test tolerance, progress tracking, test count)
+- [x] **Integration & end-to-end + RL training scaffold** (PR #28)
+  - [x] `src/orchestrator/` — FrameCollector (interval-based frame saving, manifest), SessionRunner (N-episode QA runs, oracle wiring, reporting)
+  - [x] `scripts/run_session.py` — CLI for N-episode evaluation with random policy
+  - [x] `scripts/train_rl.py` — CLI for PPO training with SB3, FrameCollectionCallback for data collection during RL
+  - [x] `src/env/breakout71_env.py` — 6 bug fixes: close/reset lifecycle, fragile reset timing, _bricks_total corruption, step_count property, window_title default, RuntimeError on ball retry failure
+  - [x] Legacy code deleted: `src/agents/`, `src/controllers/`, `src/rl/`, `src/policies/`, `scripts/test.py`, `src/build_twin_dataset.py`
+  - [x] pytest-cov configured (96% coverage on `src/`), `.gitignore` updated
+  - [x] 47 orchestrator tests + env/training fixes (454 total unit + 24 integration)
+  - [x] Copilot review: removed empty ReportGenerator, added RuntimeError on ball retry failure
 
 ## To Do
 
@@ -96,11 +105,18 @@
 ### 2. Integration & end-to-end
 - [x] Add integration tests (PR #15 — 12 tests × 2 browsers)
 - [x] Add smoke scripts for manual verification (PR #15)
-- [ ] Wire all subsystems: loader -> capture -> perception -> env -> oracles -> reporting
-- [ ] Run Breakout 71 env for N episodes, generate session report + dashboard
-- [ ] Update README and docs
-- [ ] Commit, push, create PR, request review from Copilot, evaluate review and create issues if necessary, merge (`--delete-branch`), delete local branch
-- [ ] Post-merge admin (no Copilot review needed):
-  - [ ] Update this checklist (move item to Completed, record PR number)
-  - [ ] Create session log in `documentation/sessions/sessionN-<topic>.md`
-  - [ ] Update `AGENTS.md` (session list, project structure, discoveries, what's next)
+- [x] Wire all subsystems: loader -> capture -> perception -> env -> oracles -> reporting (PR #28)
+- [x] Run Breakout 71 env for N episodes, generate session report + dashboard (PR #28 — SessionRunner)
+- [x] RL training scaffold with SB3 PPO (PR #28 — train_rl.py)
+- [x] Env bug fixes and legacy code cleanup (PR #28)
+- [x] Update README and docs (PR #28)
+- [x] Copilot review and merge (PR #28)
+- [x] Post-merge admin (PR #29 — this update)
+
+### 3. RL training & iteration
+- [ ] Run first real RL training session on Breakout 71 (PPO, ~200k steps)
+- [ ] Evaluate trained policy vs random baseline
+- [ ] Iterate on reward shaping based on observed behavior
+- [ ] Generate QA reports from trained agent episodes
+- [ ] Retrain YOLO with human-reviewed Roboflow annotations
+- [ ] Multi-game refactoring (issue #24 — deferred until Breakout 71 E2E complete)
