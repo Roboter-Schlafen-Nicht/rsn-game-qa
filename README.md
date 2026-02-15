@@ -39,14 +39,14 @@ src/
   env/                  Gymnasium environments (Breakout71Env [stub])
   game_loader/          Configurable game loading (browser dev server lifecycle)
   oracles/              Bug-detection oracles (crash, stuck, score, visual, perf) [stub on_step]
-  perception/           YOLO detector wrapper [stub]
+  perception/           YOLO detector wrapper + Breakout 71 capture helpers
   policies/             YOLO-based + RL-based policies for Last War
   reporting/            Episode/session reports + Jinja2 HTML dashboard
   rl/                   RL training env + PPO training script for help policy
 configs/
   games/                Game loader YAML configs (breakout-71.yaml, ...)
 scripts/                YOLO training, dataset dedup, ADB test
-tests/                  pytest suite (133 tests)
+tests/                  pytest suite (169 tests)
 docs/                   Sphinx docs (Furo theme, MyST Markdown)
 documentation/
   specs/                Design specs for env, oracles, capture, reporting, game loader
@@ -141,7 +141,7 @@ GitHub Actions runs on every push to `main` or `big-rock-*` branches and on PRs 
 | Job | What it does |
 |-----|-------------|
 | **Lint** | `ruff check` + `ruff format --check` |
-| **Test** | `pytest` (133 passed) |
+| **Test** | `pytest` (169 passed) |
 | **Build Check** | Verifies all module imports succeed |
 | **Build Docs** | Sphinx HTML build with `-W` (warnings as errors) |
 
