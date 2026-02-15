@@ -110,7 +110,14 @@ class YoloDetector:
         except Exception:
             logger.warning("Device '%s' unavailable, falling back to CPU", self.device)
             self.device = "cpu"
-            self.model.to("cpu")
+            try:
+                self.model.to("cpu")
+                logger.info("YOLO model loaded on device: cpu (fallback)")
+            except Exception as cpu_exc:
+                self.model = None
+                raise RuntimeError(
+                    "Failed to move YOLO model to any device (requested and CPU)."
+                ) from cpu_exc
 
         # Read class names from the model if the user didn't override
         if self._user_classes is None and hasattr(self.model, "names"):

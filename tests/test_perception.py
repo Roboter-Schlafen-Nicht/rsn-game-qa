@@ -228,6 +228,25 @@ class TestYoloDetectorLoad:
             mock_model.to.assert_any_call("xpu")
             mock_model.to.assert_any_call("cpu")
 
+    def test_load_cpu_fallback_also_fails(self, tmp_path):
+        """load() raises RuntimeError if both XPU and CPU fallback fail."""
+        yd, YD = self._fresh_import()
+        weights = tmp_path / "best.pt"
+        weights.touch()
+
+        mock_model = mock.MagicMock()
+        mock_model.names = {}
+        mock_model.to.side_effect = [
+            RuntimeError("XPU not available"),
+            RuntimeError("CPU also broken"),
+        ]
+
+        with mock.patch.object(yd, "YOLO", return_value=mock_model):
+            detector = YD(weights_path=weights, device="xpu")
+            with pytest.raises(RuntimeError, match="Failed to move YOLO model"):
+                detector.load()
+            assert not detector.is_loaded()
+
     def test_load_reads_model_class_names_dict(self, tmp_path):
         """load() reads class names from model.names dict when user didn't specify."""
         yd, YD = self._fresh_import()
