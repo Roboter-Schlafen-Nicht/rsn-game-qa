@@ -63,7 +63,7 @@ src/
   capture/        # DONE — BitBlt window capture, pydirectinput input (37 tests)
   perception/     # DONE — YoloDetector, breakout_capture (41 tests)
   oracles/        # DONE — 12 oracles with on_step detection (132 tests)
-  env/            # STUB — Breakout71Env gymnasium wrapper
+  env/            # DONE — Breakout71Env gymnasium wrapper (69 tests)
 tests/
   conftest.py             # Integration test fixtures (Selenium browser parameterization)
   test_integration.py     # 12 integration tests × 2 browsers
@@ -88,17 +88,16 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 5. **Session 5** — Perception subsystem (PR #12)
 6. **Session 6** — Oracle `on_step` detection logic, 12 oracles (PR #13)
 7. **Session 7** — Smoke scripts, integration tests, Selenium browser management (PR #15)
-8. **Session 8** — Game source study, revised env design, Breakout71Env v1 implementation
+8. **Session 8** — Game source study, revised env design, Breakout71Env v1 implementation (PR #17)
 
-Total: **316 tests** (293 unit + 23 integration), 5 subsystems complete. Session 8 in progress.
+Total: **357 tests** (357 unit + 24 integration), 6 subsystems complete.
 
 ## What's Next
 
 Read `documentation/BigRocks/checklist.md` for the full breakdown. In order:
 
-1. **Breakout71 Env v1** (`src/env/`) — Gymnasium env core methods, 8-element observation, brick-based reward with score_delta placeholder (in progress — session 8)
-2. **Data collection & YOLO training pipeline** — automated capture, annotation, training (deferred — env can be fully tested with mocks)
-3. **Integration & E2E** — wire all subsystems, run episodes, generate reports
+1. **Data collection & YOLO training pipeline** — automated capture, annotation, training (deferred — env can be fully tested with mocks)
+2. **Integration & E2E** — wire all subsystems, run episodes, generate reports
 
 ## Reference Files
 
