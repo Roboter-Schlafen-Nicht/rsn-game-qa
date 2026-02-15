@@ -83,6 +83,10 @@ dependencies:
       - pydirectinput==1.0.4
       # Game loader configuration
       - pyyaml==6.0.3
+      # Environment variable management
+      - python-dotenv==1.1.0
+      # Image annotation platform (Roboflow upload)
+      - roboflow>=1.1.0
       # Browser automation (smoke scripts / integration tests)
       - selenium==4.40.0
       # Templating (for reporting dashboard)

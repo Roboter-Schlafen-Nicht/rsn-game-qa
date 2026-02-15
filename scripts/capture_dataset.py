@@ -1,0 +1,296 @@
+#!/usr/bin/env python
+"""Capture frames from Breakout 71 for YOLO training dataset.
+
+Launches the game, plays it with a random bot (random paddle movements
+via mouse input), and captures frames at configurable intervals.  Saves
+PNGs and a JSON manifest with metadata for each frame.
+
+Usage::
+
+    python scripts/capture_dataset.py
+    python scripts/capture_dataset.py --frames 500 --interval 0.2
+    python scripts/capture_dataset.py --skip-setup --browser chrome -v
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import random
+import sys
+import time
+
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
+
+from scripts._smoke_utils import (
+    BrowserInstance,
+    Timer,
+    base_argparser,
+    ensure_output_dir,
+    save_frame_png,
+    setup_logging,
+    timestamp_str,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _random_paddle_action(
+    driver,
+    game_element,
+    window_rect: tuple[int, int, int, int],
+) -> dict:
+    """Move the mouse to a random horizontal position over the paddle area.
+
+    Uses Selenium ActionChains for reliable input delivery to the game
+    canvas, rather than pydirectinput which requires the window to be
+    foreground.
+
+    Parameters
+    ----------
+    driver : selenium.webdriver.Remote
+        The Selenium WebDriver instance.
+    game_element : selenium.webdriver.remote.webelement.WebElement
+        The game canvas element.
+    window_rect : tuple[int, int, int, int]
+        ``(left, top, width, height)`` of the game canvas element.
+
+    Returns
+    -------
+    dict
+        Action metadata: ``{"type": "mouse_move", "x_norm": float}``.
+    """
+    from selenium.webdriver.common.action_chains import ActionChains
+
+    _left, _top, canvas_w, canvas_h = window_rect
+
+    # Random horizontal position, paddle is near the bottom
+    x_norm = random.random()
+    x_offset = int(x_norm * canvas_w) - (canvas_w // 2)  # relative to center
+    y_offset = int(canvas_h * 0.85) - (canvas_h // 2)  # paddle zone
+
+    ActionChains(driver).move_to_element_with_offset(
+        game_element, x_offset, y_offset
+    ).perform()
+
+    return {"type": "mouse_move", "x_norm": round(x_norm, 4)}
+
+
+def _click_to_start(driver, game_element, window_rect):
+    """Click the canvas center to start/unpause the game."""
+    from selenium.webdriver.common.action_chains import ActionChains
+
+    ActionChains(driver).move_to_element(game_element).click().perform()
+    time.sleep(0.5)
+
+
+def main() -> int:
+    parser = base_argparser("Capture Breakout 71 frames for YOLO training dataset.")
+    parser.add_argument(
+        "--frames",
+        type=int,
+        default=500,
+        help="Number of frames to capture (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=0.2,
+        help="Seconds between captures (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--skip-setup",
+        action="store_true",
+        help="Skip npm install step",
+    )
+    parser.add_argument(
+        "--browser",
+        type=str,
+        default=None,
+        help="Browser to use (chrome, edge, firefox). Default: auto-detect.",
+    )
+    parser.add_argument(
+        "--action-interval",
+        type=int,
+        default=5,
+        help="Perform a random action every N frames (default: %(default)s, min: 1)",
+    )
+    parser.add_argument(
+        "--no-click-start",
+        action="store_false",
+        dest="click_start",
+        help="Skip clicking the canvas to start the game",
+    )
+    args = parser.parse_args()
+    setup_logging(args.verbose)
+
+    if args.action_interval < 1:
+        parser.error("--action-interval must be >= 1")
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    from src.game_loader import load_game_config, create_loader
+    from src.capture import WindowCapture
+
+    config = load_game_config(args.config)
+    loader = create_loader(config)
+
+    # ── Start game server ────────────────────────────────────────────
+    if not args.skip_setup:
+        logger.info("Running setup (npm install) ...")
+        loader.setup()
+
+    logger.info("Starting game server ...")
+    with Timer("start") as t:
+        loader.start()
+    logger.info("Game ready at %s (%.1fs)", loader.url, t.elapsed)
+
+    # ── Launch browser ───────────────────────────────────────────────
+    url = loader.url or config.url
+    logger.info("Launching browser: %s", url)
+    browser = BrowserInstance(
+        url,
+        settle_seconds=5,
+        window_size=(config.window_width, config.window_height),
+        browser=args.browser,
+    )
+
+    # ── Set up capture ───────────────────────────────────────────────
+    window_title = config.window_title or "Breakout"
+    cap = WindowCapture(window_title=window_title)
+    logger.info("Window: HWND=%s, %dx%d", cap.hwnd, cap.width, cap.height)
+
+    # Find the game canvas for Selenium actions
+    driver = browser.driver
+    try:
+        game_canvas = driver.find_element("css selector", "#game")
+        canvas_rect = game_canvas.rect  # {x, y, width, height}
+        canvas_dims = (
+            int(canvas_rect["x"]),
+            int(canvas_rect["y"]),
+            int(canvas_rect["width"]),
+            int(canvas_rect["height"]),
+        )
+        logger.info("Game canvas: %s", canvas_dims)
+    except Exception:
+        logger.warning("Could not find #game canvas — using full window for actions")
+        game_canvas = driver.find_element("css selector", "body")
+        canvas_dims = (0, 0, config.window_width, config.window_height)
+
+    # ── Click to start the game ──────────────────────────────────────
+    if args.click_start:
+        logger.info("Clicking canvas to start game ...")
+        _click_to_start(driver, game_canvas, canvas_dims)
+        time.sleep(1.0)
+
+    # ── Capture loop ─────────────────────────────────────────────────
+    ts = timestamp_str()
+    out_dir = (
+        ensure_output_dir(f"dataset_{ts}")
+        if args.output_dir is None
+        else args.output_dir
+    )
+    logger.info("Saving frames to: %s", out_dir)
+
+    manifest: list[dict] = []
+    capture_times: list[float] = []
+
+    for i in range(args.frames):
+        # Periodic random action to generate diverse states
+        action_meta = None
+        if i % args.action_interval == 0:
+            try:
+                action_meta = _random_paddle_action(driver, game_canvas, canvas_dims)
+            except Exception as exc:
+                logger.debug("Action failed (frame %d): %s", i, exc)
+
+        # Capture frame
+        with Timer(f"frame_{i}") as ft:
+            frame = cap.capture_frame()
+
+        capture_times.append(ft.elapsed)
+
+        # Save frame
+        frame_name = f"frame_{i:05d}.png"
+        frame_path = out_dir / frame_name
+        save_frame_png(frame, frame_path)
+
+        # Record metadata
+        entry = {
+            "index": i,
+            "filename": frame_name,
+            "timestamp": time.time(),
+            "shape": list(frame.shape),
+            "capture_ms": round(ft.elapsed * 1000, 1),
+        }
+        if action_meta:
+            entry["action"] = action_meta
+        manifest.append(entry)
+
+        if i % 50 == 0 or i == args.frames - 1:
+            logger.info(
+                "Frame %4d/%d  shape=%s  latency=%.1fms",
+                i + 1,
+                args.frames,
+                frame.shape,
+                ft.elapsed * 1000,
+            )
+
+        if i < args.frames - 1:
+            time.sleep(args.interval)
+
+    # ── Save manifest ────────────────────────────────────────────────
+    manifest_path = out_dir / "manifest.json"
+    manifest_data = {
+        "dataset": "breakout71",
+        "capture_timestamp": ts,
+        "total_frames": len(manifest),
+        "interval_seconds": args.interval,
+        "action_interval_frames": args.action_interval,
+        "window_size": [config.window_width, config.window_height],
+        "classes": ["paddle", "ball", "brick", "powerup", "wall"],
+        "frames": manifest,
+    }
+    with open(manifest_path, "w") as f:
+        json.dump(manifest_data, f, indent=2)
+    logger.info("Manifest saved: %s", manifest_path)
+
+    # ── Summary ──────────────────────────────────────────────────────
+    import numpy as np
+
+    times = np.array(capture_times)
+    logger.info("--- Capture Summary ---")
+    logger.info("Frames captured : %d", len(times))
+    logger.info("Avg latency     : %.1f ms", times.mean() * 1000)
+    logger.info("Min latency     : %.1f ms", times.min() * 1000)
+    logger.info("Max latency     : %.1f ms", times.max() * 1000)
+    logger.info(
+        "Avg FPS         : %.0f",
+        1.0 / times.mean() if times.mean() > 0 else 0,
+    )
+    logger.info("Output dir      : %s", out_dir)
+    logger.info(
+        "Total duration  : %.1f s",
+        args.frames * args.interval,
+    )
+
+    # ── Cleanup ──────────────────────────────────────────────────────
+    cap.release()
+    logger.info("Shutting down ...")
+    browser.close()
+    loader.stop()
+    logger.info("Done — %d frames ready for annotation", len(manifest))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+        sys.exit(130)
+    except Exception as exc:
+        logger.critical("FAILED: %s", exc, exc_info=True)
+        sys.exit(1)
