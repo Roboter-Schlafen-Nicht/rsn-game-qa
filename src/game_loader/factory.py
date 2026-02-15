@@ -17,18 +17,21 @@ logger = logging.getLogger(__name__)
 # Registry of loader_type → class.  Kept flat and simple; games that
 # need truly custom loaders can register themselves here.
 _LOADER_REGISTRY: dict[str, type[GameLoader]] = {}
+_REGISTRY_INITIALIZED: bool = False
 
 
 def _ensure_registry() -> None:
     """Lazily populate the registry to avoid circular imports."""
-    if _LOADER_REGISTRY:
+    global _REGISTRY_INITIALIZED  # noqa: PLW0603
+    if _REGISTRY_INITIALIZED:
         return
 
     from src.game_loader.browser_loader import BrowserGameLoader
     from src.game_loader.breakout71_loader import Breakout71Loader
 
-    _LOADER_REGISTRY["browser"] = BrowserGameLoader
-    _LOADER_REGISTRY["breakout-71"] = Breakout71Loader
+    _LOADER_REGISTRY.setdefault("browser", BrowserGameLoader)
+    _LOADER_REGISTRY.setdefault("breakout-71", Breakout71Loader)
+    _REGISTRY_INITIALIZED = True
 
 
 def create_loader(config: GameLoaderConfig) -> GameLoader:
