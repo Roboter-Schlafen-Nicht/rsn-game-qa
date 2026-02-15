@@ -1,17 +1,48 @@
 # Reporting System Spec
 
-> Extracted from `documentation/sessions/session1.md`. This is the reference
-> design for JSON episode reports, the HTML dashboard, and CI artifact
-> integration.
+> Design spec for the reporting subsystem. Updated to reflect the
+> implemented dataclass-based architecture in `src/reporting/`.
 
 ## Overview
 
 The reporting system converts QA run data (episodes, oracle findings,
 performance metrics) into:
 
-1. **JSON reports** — structured, machine-readable session reports
-2. **HTML dashboard** — human-readable Bootstrap-based summary page
-3. **CI artifacts** — uploaded to GitHub Actions for review
+1. **JSON reports** -- structured, machine-readable session reports
+2. **HTML dashboard** -- human-readable Bootstrap 5 summary page
+3. **CI artifacts** -- uploaded to GitHub Actions for review
+
+---
+
+## Data Model
+
+The reporting module is built around four dataclasses and two service
+classes:
+
+| Class              | Role                                            |
+|--------------------|-------------------------------------------------|
+| `FindingReport`    | Single oracle finding (severity, step, metadata) |
+| `EpisodeMetrics`   | Performance stats for one episode (FPS, duration) |
+| `EpisodeReport`    | All data for one episode (steps, reward, findings, metrics) |
+| `SessionReport`    | Aggregated session (list of episodes + summary)  |
+| `ReportGenerator`  | Builds a `SessionReport`, computes summary, writes JSON |
+| `DashboardRenderer`| Renders session JSON to an HTML dashboard via Jinja2 |
+
+---
+
+## Severity Levels
+
+The implementation uses the Oracle subsystem naming convention rather
+than the original high/medium/low labels:
+
+| Implementation | Spec equivalent | Meaning                          |
+|----------------|-----------------|----------------------------------|
+| `"critical"`   | high            | Crashes, blocking bugs           |
+| `"warning"`    | medium          | Performance issues, stuck states |
+| `"info"`       | low             | Minor observations               |
+
+An episode is marked **FAIL** if it contains at least one `"critical"`
+severity finding.
 
 ---
 
@@ -19,190 +50,179 @@ performance metrics) into:
 
 ```json
 {
-  "run_id": "2026-02-10T00:20Z_breakout71_smoke",
-  "game": "Breakout71",
-  "build_id": "commit_sha_or_build_number",
+  "session_id": "uuid-string",
+  "game": "breakout-71",
+  "build_id": "local",
+  "timestamp": "2026-02-15T08:00:00+00:00",
   "episodes": [
     {
       "episode_id": 0,
-      "seed": 123,
       "steps": 350,
       "total_reward": 42.5,
+      "terminated": true,
+      "truncated": false,
+      "seed": 123,
       "findings": [
         {
-          "type": "crash",
-          "severity": "high",
-          "message": "Game process/window died during episode."
+          "oracle_name": "CrashOracle",
+          "severity": "critical",
+          "step": 312,
+          "description": "Game process died during episode.",
+          "data": {},
+          "screenshot_path": null
         },
         {
-          "type": "perf_frame_time",
-          "severity": "medium",
-          "message": "Step times high: avg=38.2 ms, p99=85.4 ms"
+          "oracle_name": "PerformanceOracle",
+          "severity": "warning",
+          "step": 180,
+          "description": "Step times high: avg=38.2 ms, p99=85.4 ms",
+          "data": {"avg_ms": 38.2, "p99_ms": 85.4},
+          "screenshot_path": null
         }
       ],
-      "coverage": {
-        "novel_states": 120,
-        "coverage_ratio": 0.87
-      },
       "metrics": {
-        "avg_fps": 55.0,
+        "mean_fps": 55.0,
         "min_fps": 30.0,
-        "max_score": 380
-      },
-      "artifacts": {
-        "video_path": "videos/episode_0.mp4",
-        "screenshots": ["screens/ep0_step120.png"]
+        "max_reward_per_step": 3.0,
+        "total_duration_seconds": 41.1
       }
     }
   ],
   "summary": {
-    "episodes_total": 5,
+    "total_episodes": 5,
+    "total_findings": 6,
+    "critical_findings": 1,
+    "warning_findings": 2,
+    "info_findings": 3,
     "episodes_failed": 1,
-    "high_severity_findings": 1,
-    "medium_severity_findings": 2,
-    "low_severity_findings": 3
+    "mean_episode_reward": 38.5,
+    "mean_episode_length": 1100
   }
 }
 ```
 
 ### Field Descriptions
 
-| Field                    | Type       | Description                                          |
-|--------------------------|------------|------------------------------------------------------|
-| `run_id`                 | string     | Timestamp-based unique run identifier                |
-| `game`                   | string     | Name of game under test                              |
-| `build_id`               | string     | Git commit SHA or build number (from `CI_COMMIT_SHORT_SHA`) |
-| `episodes`               | array      | Per-episode data                                     |
-| `episodes[].episode_id`  | int        | Sequential episode number                            |
-| `episodes[].seed`        | int        | Random seed used                                     |
-| `episodes[].steps`       | int        | Total steps taken                                    |
-| `episodes[].total_reward`| float      | Cumulative reward                                    |
-| `episodes[].findings`    | array      | Oracle findings (type, severity, message + extras)   |
-| `episodes[].coverage`    | object     | Novel states visited, coverage ratio                 |
-| `episodes[].metrics`     | object     | avg_fps, min_fps, max_score                          |
-| `episodes[].artifacts`   | object     | Paths to video/screenshots                           |
-| `summary`                | object     | Aggregated counts across all episodes                |
+| Field                             | Type         | Description                                          |
+|-----------------------------------|--------------|------------------------------------------------------|
+| `session_id`                      | string       | UUID generated at session start                      |
+| `game`                            | string       | Name of game under test                              |
+| `build_id`                        | string       | Git commit SHA or build number (from `CI_COMMIT_SHORT_SHA`, default `"local"`) |
+| `timestamp`                       | string       | ISO-8601 timestamp of session start                  |
+| `episodes`                        | array        | Per-episode data                                     |
+| `episodes[].episode_id`           | int          | Sequential episode number                            |
+| `episodes[].steps`                | int          | Total steps taken                                    |
+| `episodes[].total_reward`         | float        | Cumulative reward                                    |
+| `episodes[].terminated`           | bool         | Whether the episode ended naturally                  |
+| `episodes[].truncated`            | bool         | Whether the episode was truncated (time/step limit)  |
+| `episodes[].seed`                 | int \| null  | Random seed used, if any                             |
+| `episodes[].findings`             | array        | Oracle findings for this episode                     |
+| `episodes[].findings[].oracle_name` | string     | Name of the oracle that detected the issue           |
+| `episodes[].findings[].severity`  | string       | `"critical"`, `"warning"`, or `"info"`               |
+| `episodes[].findings[].step`      | int          | Environment step at which finding occurred           |
+| `episodes[].findings[].description` | string     | Human-readable description                           |
+| `episodes[].findings[].data`      | object       | Arbitrary metadata (oracle-specific)                 |
+| `episodes[].findings[].screenshot_path` | string \| null | Path to saved screenshot, if available         |
+| `episodes[].metrics`              | object       | Performance and gameplay metrics                     |
+| `episodes[].metrics.mean_fps`     | float \| null | Average FPS during the episode                      |
+| `episodes[].metrics.min_fps`      | float \| null | Minimum FPS observed                                |
+| `episodes[].metrics.max_reward_per_step` | float \| null | Highest single-step reward                   |
+| `episodes[].metrics.total_duration_seconds` | float \| null | Wall-clock duration in seconds             |
+| `summary`                         | object       | Aggregated counts across all episodes                |
+| `summary.total_episodes`          | int          | Count of episodes                                    |
+| `summary.total_findings`          | int          | Total findings across all episodes                   |
+| `summary.critical_findings`       | int          | Total critical-severity findings                     |
+| `summary.warning_findings`        | int          | Total warning-severity findings                      |
+| `summary.info_findings`           | int          | Total info-severity findings                         |
+| `summary.episodes_failed`         | int          | Episodes with at least one critical finding          |
+| `summary.mean_episode_reward`     | float        | Average cumulative reward per episode                |
+| `summary.mean_episode_length`     | float        | Average steps per episode                            |
 
 ---
 
-## Report Writer (`write_run_report`)
+## ReportGenerator
+
+The `ReportGenerator` class builds up a session report incrementally
+and writes it to JSON.
 
 ```python
-import json
-import os
-from pathlib import Path
+from src.reporting import ReportGenerator, EpisodeReport, FindingReport, EpisodeMetrics
 
-def write_run_report(run_id, episodes, output_dir="reports"):
-    summary = {
-        "episodes_total": len(episodes),
-        "episodes_failed": sum(
-            any(f["severity"] == "high" for f in ep["findings"]) for ep in episodes
-        ),
-        "high_severity_findings": sum(
-            sum(1 for f in ep["findings"] if f["severity"] == "high") for ep in episodes
-        ),
-        "medium_severity_findings": sum(
-            sum(1 for f in ep["findings"] if f["severity"] == "medium") for ep in episodes
-        ),
-        "low_severity_findings": sum(
-            sum(1 for f in ep["findings"] if f["severity"] == "low") for ep in episodes
-        ),
-    }
+gen = ReportGenerator(output_dir="reports", game_name="breakout-71")
 
-    report = {
-        "run_id": run_id,
-        "game": "Breakout71",
-        "build_id": os.getenv("CI_COMMIT_SHORT_SHA", "local"),
-        "episodes": episodes,
-        "summary": summary,
-    }
+episode = EpisodeReport(
+    episode_id=0,
+    steps=350,
+    total_reward=42.5,
+    terminated=True,
+    truncated=False,
+    seed=123,
+    findings=[
+        FindingReport(
+            oracle_name="CrashOracle",
+            severity="critical",
+            step=312,
+            description="Game process died during episode.",
+        ),
+    ],
+    metrics=EpisodeMetrics(mean_fps=55.0, min_fps=30.0),
+)
 
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    with open(out_dir / f"{run_id}.json", "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2)
+gen.add_episode(episode)
+report_path = gen.save()  # writes reports/breakout-71_<uuid>.json
 ```
+
+Key methods:
+
+| Method            | Description                                       |
+|-------------------|---------------------------------------------------|
+| `add_episode(ep)` | Append an `EpisodeReport` to the session           |
+| `compute_summary()` | Calculate aggregated stats (called automatically by `save()`) |
+| `save(filename)`  | Write the session report to JSON                   |
+| `to_dict()`       | Return the session report as a plain dict          |
 
 ---
 
 ## HTML Dashboard
 
-### Features
+### DashboardRenderer
 
-**Run-level view:**
-- List of all runs (each JSON file)
-- Summary: episodes, failures, high/medium/low findings, average FPS, coverage
-
-**Episode-level view:**
-- Status: PASS/FAIL (based on any high-severity finding)
-- Steps, total reward, key metrics
-- Findings list with severity coloring
-- Links to video/screenshot artifacts
-
-### Dashboard Generator (`generate_dashboard.py`)
+The `DashboardRenderer` class uses Jinja2 to produce a self-contained
+HTML file. It first looks for an external template at
+`template_dir/template_name`; if the file does not exist, it falls back
+to a built-in Bootstrap 5 template.
 
 ```python
-import json
-from pathlib import Path
-from jinja2 import Environment, FileSystemLoader
+from src.reporting import DashboardRenderer, ReportGenerator
 
-def load_run_reports(reports_dir="reports"):
-    reports_path = Path(reports_dir)
-    runs = []
-    for path in sorted(reports_path.glob("*.json")):
-        with open(path, "r", encoding="utf-8") as f:
-            runs.append(json.load(f))
-    return runs
+gen = ReportGenerator()
+# ... add episodes ...
 
-def generate_dashboard(
-    reports_dir="reports",
-    templates_dir="templates",
-    output_html="reports/index.html",
-):
-    runs = load_run_reports(reports_dir)
-    if not runs:
-        print("No JSON reports found, nothing to render.")
-        return
+renderer = DashboardRenderer()
+renderer.render_to_file(gen.to_dict(), "reports/dashboard.html")
 
-    env = Environment(loader=FileSystemLoader(templates_dir))
-    template = env.get_template("index.html")
-    html = template.render(runs=runs)
-
-    out_path = Path(output_html)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(html)
-
-    print(f"Dashboard written to {out_path}")
-
-if __name__ == "__main__":
-    generate_dashboard()
+# Or from a saved JSON file:
+renderer.generate_dashboard("reports/breakout-71_abc12345.json")
 ```
 
-### Jinja2 Template (`templates/index.html`)
+### Dashboard Features
 
-Bootstrap 5 based, self-contained HTML. Key elements:
+**Run-level view:**
+- Session ID, game name, build ID, timestamp
+- Summary: episodes, failures, critical/warning/info counts
 
-- **Runs table:** Run ID, Game, Build, Episodes, Failures, High/Medium/Low counts
-- **Per-run episode table:** Episode #, Status (PASS/FAIL), Steps, Total Reward,
-  Findings list (color-coded by severity), Key Metrics (avg FPS, min FPS, max score)
-- **CSS classes:** `.severity-high` (red), `.severity-medium` (orange),
-  `.severity-low` (green)
-- **Episode status:** FAIL if any finding has `severity == "high"`, else PASS
+**Episode-level view:**
+- Status: PASS/FAIL (based on any critical finding)
+- Steps, total reward, average FPS
+- Findings list with severity coloring
+- CSS classes: `.severity-critical` (red), `.severity-warning` (orange),
+  `.severity-info` (green)
 
-See the full template in `documentation/sessions/session1.md` lines 3721-3836.
+### Template Customisation
 
----
-
-## JUnit XML (Optional)
-
-For CI pass/fail integration, generate a JUnit XML test suite where:
-
-- Each **episode** maps to a test case
-- Test name: `game=Breakout71 episode=0`
-- High-severity findings mark the test as failed
-- Medium/low go into `<system-out>`
-- Use the `junit-xml` Python package or write minimal XML directly
+Drop a Jinja2 template at `templates/dashboard.html.j2` to override the
+built-in template. The template receives a `runs` list where each item
+is a session report dict.
 
 ---
 
@@ -210,41 +230,27 @@ For CI pass/fail integration, generate a JUnit XML test suite where:
 
 ```
 reports/
-  <run_id>.json          # structured report
-  index.html             # rendered dashboard
-videos/
-  episode_0.mp4          # optional video recordings
-screens/
-  ep0_step120.png        # screenshots at finding steps
+  <game>_<session_id>.json   # structured report
+  dashboard.html             # rendered dashboard
 ```
 
 ---
 
-## Metrics Tracked
+## Future Work
 
-### Per-Episode
+These features are documented for future implementation:
 
-| Metric          | Source                                         |
-|-----------------|------------------------------------------------|
-| `avg_fps`       | Mean of `1.0 / step_duration_s`                |
-| `min_fps`       | Minimum instantaneous FPS                      |
-| `max_score`     | Highest score reached                          |
-| `steps`         | Total environment steps                        |
-| `total_reward`  | Cumulative RL reward                           |
-| `novel_states`  | Count of unique states visited (coverage)      |
-| `coverage_ratio`| novel_states / total_possible (estimated)      |
+- **Coverage tracking** -- `novel_states`, `coverage_ratio` per episode
+- **Artifact paths** -- `video_path`, `screenshots` per episode
+- **JUnit XML** -- optional CI pass/fail integration where each episode
+  maps to a test case
 
-### Per-Run (Summary)
-
-| Metric                    | Computation                              |
-|---------------------------|------------------------------------------|
-| `episodes_total`          | Count of episodes                        |
-| `episodes_failed`         | Episodes with any high-severity finding  |
-| `high_severity_findings`  | Total high-severity findings             |
-| `medium_severity_findings`| Total medium-severity findings           |
-| `low_severity_findings`   | Total low-severity findings              |
+---
 
 ## Source Files
 
-- `src/reporting/report.py` — `EpisodeReport`, `SessionReport`, `ReportGenerator`
-- `src/reporting/dashboard.py` — `DashboardRenderer` (Jinja2)
+- `src/reporting/__init__.py` -- public API exports
+- `src/reporting/report.py` -- `FindingReport`, `EpisodeMetrics`, `EpisodeReport`, `SessionReport`, `ReportGenerator`
+- `src/reporting/dashboard.py` -- `DashboardRenderer` (Jinja2 + built-in Bootstrap 5 template)
+- `tests/test_reporting.py` -- comprehensive test suite
+- `docs/api/reporting.rst` -- Sphinx API reference
