@@ -94,6 +94,91 @@ def resolve_device(requested: str = "auto") -> str:
     return "cpu"
 
 
+def _patch_ultralytics_xpu() -> None:
+    """Monkey-patch ultralytics to support Intel XPU.
+
+    Ultralytics 8.4.x has partial XPU support in the trainer and
+    validator but two things block XPU usage:
+
+    1. ``select_device()`` rejects ``"xpu"`` as an invalid CUDA device.
+    2. ``BaseTrainer`` hard-codes ``GradScaler("cuda", ...)`` which
+       crashes on XPU-only torch builds.
+
+    This function wraps the original functions so that XPU is handled
+    correctly without modifying the ultralytics package on disk.
+    """
+    import torch
+    from ultralytics.utils import torch_utils
+
+    # --- Patch 1: select_device ---
+    _original = torch_utils.select_device
+
+    def _xpu_aware_select_device(device="", newline=False, verbose=True):
+        dev = str(device).strip().lower()
+        if dev == "xpu":
+            if not (hasattr(torch, "xpu") and torch.xpu.is_available()):
+                logger.warning("XPU requested but not available, falling back to CPU")
+                return _original("cpu", newline=newline, verbose=verbose)
+            s = (
+                f"Ultralytics {torch_utils.__version__} "
+                f"Python-{torch_utils.PYTHON_VERSION} "
+                f"torch-{torch_utils.TORCH_VERSION} "
+                f"XPU ({torch.xpu.get_device_name(0)})\n"
+            )
+            if verbose:
+                torch_utils.LOGGER.info(s if newline else s.rstrip())
+            return torch.device("xpu")
+        return _original(device, newline=newline, verbose=verbose)
+
+    torch_utils.select_device = _xpu_aware_select_device
+
+    # Also patch modules that import select_device directly into their
+    # namespace (they hold a stale reference to the original function).
+    for mod_name in [
+        "ultralytics.engine.trainer",
+        "ultralytics.engine.validator",
+        "ultralytics.engine.predictor",
+    ]:
+        try:
+            mod = __import__(mod_name, fromlist=["select_device"])
+            if hasattr(mod, "select_device"):
+                mod.select_device = _xpu_aware_select_device
+        except ImportError:
+            pass
+
+    # --- Patch 2: GradScaler("cuda") → GradScaler("xpu") ---
+    # BaseTrainer._setup_train hard-codes GradScaler("cuda", enabled=...)
+    # which crashes on XPU-only torch even when amp=False.
+    from ultralytics.engine.trainer import BaseTrainer
+
+    _original_setup_train = BaseTrainer._setup_train
+
+    def _patched_setup_train(self):
+        _original_setup_train(self)
+        # Replace the CUDA GradScaler with an XPU one after setup
+        if hasattr(self, "device") and self.device.type == "xpu":
+            self.scaler = torch.amp.GradScaler("xpu", enabled=self.amp)
+
+    BaseTrainer._setup_train = _patched_setup_train
+
+    # --- Patch 3: _get_memory() doesn't know about XPU ---
+    # Falls through to torch.cuda.memory_reserved() which returns 0.
+    _original_get_memory = BaseTrainer._get_memory
+
+    def _patched_get_memory(self, fraction=False):
+        if hasattr(self, "device") and self.device.type == "xpu":
+            memory = torch.xpu.memory_reserved()
+            if fraction:
+                total = torch.xpu.get_device_properties(self.device).total_memory
+                return (memory / total) if total > 0 else 0
+            return memory / 2**30
+        return _original_get_memory(self, fraction=fraction)
+
+    BaseTrainer._get_memory = _patched_get_memory
+
+    logger.debug("Patched ultralytics select_device + GradScaler + _get_memory for XPU")
+
+
 def train(config: dict, overrides: dict | None = None) -> Path:
     """Run YOLO training with the given configuration.
 
@@ -146,6 +231,10 @@ def train(config: dict, overrides: dict | None = None) -> Path:
     # Resolve device
     device = resolve_device(cfg.get("device", "auto"))
     logger.info("Using device: %s", device)
+
+    # Patch ultralytics select_device to support Intel XPU
+    if device == "xpu":
+        _patch_ultralytics_xpu()
 
     # Load base model
     base_model = cfg.get("base_model", "yolov8n.pt")

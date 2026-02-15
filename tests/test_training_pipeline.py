@@ -55,12 +55,13 @@ class TestLoadTrainingConfig:
         """Config includes a device field."""
         cfg = load_training_config("breakout-71")
         assert "device" in cfg
-        assert cfg["device"] == "auto"
+        assert cfg["device"] == "cpu"
 
     def test_config_has_validation_thresholds(self):
         """Config includes mAP validation thresholds."""
         cfg = load_training_config("breakout-71")
-        assert cfg["min_map50"] == 0.80
+        # Lowered from 0.80 to 0.65 for initial auto-annotated dataset
+        assert cfg["min_map50"] == 0.65
         assert cfg["min_map50_95"] == 0.50
 
     def test_config_has_output_dir(self):
@@ -78,10 +79,11 @@ class TestLoadTrainingConfig:
         cfg = load_training_config("breakout-71")
         assert cfg["amp"] is False
 
-    def test_config_dataset_path_initially_null(self):
-        """Dataset path is null until user sets it after Roboflow export."""
+    def test_config_dataset_path_is_set(self):
+        """Dataset path points to the prepared YOLO dataset."""
         cfg = load_training_config("breakout-71")
-        assert cfg["dataset_path"] is None
+        assert cfg["dataset_path"] is not None
+        assert "data.yaml" in cfg["dataset_path"]
 
     def test_missing_config_raises(self):
         """Loading a nonexistent config raises FileNotFoundError."""
@@ -175,7 +177,7 @@ class TestTrainValidation:
     def test_raises_without_dataset_path(self):
         """train() raises RuntimeError when dataset_path is null."""
         cfg = load_training_config("breakout-71")
-        assert cfg["dataset_path"] is None
+        cfg["dataset_path"] = None  # Force null for this test
 
         with pytest.raises(RuntimeError, match="dataset_path is not set"):
             train(cfg)
@@ -202,9 +204,10 @@ class TestTrainValidation:
     def test_none_overrides_ignored(self):
         """None values in overrides dict are ignored."""
         cfg = load_training_config("breakout-71")
+        cfg["dataset_path"] = None  # Force null for this test
         overrides = {"epochs": None, "device": None, "dataset_path": None}
 
-        # Should still fail because dataset_path remains None from config
+        # Should still fail because dataset_path remains None
         with pytest.raises(RuntimeError, match="dataset_path is not set"):
             train(cfg, overrides=overrides)
 
@@ -234,6 +237,7 @@ class TestValidateModel:
     def test_raises_without_dataset_path(self, tmp_path):
         """validate_model raises RuntimeError when dataset_path not set."""
         cfg = load_training_config("breakout-71")
+        cfg["dataset_path"] = None  # Force null for this test
 
         # Create a fake weights file so we get past that check
         fake_weights = tmp_path / "best.pt"

@@ -71,7 +71,7 @@ dependencies:
       - torchvision==0.25.0+xpu
       - triton-xpu==3.6.0
       - tzdata==2025.3
-      - ultralytics==8.4.9
+      - ultralytics==8.4.14
       - ultralytics-thop==2.0.18
       - umf==1.0.2
       - werkzeug==3.1.5
