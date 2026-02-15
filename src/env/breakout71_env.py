@@ -188,6 +188,12 @@ class Breakout71Env(gym.Env):
             if detections.get("ball") is not None:
                 break
 
+        if detections.get("ball") is None:
+            raise RuntimeError(
+                "Breakout71Env.reset() failed to detect a ball after 5 attempts; "
+                "the game may not have initialized correctly."
+            )
+
         # Build observation with reset semantics
         obs = self._build_observation(detections, reset=True)
 

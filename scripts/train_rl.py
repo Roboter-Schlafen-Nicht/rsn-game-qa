@@ -239,7 +239,6 @@ def main(argv: list[str] | None = None) -> int:
     from src.game_loader.config import load_game_config
     from src.orchestrator.data_collector import FrameCollector
     from src.orchestrator.session_runner import _create_oracles
-    from src.reporting import ReportGenerator
 
     output_dir = Path(args.output_dir)
 
@@ -332,14 +331,6 @@ def main(argv: list[str] | None = None) -> int:
                 collector.frame_count,
                 frames_dir,
             )
-
-        # Generate report
-        report_gen = ReportGenerator(
-            output_dir=output_dir / "reports",
-            game_name="breakout-71",
-        )
-        report_path = report_gen.save()
-        logger.info("Report saved to %s", report_path)
 
         # Print summary
         print("\n--- Training Summary ---")

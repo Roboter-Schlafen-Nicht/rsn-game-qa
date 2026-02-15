@@ -21,6 +21,7 @@ Covers:
 from unittest import mock
 
 import numpy as np
+import pytest
 
 from src.env.breakout71_env import Breakout71Env
 
@@ -709,6 +710,22 @@ class TestReset:
         env.reset()
 
         env._lazy_init.assert_called_once()
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_reset_raises_after_ball_retry_exhausted(self, mock_time):
+        """reset() raises RuntimeError if ball never detected after 5 retries."""
+        env = Breakout71Env()
+        env._initialized = True
+        env._capture = mock.MagicMock()
+        env._capture.capture_frame.return_value = _frame()
+        env._detector = mock.MagicMock()
+        env._detector.detect_to_game_state.return_value = _detections(ball=None)
+        env._input = mock.MagicMock()
+
+        with pytest.raises(RuntimeError, match="failed to detect a ball"):
+            env.reset()
+
+        assert env._input.apply_action.call_count == 5
 
 
 # -- Step ----------------------------------------------------------------------
