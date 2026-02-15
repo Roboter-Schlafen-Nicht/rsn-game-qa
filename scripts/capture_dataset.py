@@ -5,10 +5,20 @@ Launches the game, plays it with a random bot (random paddle movements
 via mouse input), and captures frames at configurable intervals.  Saves
 PNGs and a JSON manifest with metadata for each frame.
 
+The bot automatically detects and handles game UI states:
+- **Gameplay**: random paddle movements via Selenium ActionChains
+- **Perk selection**: picks a random perk from the upgrade modal
+- **Game over**: clicks "New Run" to restart
+- **Paused**: clicks the canvas or presses Space to resume
+
+Detection uses ``driver.execute_script()`` to query the DOM directly
+(``body.classList.contains('has-alert-open')``, ``#close-modale``
+visibility, ``#popup`` content, etc.).
+
 Usage::
 
     python scripts/capture_dataset.py
-    python scripts/capture_dataset.py --frames 500 --interval 0.2
+    python scripts/capture_dataset.py --frames 300 --interval 0.5
     python scripts/capture_dataset.py --skip-setup --browser chrome -v
 """
 
@@ -33,6 +43,239 @@ from scripts._smoke_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Game state detection via Selenium JS execution
+# ---------------------------------------------------------------------------
+
+# Game UI states returned by _detect_game_state()
+STATE_GAMEPLAY = "gameplay"
+STATE_PAUSED = "paused"
+STATE_PERK_PICKER = "perk_picker"
+STATE_GAME_OVER = "game_over"
+STATE_MENU = "menu"
+STATE_UNKNOWN = "unknown"
+
+# JavaScript snippet that queries the game DOM to determine current state.
+# Returns a JSON-serializable dict with state info.
+_DETECT_STATE_JS = """
+return (function() {
+    var result = {state: "unknown", details: {}};
+
+    // Check if any modal/alert is open
+    var hasAlert = document.body.classList.contains('has-alert-open');
+    var popup = document.getElementById('popup');
+    var closeBtn = document.getElementById('close-modale');
+
+    if (!hasAlert) {
+        // No modal open — either gameplay or paused
+        // We can't easily check gameState.running from the DOM, but
+        // if the game is running the ball is moving.  For our purposes,
+        // "no modal = gameplay or paused" is fine — we click to unpause.
+        result.state = "gameplay";
+        return result;
+    }
+
+    // Modal is open — determine which type
+    if (!popup) {
+        result.state = "unknown";
+        return result;
+    }
+
+    var popupText = popup.innerText || "";
+    var buttons = popup.querySelectorAll('button');
+    var buttonTexts = [];
+    for (var i = 0; i < buttons.length; i++) {
+        buttonTexts.push(buttons[i].innerText.trim());
+    }
+    result.details.buttonTexts = buttonTexts;
+    result.details.popupTextSnippet = popupText.substring(0, 200);
+
+    // Check if close button is visible (game-over and menu modals have it;
+    // perk picker does NOT)
+    var closeBtnVisible = false;
+    if (closeBtn) {
+        var style = window.getComputedStyle(closeBtn);
+        closeBtnVisible = (style.display !== 'none' && style.visibility !== 'hidden');
+    }
+    result.details.closeBtnVisible = closeBtnVisible;
+
+    // Perk picker: required modal (no close button), has upgrade buttons
+    if (!closeBtnVisible && buttons.length >= 2) {
+        result.state = "perk_picker";
+        result.details.numPerks = buttons.length;
+        return result;
+    }
+
+    // Game over: has close button, popup text usually contains score info
+    // and a "New Run" / restart button
+    if (closeBtnVisible) {
+        // Check for restart-like button text
+        var hasRestart = false;
+        for (var j = 0; j < buttonTexts.length; j++) {
+            var t = buttonTexts[j].toLowerCase();
+            if (t.indexOf("new") >= 0 || t.indexOf("restart") >= 0 ||
+                t.indexOf("run") >= 0 || t.indexOf("yes") >= 0 ||
+                t.indexOf("again") >= 0) {
+                hasRestart = true;
+                break;
+            }
+        }
+
+        if (hasRestart || popupText.toLowerCase().indexOf("game over") >= 0 ||
+            popupText.toLowerCase().indexOf("score") >= 0) {
+            result.state = "game_over";
+        } else {
+            result.state = "menu";
+        }
+        return result;
+    }
+
+    // Fallback: unknown modal
+    result.state = "unknown";
+    return result;
+})();
+"""
+
+# JavaScript snippet to click a random perk button in the upgrade picker.
+# Returns the index of the button clicked, or -1 if none found.
+_CLICK_PERK_JS = """
+return (function() {
+    var popup = document.getElementById('popup');
+    if (!popup) return {clicked: -1, text: ""};
+
+    var buttons = popup.querySelectorAll('button');
+    if (buttons.length === 0) return {clicked: -1, text: ""};
+
+    // Pick a random button
+    var idx = Math.floor(Math.random() * buttons.length);
+    var text = buttons[idx].innerText.trim();
+    buttons[idx].click();
+    return {clicked: idx, text: text};
+})();
+"""
+
+# JavaScript snippet to dismiss game-over modal.
+# Strategy: click the close button first, or find a restart/new-run button.
+_DISMISS_GAME_OVER_JS = """
+return (function() {
+    var popup = document.getElementById('popup');
+    var closeBtn = document.getElementById('close-modale');
+
+    // Try clicking any restart-like button first
+    if (popup) {
+        var buttons = popup.querySelectorAll('button');
+        for (var i = 0; i < buttons.length; i++) {
+            var t = buttons[i].innerText.trim().toLowerCase();
+            if (t.indexOf("new") >= 0 || t.indexOf("restart") >= 0 ||
+                t.indexOf("run") >= 0 || t.indexOf("yes") >= 0 ||
+                t.indexOf("again") >= 0) {
+                buttons[i].click();
+                return {action: "restart_button", text: buttons[i].innerText.trim()};
+            }
+        }
+    }
+
+    // Fall back to close button
+    if (closeBtn) {
+        closeBtn.click();
+        return {action: "close_button", text: ""};
+    }
+
+    return {action: "none", text: ""};
+})();
+"""
+
+# JavaScript snippet to dismiss a generic menu modal.
+_DISMISS_MENU_JS = """
+return (function() {
+    var closeBtn = document.getElementById('close-modale');
+    if (closeBtn) {
+        closeBtn.click();
+        return {action: "close_button"};
+    }
+
+    // Try pressing Escape as fallback
+    document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', code: 'Escape'}));
+    return {action: "escape_key"};
+})();
+"""
+
+
+def _detect_game_state(driver) -> dict:
+    """Detect the current game UI state via JavaScript execution.
+
+    Parameters
+    ----------
+    driver : selenium.webdriver.Remote
+        The Selenium WebDriver instance.
+
+    Returns
+    -------
+    dict
+        ``{"state": str, "details": dict}`` where state is one of
+        ``STATE_*`` constants.
+    """
+    try:
+        result = driver.execute_script(_DETECT_STATE_JS)
+        if result is None:
+            return {"state": STATE_UNKNOWN, "details": {}}
+        return result
+    except Exception as exc:
+        logger.debug("State detection failed: %s", exc)
+        return {"state": STATE_UNKNOWN, "details": {}}
+
+
+def _handle_modal(driver, state_info: dict) -> dict:
+    """Handle a detected modal by clicking the appropriate button.
+
+    Parameters
+    ----------
+    driver : selenium.webdriver.Remote
+        The Selenium WebDriver instance.
+    state_info : dict
+        Result from ``_detect_game_state()``.
+
+    Returns
+    -------
+    dict
+        Action metadata describing what was done.
+    """
+    state = state_info["state"]
+
+    if state == STATE_PERK_PICKER:
+        result = driver.execute_script(_CLICK_PERK_JS)
+        logger.info(
+            "Perk picker: clicked button %d (%s)",
+            result.get("clicked", -1),
+            result.get("text", "?"),
+        )
+        return {
+            "type": "perk_pick",
+            "button_index": result.get("clicked", -1),
+            "perk_text": result.get("text", ""),
+        }
+
+    elif state == STATE_GAME_OVER:
+        result = driver.execute_script(_DISMISS_GAME_OVER_JS)
+        logger.info("Game over: %s (%s)", result.get("action"), result.get("text", ""))
+        return {
+            "type": "game_over_dismiss",
+            "action": result.get("action", "none"),
+        }
+
+    elif state == STATE_MENU:
+        result = driver.execute_script(_DISMISS_MENU_JS)
+        logger.info("Menu dismissed: %s", result.get("action"))
+        return {"type": "menu_dismiss", "action": result.get("action", "none")}
+
+    return {"type": "no_action"}
+
+
+# ---------------------------------------------------------------------------
+# Random bot actions
+# ---------------------------------------------------------------------------
 
 
 def _random_paddle_action(
@@ -89,13 +332,13 @@ def main() -> int:
     parser.add_argument(
         "--frames",
         type=int,
-        default=500,
+        default=300,
         help="Number of frames to capture (default: %(default)s)",
     )
     parser.add_argument(
         "--interval",
         type=float,
-        default=0.2,
+        default=0.5,
         help="Seconds between captures (default: %(default)s)",
     )
     parser.add_argument(
@@ -112,7 +355,7 @@ def main() -> int:
     parser.add_argument(
         "--action-interval",
         type=int,
-        default=5,
+        default=3,
         help="Perform a random action every N frames (default: %(default)s, min: 1)",
     )
     parser.add_argument(
@@ -196,17 +439,60 @@ def main() -> int:
 
     manifest: list[dict] = []
     capture_times: list[float] = []
+    state_counts: dict[str, int] = {}
+    modal_actions: list[dict] = []
 
     for i in range(args.frames):
-        # Periodic random action to generate diverse states
+        # ── Detect game state and handle modals ──────────────────────
+        state_info = _detect_game_state(driver)
+        game_state = state_info["state"]
+        state_counts[game_state] = state_counts.get(game_state, 0) + 1
+
+        modal_action = None
+        if game_state in (STATE_PERK_PICKER, STATE_GAME_OVER, STATE_MENU):
+            # Capture the modal frame BEFORE dismissing it — these are
+            # still useful for training (the model should learn to
+            # recognize non-gameplay states).
+            modal_action = _handle_modal(driver, state_info)
+            modal_actions.append({"frame": i, "state": game_state, **modal_action})
+            # Wait for the modal animation to finish
+            time.sleep(1.0)
+
+            # After dismissing game-over, click canvas to start playing
+            if game_state == STATE_GAME_OVER:
+                try:
+                    _click_to_start(driver, game_canvas, canvas_dims)
+                except Exception as exc:
+                    logger.debug("Post-restart click failed: %s", exc)
+
+            # After perk pick, the game auto-resumes — but sometimes
+            # it pauses briefly.  Click canvas to be safe.
+            if game_state == STATE_PERK_PICKER:
+                time.sleep(0.5)
+                try:
+                    _click_to_start(driver, game_canvas, canvas_dims)
+                except Exception as exc:
+                    logger.debug("Post-perk click failed: %s", exc)
+
+        elif game_state == STATE_PAUSED:
+            # Click to unpause
+            try:
+                _click_to_start(driver, game_canvas, canvas_dims)
+            except Exception as exc:
+                logger.debug("Unpause click failed: %s", exc)
+
+        # ── Periodic random paddle action during gameplay ────────────
         action_meta = None
-        if i % args.action_interval == 0:
+        if (
+            game_state in (STATE_GAMEPLAY, STATE_UNKNOWN)
+            and i % args.action_interval == 0
+        ):
             try:
                 action_meta = _random_paddle_action(driver, game_canvas, canvas_dims)
             except Exception as exc:
                 logger.debug("Action failed (frame %d): %s", i, exc)
 
-        # Capture frame
+        # ── Capture frame ────────────────────────────────────────────
         with Timer(f"frame_{i}") as ft:
             frame = cap.capture_frame()
 
@@ -224,16 +510,20 @@ def main() -> int:
             "timestamp": time.time(),
             "shape": list(frame.shape),
             "capture_ms": round(ft.elapsed * 1000, 1),
+            "game_state": game_state,
         }
         if action_meta:
             entry["action"] = action_meta
+        if modal_action:
+            entry["modal_action"] = modal_action
         manifest.append(entry)
 
         if i % 50 == 0 or i == args.frames - 1:
             logger.info(
-                "Frame %4d/%d  shape=%s  latency=%.1fms",
+                "Frame %4d/%d  state=%-12s shape=%s  latency=%.1fms",
                 i + 1,
                 args.frames,
+                game_state,
                 frame.shape,
                 ft.elapsed * 1000,
             )
@@ -251,6 +541,8 @@ def main() -> int:
         "action_interval_frames": args.action_interval,
         "window_size": [config.window_width, config.window_height],
         "classes": ["paddle", "ball", "brick", "powerup", "wall"],
+        "state_counts": state_counts,
+        "modal_actions": modal_actions,
         "frames": manifest,
     }
     with open(manifest_path, "w") as f:
@@ -275,6 +567,13 @@ def main() -> int:
         "Total duration  : %.1f s",
         args.frames * args.interval,
     )
+    logger.info("--- State Distribution ---")
+    for state_name, count in sorted(state_counts.items()):
+        logger.info(
+            "  %-15s : %d (%.1f%%)", state_name, count, count / len(times) * 100
+        )
+    if modal_actions:
+        logger.info("Modal interactions: %d", len(modal_actions))
 
     # ── Cleanup ──────────────────────────────────────────────────────
     cap.release()

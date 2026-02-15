@@ -33,4 +33,4 @@ readiness_poll_interval_s: 2.0
 # -- Window identification (for WindowCapture) -------------------------
 window_title: Breakout
 window_width: 1280
-window_height: 720
+window_height: 1024
