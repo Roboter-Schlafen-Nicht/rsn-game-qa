@@ -63,3 +63,59 @@ PerformanceOracle
    :members:
    :undoc-members:
    :show-inheritance:
+
+PhysicsViolationOracle
+----------------------
+
+.. autoclass:: src.oracles.PhysicsViolationOracle
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+BoundaryOracle
+--------------
+
+.. autoclass:: src.oracles.BoundaryOracle
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+StateTransitionOracle
+---------------------
+
+.. autoclass:: src.oracles.StateTransitionOracle
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+EpisodeLengthOracle
+-------------------
+
+.. autoclass:: src.oracles.EpisodeLengthOracle
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+TemporalAnomalyOracle
+----------------------
+
+.. autoclass:: src.oracles.TemporalAnomalyOracle
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+RewardConsistencyOracle
+-----------------------
+
+.. autoclass:: src.oracles.RewardConsistencyOracle
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+SoakOracle
+----------
+
+.. autoclass:: src.oracles.SoakOracle
+   :members:
+   :undoc-members:
+   :show-inheritance:

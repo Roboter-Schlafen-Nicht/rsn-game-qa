@@ -95,9 +95,66 @@ class VisualGlitchOracle(Oracle):
             Step info dict.  Expected to contain ``"frame"`` (raw BGR
             image) for visual analysis.
         """
-        raise NotImplementedError(
-            "VisualGlitchOracle.on_step: visual glitch detection not yet implemented"
-        )
+        self._step_count += 1
+
+        frame = info.get("frame")
+        if frame is None:
+            return
+
+        # Always compute current hash for tracking
+        current_hash = self._compute_phash(frame)
+
+        # Rate-limit findings
+        can_report = (self._step_count - self._last_finding_step) >= self.min_interval
+
+        if self._prev_frame is not None and can_report:
+            # Check perceptual hash distance
+            if self._prev_hash is not None and current_hash is not None:
+                distance = self._prev_hash - current_hash
+                if distance > self.hash_distance_threshold:
+                    self._add_finding(
+                        severity="warning",
+                        step=self._step_count,
+                        description=(
+                            f"Perceptual hash distance {distance} exceeds "
+                            f"threshold {self.hash_distance_threshold} — "
+                            f"possible visual glitch"
+                        ),
+                        data={
+                            "type": "phash_anomaly",
+                            "hash_distance": distance,
+                            "threshold": self.hash_distance_threshold,
+                        },
+                        frame=frame,
+                    )
+                    self._last_finding_step = self._step_count
+
+            # Check SSIM (re-check rate limit after potential phash finding)
+            still_can_report = (
+                self._step_count - self._last_finding_step
+            ) >= self.min_interval
+
+            if still_can_report:
+                ssim_val = self._compute_ssim(self._prev_frame, frame)
+                if ssim_val < self.ssim_threshold:
+                    self._add_finding(
+                        severity="warning",
+                        step=self._step_count,
+                        description=(
+                            f"SSIM {ssim_val:.3f} below threshold "
+                            f"{self.ssim_threshold} — possible visual glitch"
+                        ),
+                        data={
+                            "type": "ssim_anomaly",
+                            "ssim": ssim_val,
+                            "threshold": self.ssim_threshold,
+                        },
+                        frame=frame,
+                    )
+                    self._last_finding_step = self._step_count
+
+        self._prev_frame = frame.copy()
+        self._prev_hash = current_hash
 
     def _compute_phash(self, frame: np.ndarray) -> Any:
         """Compute the perceptual hash of a frame.
@@ -109,13 +166,31 @@ class VisualGlitchOracle(Oracle):
 
         Returns
         -------
-        imagehash.ImageHash
-            The perceptual hash of the frame.
+        imagehash.ImageHash or None
+            The perceptual hash of the frame, or None if imagehash
+            is not available.
         """
-        raise NotImplementedError("Perceptual hash computation not yet implemented")
+        try:
+            import imagehash
+            from PIL import Image
+        except ImportError:
+            return None
+
+        # Convert BGR numpy array to PIL Image
+        try:
+            import cv2
+        except ImportError:
+            return None
+
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(rgb)
+        return imagehash.phash(pil_image)
 
     def _compute_ssim(self, frame_a: np.ndarray, frame_b: np.ndarray) -> float:
         """Compute SSIM between two frames.
+
+        Uses a manual SSIM implementation based on the Wang et al. formula
+        to avoid dependency on scikit-image.
 
         Parameters
         ----------
@@ -129,4 +204,36 @@ class VisualGlitchOracle(Oracle):
         float
             SSIM value in [0.0, 1.0].
         """
-        raise NotImplementedError("SSIM computation not yet implemented")
+        # Convert to grayscale float
+        try:
+            import cv2
+        except ImportError as exc:
+            raise RuntimeError(
+                "OpenCV (cv2) is required to compute SSIM in "
+                "VisualGlitchOracle. Install 'opencv-python' or "
+                "'opencv-python-headless'."
+            ) from exc
+
+        gray_a = cv2.cvtColor(frame_a, cv2.COLOR_BGR2GRAY).astype(np.float64)
+        gray_b = cv2.cvtColor(frame_b, cv2.COLOR_BGR2GRAY).astype(np.float64)
+
+        # Constants for stability (standard values for 8-bit images)
+        c1 = (0.01 * 255) ** 2
+        c2 = (0.03 * 255) ** 2
+
+        mu_a = cv2.GaussianBlur(gray_a, (11, 11), 1.5)
+        mu_b = cv2.GaussianBlur(gray_b, (11, 11), 1.5)
+
+        mu_a_sq = mu_a**2
+        mu_b_sq = mu_b**2
+        mu_ab = mu_a * mu_b
+
+        sigma_a_sq = cv2.GaussianBlur(gray_a**2, (11, 11), 1.5) - mu_a_sq
+        sigma_b_sq = cv2.GaussianBlur(gray_b**2, (11, 11), 1.5) - mu_b_sq
+        sigma_ab = cv2.GaussianBlur(gray_a * gray_b, (11, 11), 1.5) - mu_ab
+
+        numerator = (2 * mu_ab + c1) * (2 * sigma_ab + c2)
+        denominator = (mu_a_sq + mu_b_sq + c1) * (sigma_a_sq + sigma_b_sq + c2)
+
+        ssim_map = numerator / denominator
+        return float(ssim_map.mean())

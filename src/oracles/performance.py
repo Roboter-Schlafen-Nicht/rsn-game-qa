@@ -6,6 +6,7 @@ performance metrics during gameplay and flag degradations.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import numpy as np
@@ -100,9 +101,72 @@ class PerformanceOracle(Oracle):
         info : dict[str, Any]
             Step info dict.
         """
-        raise NotImplementedError(
-            "PerformanceOracle.on_step: performance monitoring not yet implemented"
-        )
+        self._step_count += 1
+
+        # 1. Measure FPS
+        fps = self._measure_fps()
+        if fps is not None:
+            self._fps_history.append(fps)
+
+            if fps < self.min_fps:
+                self._low_fps_count += 1
+            else:
+                self._low_fps_count = 0
+
+            # Fire finding when sustained low FPS threshold hit (exactly once)
+            if self._low_fps_count == self.sustained_frames:
+                self._add_finding(
+                    severity="warning",
+                    step=self._step_count,
+                    description=(
+                        f"FPS dropped below {self.min_fps} for "
+                        f"{self.sustained_frames} consecutive frames "
+                        f"(current: {fps:.1f})"
+                    ),
+                    data={
+                        "type": "low_fps",
+                        "current_fps": fps,
+                        "min_fps": self.min_fps,
+                        "sustained_frames": self._low_fps_count,
+                    },
+                )
+
+        # 2. Check resource usage (every 60 steps to avoid overhead)
+        if self._step_count % 60 == 0:
+            resources = self._check_resource_usage()
+            if resources:
+                cpu = resources.get("cpu_percent", 0.0)
+                ram = resources.get("ram_mb", 0.0)
+
+                if cpu > self.cpu_threshold:
+                    self._add_finding(
+                        severity="warning",
+                        step=self._step_count,
+                        description=(
+                            f"CPU usage {cpu:.1f}% exceeds threshold "
+                            f"{self.cpu_threshold}%"
+                        ),
+                        data={
+                            "type": "high_cpu",
+                            "cpu_percent": cpu,
+                            "threshold": self.cpu_threshold,
+                        },
+                    )
+
+                if ram > self.ram_threshold_mb:
+                    self._add_finding(
+                        severity="warning",
+                        step=self._step_count,
+                        description=(
+                            f"RAM usage {ram:.1f} MB exceeds threshold "
+                            f"{self.ram_threshold_mb} MB"
+                        ),
+                        data={
+                            "type": "high_ram",
+                            "ram_mb": ram,
+                            "threshold": self.ram_threshold_mb,
+                        },
+                    )
 
     def _measure_fps(self) -> float | None:
         """Calculate instantaneous FPS from wall-clock step timing.
@@ -112,7 +176,19 @@ class PerformanceOracle(Oracle):
         float or None
             FPS estimate, or None if this is the first step.
         """
-        raise NotImplementedError("FPS measurement not yet implemented")
+        now = time.perf_counter()
+
+        if self._last_step_time is None:
+            self._last_step_time = now
+            return None
+
+        elapsed = now - self._last_step_time
+        self._last_step_time = now
+
+        if elapsed <= 0:
+            return None
+
+        return 1.0 / elapsed
 
     def _check_resource_usage(self) -> dict[str, float]:
         """Query CPU and RAM usage via psutil.
@@ -121,8 +197,21 @@ class PerformanceOracle(Oracle):
         -------
         dict[str, float]
             Keys: ``"cpu_percent"``, ``"ram_mb"``.
+            Returns empty dict if psutil is not available.
         """
-        raise NotImplementedError("Resource usage check not yet implemented")
+        try:
+            import psutil
+        except ImportError:
+            return {}
+
+        cpu_percent = psutil.cpu_percent(interval=None)
+        ram_info = psutil.virtual_memory()
+        ram_mb = ram_info.used / (1024 * 1024)
+
+        return {
+            "cpu_percent": float(cpu_percent),
+            "ram_mb": float(ram_mb),
+        }
 
     def get_fps_summary(self) -> dict[str, float]:
         """Return summary statistics for FPS over the episode.
@@ -131,6 +220,20 @@ class PerformanceOracle(Oracle):
         -------
         dict[str, float]
             Keys: ``"mean_fps"``, ``"min_fps"``, ``"max_fps"``,
-            ``"std_fps"``.
+            ``"std_fps"``.  Returns zeros if no FPS data available.
         """
-        raise NotImplementedError("FPS summary not yet implemented")
+        if not self._fps_history:
+            return {
+                "mean_fps": 0.0,
+                "min_fps": 0.0,
+                "max_fps": 0.0,
+                "std_fps": 0.0,
+            }
+
+        arr = np.array(self._fps_history)
+        return {
+            "mean_fps": float(np.mean(arr)),
+            "min_fps": float(np.min(arr)),
+            "max_fps": float(np.max(arr)),
+            "std_fps": float(np.std(arr)),
+        }
