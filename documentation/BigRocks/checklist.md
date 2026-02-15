@@ -91,7 +91,7 @@
 - [x] Capture ~300 frames from live game (PR #21)
 - [x] Auto-annotate frames with OpenCV (PR #21)
 - [x] Upload annotated frames to Roboflow for human review/correction (PR #23)
-- [ ] Train and validate model
+- [x] Train and validate model (PR #26)
 
 ### 2. Integration & end-to-end
 - [x] Add integration tests (PR #15 — 12 tests × 2 browsers)
