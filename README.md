@@ -9,7 +9,7 @@ RL-driven autonomous game testing platform. YOLO object detection + reinforcemen
 The system uses a two-layer design:
 
 1. **RL agents** play games and produce rich play traces (trajectories)
-2. **Bug-detection oracles** inspect traces and flag anomalies (crashes, stuck states, score anomalies, visual glitches, performance drops)
+2. **Bug-detection oracles** inspect traces and flag anomalies (crashes, stuck states, score anomalies, visual glitches, performance drops, physics violations, boundary violations, state transitions, episode length anomalies, temporal anomalies, reward inconsistencies, soak test degradation)
 
 ```
  Game Loader      Capture          Perception        Policy / RL         Oracles           Reporting
@@ -19,6 +19,13 @@ The system uses a two-layer design:
 | Browser    |   | ADB       |    |            |    | PPO (SB3)   |    | ScoreAnom.  |    | Dashboard |
 | Loader     |   +-----------+    +------------+    +-------------+    | VisGlitch   |    +-----------+
 +------------+                                                         | Performance |
+                                                                       | Physics     |
+                                                                       | Boundary    |
+                                                                       | StateTransn |
+                                                                       | EpisodeLen  |
+                                                                       | TemporalAn. |
+                                                                       | RewardCons. |
+                                                                       | Soak        |
                                                                        +-------------+
 ```
 
@@ -38,7 +45,7 @@ src/
   controllers/          ADB emulator controller, game-specific controllers
   env/                  Gymnasium environments (Breakout71Env [stub])
   game_loader/          Configurable game loading (browser dev server lifecycle)
-  oracles/              Bug-detection oracles (crash, stuck, score, visual, perf) [stub on_step]
+  oracles/              Bug-detection oracles (crash, stuck, score, visual, perf, physics, boundary, state, episode_length, temporal, reward, soak)
   perception/           YOLO detector wrapper + Breakout 71 capture helpers
   policies/             YOLO-based + RL-based policies for Last War
   reporting/            Episode/session reports + Jinja2 HTML dashboard
@@ -46,7 +53,7 @@ src/
 configs/
   games/                Game loader YAML configs (breakout-71.yaml, ...)
 scripts/                YOLO training, dataset dedup, ADB test
-tests/                  pytest suite (170 tests)
+tests/                  pytest suite (283 tests)
 docs/                   Sphinx docs (Furo theme, MyST Markdown)
 documentation/
   specs/                Design specs for env, oracles, capture, reporting, game loader
@@ -141,7 +148,7 @@ GitHub Actions runs on every push to `main` or `big-rock-*` branches and on PRs 
 | Job | What it does |
 |-----|-------------|
 | **Lint** | `ruff check` + `ruff format --check` |
-| **Test** | `pytest` (170 passed) |
+| **Test** | `pytest` (283 passed) |
 | **Build Check** | Verifies all module imports succeed |
 | **Build Docs** | Sphinx HTML build with `-W` (warnings as errors) |
 
