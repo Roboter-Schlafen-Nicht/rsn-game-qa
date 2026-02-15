@@ -142,7 +142,9 @@ def main() -> None:
             ]
             run_cmd(predict_cmd)
         else:
-            print(f"[HELP V2] Warning: best.pt not found at {best_path}, skipping predict.")
+            print(
+                f"[HELP V2] Warning: best.pt not found at {best_path}, skipping predict."
+            )
     else:
         print("[HELP V2] No DEBUG_IMAGE configured, skipping predict.")
 

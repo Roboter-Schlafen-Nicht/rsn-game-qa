@@ -17,19 +17,19 @@ release = "0.1.0"
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
-    "sphinx.ext.napoleon",           # Google/NumPy-style docstrings
-    "sphinx.ext.viewcode",           # [source] links in API docs
-    "sphinx.ext.intersphinx",        # cross-ref to Python/Gymnasium docs
-    "sphinx_autodoc_typehints",      # inline type hints in signatures
-    "myst_parser",                   # parse .md files (specs)
+    "sphinx.ext.napoleon",  # Google/NumPy-style docstrings
+    "sphinx.ext.viewcode",  # [source] links in API docs
+    "sphinx.ext.intersphinx",  # cross-ref to Python/Gymnasium docs
+    "sphinx_autodoc_typehints",  # inline type hints in signatures
+    "myst_parser",  # parse .md files (specs)
 ]
 
 # MyST (Markdown) settings
 myst_enable_extensions = [
-    "colon_fence",       # ::: directive syntax
-    "deflist",           # definition lists
-    "tasklist",          # - [x] checkboxes
-    "fieldlist",         # :field: value
+    "colon_fence",  # ::: directive syntax
+    "deflist",  # definition lists
+    "tasklist",  # - [x] checkboxes
+    "fieldlist",  # :field: value
 ]
 myst_heading_anchors = 3
 
