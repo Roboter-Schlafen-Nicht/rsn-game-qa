@@ -102,6 +102,21 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **Roboflow annotation upload** — `project.single_upload(annotation_path=..., annotation_labelmap=...)` works for YOLO `.txt` pre-labels. `search_all()` returns a generator of batches (lists of dicts), not a flat list.
 - **`classes.txt` convention** — `auto_annotate.py` now writes `labels/classes.txt` (standard YOLO class-name file). `upload_to_roboflow.py` reads it via `_build_labelmap()` with YAML config fallback.
 
+### Integration & E2E + RL Scaffold (session 13)
+
+- **CI Docker libGL fix for cv2.imwrite** — FrameCollector and FindingBridge tests call `cv2.imwrite()` which fails in CI Docker (missing `libGL.so.1`). Fixed with `autouse` fixture `_mock_cv2_imwrite` that injects a mock cv2 module creating 0-byte files.
+- **test_raises_without_weights fragile** — Test assumed no weights file existed, but `weights/breakout71/best.pt` exists locally from training. Fixed by overriding `cfg["output_dir"]` to `tmp_path`.
+- **pytest-cov configured** — coverage runs automatically on `src/` only (scripts excluded). Config in `pyproject.toml` under `[tool.pytest.ini_options]` addopts, `[tool.coverage.run]`, `[tool.coverage.report]`. 96% coverage.
+- **Env bug: close/reset lifecycle** — `close()` didn't reset `_initialized` → crash if `reset()` called after `close()`. Fixed.
+- **Env bug: fragile reset timing** — 500ms sleep after Space assumes instant game restart. Fixed with retry loop.
+- **Env bug: _bricks_total corruption** — If first frame after reset shows transition screen (0 bricks), `_bricks_total` becomes 1. Fixed with retry logic guarded by `self._initialized`.
+- **Env bug: reset() ball retry** — Now raises RuntimeError if ball not detected after 5 retries (Copilot review fix).
+- **SB3 2.7.1 compatible** — PPO with `MlpPolicy`, `Discrete(3)` action, `Box(8,)` obs, `DummyVecEnv` wrapper. Hyperparams: `n_steps=2048, batch_size=64, n_epochs=10, gamma=0.99, lr=3e-4, clip_range=0.2, ent_coef=0.01`.
+- **Hybrid data generation** — During RL training, capture every Nth frame (default 30) via FrameCollectionCallback. Batch auto-annotate after session. Human reviews on Roboflow before YOLO retraining.
+- **Empty ReportGenerator removed from train_rl.py** — Copilot review caught instantiation with no episodes added. Removed entirely.
+- **`coins_norm` and `score_norm` hardcoded 0.0** — 2 of 8 observation dimensions carry no info. SB3 will learn to ignore them.
+- **Real-time training bottleneck** — Env runs at ~30 FPS with `time.sleep(1/30)` per step. 200k steps ≈ 1.85 hours.
+
 ## Project Structure
 
 ```
@@ -111,7 +126,8 @@ src/
   capture/        # DONE — BitBlt window capture, pydirectinput input (37 tests)
   perception/     # DONE — YoloDetector, breakout_capture (41 tests)
   oracles/        # DONE — 12 oracles with on_step detection (132 tests)
-  env/            # DONE — Breakout71Env gymnasium wrapper (69 tests)
+  env/            # DONE — Breakout71Env gymnasium wrapper (70 tests)
+  orchestrator/   # DONE — FrameCollector, SessionRunner (47 tests)
 configs/
   games/                  # Per-game loader configs (breakout-71.yaml)
   training/               # Per-game YOLO training configs (breakout-71.yaml)
@@ -119,6 +135,7 @@ tests/
   conftest.py             # Integration test fixtures (Selenium browser parameterization)
   test_integration.py     # 12 integration tests × 2 browsers
   test_training_pipeline.py  # 49 training pipeline tests
+  test_orchestrator.py    # 47 orchestrator tests (FrameCollector, SessionRunner)
 scripts/
   _smoke_utils.py         # BrowserInstance (Selenium), get_available_browsers(), utilities
   smoke_launch.py         # Game launch + proof screenshot
@@ -130,6 +147,8 @@ scripts/
   train_model.py            # Config-driven YOLO training (with XPU monkey patches)
   validate_model.py         # mAP threshold validation (with XPU support)
   prepare_dataset.py        # Restructure flat dataset into YOLO train/val format
+  run_session.py            # CLI for N-episode QA evaluation runs
+  train_rl.py               # CLI for PPO training with SB3
 documentation/
   BigRocks/checklist.md   # Master checklist — the source of truth for what's done and what's next
   specs/                  # Canonical spec files
@@ -137,7 +156,7 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-12)
+## What's Done (sessions 1-13)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -151,14 +170,15 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 10. **Session 10** — Data collection pipeline: 300-frame capture with game state detection, auto-annotation with OpenCV (PR #21)
 11. **Session 11** — Annotation pipeline improvements: ball-in-brick fix, paddle-zone fix, game-zone wall detection, Roboflow annotation upload, 100% ball detection (PR #23)
 12. **Session 12** — XPU YOLO training: 3 ultralytics monkey patches, dataset preparation, 100-epoch training (mAP50=0.679), open-source contribution to ultralytics #16930 (PR #26)
+13. **Session 13** — Integration & E2E + RL scaffold: orchestrator (FrameCollector, SessionRunner), run_session.py, train_rl.py (SB3 PPO), 6 env bug fixes, legacy code cleanup, pytest-cov (96% coverage) (PR #28)
 
-Total: **430 tests** (406 unit + 24 integration), 6 subsystems + training pipeline complete.
+Total: **454 tests** (430 unit + 24 integration), 7 subsystems + training pipeline complete.
 
 ## What's Next
 
 Read `documentation/BigRocks/checklist.md` for the full breakdown. In order:
 
-1. **Integration & E2E** — wire all subsystems, run episodes, generate reports
+1. **RL Training & Iteration** — run first real PPO training, evaluate vs random baseline, iterate on reward shaping, retrain YOLO with human-reviewed annotations
 
 ## Reference Files
 
