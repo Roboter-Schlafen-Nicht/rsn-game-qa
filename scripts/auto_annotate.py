@@ -230,6 +230,11 @@ def _build_ui_mask(img_h: int, img_w: int) -> np.ndarray:
 def _detect_game_zone(gray: np.ndarray) -> tuple[int, int] | None:
     """Find the left and right boundaries of the game zone.
 
+    The game zone is bounded by two bright vertical wall lines.  These
+    walls are the brightest columns in the image (mean brightness > 200).
+    If no such peaks are found, we fall back to a lower threshold but
+    skip the first/last few columns to avoid browser-chrome artifacts.
+
     Parameters
     ----------
     gray : np.ndarray
@@ -241,8 +246,21 @@ def _detect_game_zone(gray: np.ndarray) -> tuple[int, int] | None:
         ``(left_col, right_col)`` pixel columns, or ``None`` if not found.
     """
     col_brightness = gray.mean(axis=0)
+
+    # Primary: find the bright wall lines (mean brightness > 200).
+    # The walls are 1px-wide columns that are nearly pure white.
+    wall_cols = np.where(col_brightness > 200)[0]
+    if len(wall_cols) >= 2:
+        return int(wall_cols[0]), int(wall_cols[-1])
+
+    # Fallback: use a relative threshold, but skip the first/last 10
+    # columns to avoid browser chrome or edge artifacts.
+    margin = 10
     threshold = max(col_brightness.max() * 0.08, 5)
     game_cols = np.where(col_brightness > threshold)[0]
+    game_cols = game_cols[
+        (game_cols >= margin) & (game_cols < len(col_brightness) - margin)
+    ]
     if len(game_cols) < 50:
         return None
     return int(game_cols[0]), int(game_cols[-1])
@@ -623,6 +641,56 @@ def _detect_paddle(
     return [det]
 
 
+def _find_ball_head(roi: np.ndarray) -> tuple[float, float]:
+    """Find the center of the ball head in an undilated binary ROI.
+
+    The ball's comet trail consists of many small particle fragments plus
+    the actual ball, which is the **most circular blob** in the region.
+    Trail particles may merge into larger-area but elongated shapes, so
+    pure area is unreliable.  This function scores each sub-contour by
+    ``circularity * area`` — the round ball scores highest because it
+    combines decent area with high circularity.
+
+    Parameters
+    ----------
+    roi : np.ndarray
+        Binary mask (single-channel, 0/255) — a crop of the undilated
+        white mask covering one merged candidate region.
+
+    Returns
+    -------
+    tuple[float, float]
+        ``(cx, cy)`` center of the ball head, in ROI-local pixel
+        coordinates.  Falls back to the ROI center if no contours are
+        found.
+    """
+    h, w = roi.shape[:2]
+    contours, _ = cv2.findContours(roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return w / 2, h / 2
+
+    best_score = -1.0
+    best_cx, best_cy = w / 2, h / 2
+
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area < 3:  # ignore noise pixels
+            continue
+        perimeter = cv2.arcLength(cnt, True)
+        if perimeter < 1:
+            continue
+        # Circularity: 1.0 = perfect circle, lower = elongated/irregular
+        circularity = 4 * np.pi * area / (perimeter * perimeter)
+        score = circularity * circularity * area
+        if score > best_score:
+            best_score = score
+            bx, by, bw, bh = cv2.boundingRect(cnt)
+            best_cx = bx + bw / 2
+            best_cy = by + bh / 2
+
+    return best_cx, best_cy
+
+
 def _detect_ball(
     hsv: np.ndarray,
     ui_mask: np.ndarray,
@@ -630,20 +698,23 @@ def _detect_ball(
     img_h: int,
     img_w: int,
     game_zone: tuple[int, int] | None = None,
+    brick_detections: list[dict] | None = None,
+    paddle_detections: list[dict] | None = None,
 ) -> list[dict]:
     """Detect the ball using color + motion.
 
     Strategy:
-    - Find white blobs in the game area (excluding chrome, paddle zone,
-      UI zones, and outside game zone).
+    - Find white blobs in the game area (excluding chrome, paddle bbox,
+      UI zones, outside game zone, and **brick regions**).
     - If a motion mask is available, **require** that the candidate
       overlaps with motion.  This eliminates static UI text like
       "Level 1/7", "$10", etc.
     - Without motion (first frame), pick the smallest white blob in the
       game zone interior as a best guess (the actual ball, not the
       particle trail).
-    - Among motion-confirmed candidates, prefer **smaller** blobs (the
-      actual ball) over large dilated trail clusters.
+    - Among motion-confirmed candidates, prefer the **largest** merged
+      blob (ball + trail), then locate the ball head within it using
+      ``_find_ball_head()``.
 
     Parameters
     ----------
@@ -657,6 +728,15 @@ def _detect_ball(
         Full image dimensions.
     game_zone : tuple[int, int] or None
         ``(left_col, right_col)`` pixel columns of the game zone.
+    brick_detections : list[dict] or None
+        Already-detected bricks — their regions are masked out of the
+        white mask so that white/gray bricks are not confused with the
+        ball.
+    paddle_detections : list[dict] or None
+        Already-detected paddle — its bounding box is masked out so the
+        wide white paddle is not confused with the ball.  When no paddle
+        is provided, a conservative fallback excludes the bottom 5% of
+        the image.
 
     Returns
     -------
@@ -667,15 +747,50 @@ def _detect_ball(
 
     # Exclude UI zones
     white_mask[ui_mask == 255] = 0
-    # Exclude paddle zone (bottom 15%)
-    white_mask[int(img_h * 0.85) :, :] = 0
+    # Exclude paddle region — mask the detected paddle bbox (with
+    # padding) instead of a fixed bottom-15% cut.  The ball can be
+    # close to the paddle so a blanket cut misses it.
+    if paddle_detections:
+        for pdl in paddle_detections:
+            px1 = int((pdl["x_center"] - pdl["width"] / 2) * img_w)
+            py1 = int((pdl["y_center"] - pdl["height"] / 2) * img_h)
+            px2 = int((pdl["x_center"] + pdl["width"] / 2) * img_w)
+            py2 = int((pdl["y_center"] + pdl["height"] / 2) * img_h)
+            pad = 6
+            px1 = max(0, px1 - pad)
+            py1 = max(0, py1 - pad)
+            px2 = min(img_w, px2 + pad)
+            py2 = min(img_h, py2 + pad)
+            white_mask[py1:py2, px1:px2] = 0
+    else:
+        # Fallback: no paddle detected — conservatively exclude bottom
+        # 5% only (handles game-over / menu frames where paddle is
+        # absent but stray white pixels linger at the very bottom).
+        white_mask[int(img_h * 0.95) :, :] = 0
     # Exclude outside game zone (honeycomb background borders)
     if game_zone is not None:
         margin = 10  # small margin inside the walls
         white_mask[:, : max(0, game_zone[0] + margin)] = 0
         white_mask[:, min(img_w, game_zone[1] - margin) :] = 0
 
-    # Dilate to merge ball + particle trail into one blob
+    # Exclude brick regions — white/gray bricks are large white blobs
+    # that would otherwise merge with (or be mistaken for) the ball.
+    if brick_detections:
+        for brick in brick_detections:
+            bx1 = int((brick["x_center"] - brick["width"] / 2) * img_w)
+            by1 = int((brick["y_center"] - brick["height"] / 2) * img_h)
+            bx2 = int((brick["x_center"] + brick["width"] / 2) * img_w)
+            by2 = int((brick["y_center"] + brick["height"] / 2) * img_h)
+            # Small padding to cover dilation bleeding from brick edges
+            pad = 4
+            bx1 = max(0, bx1 - pad)
+            by1 = max(0, by1 - pad)
+            bx2 = min(img_w, bx2 + pad)
+            by2 = min(img_h, by2 + pad)
+            white_mask[by1:by2, bx1:bx2] = 0
+
+    # Dilate to merge ball + particle trail into one blob so we get a
+    # single candidate region per ball.
     kernel = np.ones((5, 5), np.uint8)
     dilated = cv2.dilate(white_mask, kernel, iterations=2)
 
@@ -691,6 +806,17 @@ def _detect_ball(
         if not (0.3 < aspect < 3.0):
             continue
 
+        # --- Locate the actual ball head within the merged blob ---
+        # Go back to the UNDILATED white_mask within this bounding box
+        # and find the largest sub-contour.  The ball head is the
+        # biggest circular blob; the trail particles are smaller
+        # scattered fragments.
+        roi = white_mask[y : y + h, x : x + w]
+        ball_cx, ball_cy = _find_ball_head(roi)
+        # Convert ROI-local coords back to image coords
+        ball_cx_img = x + ball_cx
+        ball_cy_img = y + ball_cy
+
         # Cap the bounding box size — the actual ball is small (~15-25px),
         # but dilation of particle trail can create blobs up to 60-80px.
         # Clamp to a reasonable ball size.
@@ -700,8 +826,8 @@ def _detect_ball(
 
         det = {
             "cls": CLS_BALL,
-            "x_center": (x + w / 2) / img_w,
-            "y_center": (y + h / 2) / img_h,
+            "x_center": ball_cx_img / img_w,
+            "y_center": ball_cy_img / img_h,
             "width": (disp_w * 0.7) / img_w,
             "height": (disp_h * 0.7) / img_h,
         }
@@ -732,13 +858,13 @@ def _detect_ball(
     if not candidates:
         return []
 
-    # Prefer candidates with high motion overlap, then prefer SMALLER
-    # area (actual ball vs. large particle trail blob).  Require at
-    # least MOTION_OVERLAP_BALL_CONFIRMED to be "confirmed", then pick
-    # smallest.
+    # Prefer candidates with high motion overlap, then prefer LARGEST
+    # merged area — the ball + its trail forms the biggest merged blob,
+    # while stray trail fragments form smaller ones.  The ball head is
+    # located within the blob by _find_ball_head().
     confirmed = [c for c in candidates if c[1] >= MOTION_OVERLAP_BALL_CONFIRMED]
     if confirmed:
-        confirmed.sort(key=lambda c: c[0])  # smallest area first
+        confirmed.sort(key=lambda c: c[0], reverse=True)  # largest area first
         return [confirmed[0][2]]
 
     # Fallback: highest motion overlap
@@ -934,7 +1060,9 @@ def annotate_frame(
     # Detect objects
     bricks = _detect_bricks(hsv, ui_mask, img_h, img_w, game_zone)
     paddle = _detect_paddle(hsv, motion_mask, img_h, img_w)
-    ball = _detect_ball(hsv, ui_mask, motion_mask, img_h, img_w, game_zone)
+    ball = _detect_ball(
+        hsv, ui_mask, motion_mask, img_h, img_w, game_zone, bricks, paddle
+    )
     coins = _detect_coins(
         hsv,
         ui_mask,
@@ -1118,6 +1246,23 @@ def main() -> int:
     viz_dir = dataset_dir / "viz"
     if not args.dry_run:
         labels_dir.mkdir(exist_ok=True)
+        # Write classes.txt — standard YOLO convention for label-to-name mapping
+        classes_file = labels_dir / "classes.txt"
+        classes_file.write_text(
+            "\n".join(
+                name
+                for _, name in sorted(
+                    {
+                        CLS_PADDLE: "paddle",
+                        CLS_BALL: "ball",
+                        CLS_BRICK: "brick",
+                        CLS_POWERUP: "powerup",
+                        CLS_WALL: "wall",
+                    }.items()
+                )
+            )
+            + "\n"
+        )
     if args.visualize:
         viz_dir.mkdir(exist_ok=True)
 
