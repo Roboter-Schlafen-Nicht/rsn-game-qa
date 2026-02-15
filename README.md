@@ -46,7 +46,7 @@ src/
 configs/
   games/                Game loader YAML configs (breakout-71.yaml, ...)
 scripts/                YOLO training, dataset dedup, ADB test
-tests/                  pytest suite (82 tests)
+tests/                  pytest suite (102 tests)
 docs/                   Sphinx docs (Furo theme, MyST Markdown)
 documentation/
   specs/                Design specs for env, oracles, capture, reporting, game loader
@@ -141,7 +141,7 @@ GitHub Actions runs on every push to `main` or `big-rock-*` branches and on PRs 
 | Job | What it does |
 |-----|-------------|
 | **Lint** | `ruff check` + `ruff format --check` |
-| **Test** | `pytest` (82 passed) |
+| **Test** | `pytest` (102 passed) |
 | **Build Check** | Verifies all module imports succeed |
 | **Build Docs** | Sphinx HTML build with `-W` (warnings as errors) |
 
