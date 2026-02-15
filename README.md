@@ -52,8 +52,9 @@ src/
   rl/                   RL training env + PPO training script for help policy
 configs/
   games/                Game loader YAML configs (breakout-71.yaml, ...)
-scripts/                YOLO training, dataset dedup, ADB test, smoke tests
-tests/                  pytest suite (357 unit + 24 integration tests)
+  training/             YOLO training configs per game (breakout-71.yaml, ...)
+scripts/                YOLO training, dataset capture, upload, smoke tests
+tests/                  pytest suite (397 unit + 24 integration tests)
 docs/                   Sphinx docs (Furo theme, MyST Markdown)
 documentation/
   specs/                Design specs for env, oracles, capture, reporting, game loader
@@ -148,7 +149,7 @@ GitHub Actions runs on every push to `main` or `big-rock-*` branches and on PRs 
 | Job | What it does |
 |-----|-------------|
 | **Lint** | `ruff check` + `ruff format --check` |
-| **Test** | `pytest -m "not integration"` (357 passed) |
+| **Test** | `pytest -m "not integration"` (397 passed) |
 | **Build Check** | Verifies all module imports succeed |
 | **Build Docs** | Sphinx HTML build with `-W` (warnings as errors) |
 
@@ -187,6 +188,30 @@ python scripts/smoke_oracle.py --steps 100 --skip-setup
 ```
 
 Artifacts are saved to `output/` (gitignored).
+
+## YOLO training pipeline
+
+Config-driven pipeline for training game-specific YOLO object detection models.
+Each game gets its own training config in `configs/training/`.
+
+```bash
+# 1. Capture ~500 frames from a running game (random bot plays)
+python scripts/capture_dataset.py --frames 500
+
+# 2. Upload frames to Roboflow for annotation
+python scripts/upload_to_roboflow.py output/dataset_<timestamp>
+
+# 3. Annotate images in Roboflow UI (5 classes for Breakout 71)
+#    Then export in YOLOv8 format and set dataset_path in configs/training/breakout-71.yaml
+
+# 4. Train the model
+python scripts/train_model.py --config breakout-71
+
+# 5. Validate against quality thresholds
+python scripts/validate_model.py --config breakout-71 --save-samples 10
+```
+
+API keys are stored in `.env` (gitignored). Copy `.env.example` to `.env` and fill in your values.
 
 ## Docs
 

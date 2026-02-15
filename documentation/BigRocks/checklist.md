@@ -56,10 +56,16 @@
 ## To Do
 
 ### 1. Data collection & YOLO training pipeline
-- [ ] Automated frame capture during gameplay (save frames + metadata)
-- [ ] Annotation tooling integration (Roboflow upload / labeling)
-- [ ] YOLO training script for Breakout 71 classes (`paddle`, `ball`, `brick`, `powerup`, `wall`)
-- [ ] Trained weights validation (mAP threshold)
+- [x] Automated frame capture during gameplay (save frames + metadata)
+- [x] Annotation tooling integration (Roboflow upload / labeling)
+- [x] YOLO training script for Breakout 71 classes (`paddle`, `ball`, `brick`, `powerup`, `wall`)
+- [x] Trained weights validation (mAP threshold)
+- [x] Config-driven architecture (`configs/training/<game>.yaml`)
+- [x] `.env` / `python-dotenv` for API keys
+- [x] 40 unit tests
+- [ ] Capture ~500 frames from live game
+- [ ] Annotate frames in Roboflow
+- [ ] Train and validate model
 
 ### 2. Integration & end-to-end
 - [x] Add integration tests (PR #15 — 12 tests × 2 browsers)
