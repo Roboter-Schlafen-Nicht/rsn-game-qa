@@ -8,6 +8,7 @@ bundler and serves on ``http://localhost:1234`` by default.
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -92,8 +93,6 @@ class Breakout71Loader(BrowserGameLoader):
         logger.info("[%s] Clearing .parcel-cache", self.name)
         cache_dir = self.config.game_dir / ".parcel-cache"
         if cache_dir.is_dir():
-            import shutil
-
             shutil.rmtree(cache_dir, ignore_errors=True)
             logger.info("[%s] Removed %s", self.name, cache_dir)
 

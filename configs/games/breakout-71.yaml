@@ -9,9 +9,14 @@
 #   config = load_game_config("breakout-71")
 #   loader = create_loader(config)
 #   loader.start()
+#
+# Note: game_dir supports environment variable expansion ($VAR or
+# ${VAR}) and ~ for home directory.  Set BREAKOUT71_DIR in your
+# environment to override the default path, e.g.:
+#   export BREAKOUT71_DIR=/home/user/breakout71-testbed
 
 name: breakout-71
-game_dir: F:\work\breakout71-testbed
+game_dir: ${BREAKOUT71_DIR:-F:\work\breakout71-testbed}
 loader_type: breakout-71
 
 # -- Build / serve -----------------------------------------------------

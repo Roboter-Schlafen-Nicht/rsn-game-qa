@@ -4,14 +4,18 @@ Tests cover:
 
 - GameLoaderConfig construction and defaults
 - YAML config loading (load_game_config)
+- Environment variable expansion in configs
+- YAML config validation (unknown / missing fields)
 - GameLoader ABC contract
 - BrowserGameLoader lifecycle (with mocked subprocess/HTTP)
+- TCP socket readiness probe
 - Breakout71Loader defaults and cache clearing
 - Factory (create_loader) dispatch
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import textwrap
 from pathlib import Path
@@ -22,7 +26,11 @@ import pytest
 from src.game_loader.base import GameLoader, GameLoaderError
 from src.game_loader.browser_loader import BrowserGameLoader
 from src.game_loader.breakout71_loader import Breakout71Loader
-from src.game_loader.config import GameLoaderConfig, load_game_config
+from src.game_loader.config import (
+    GameLoaderConfig,
+    _expand_vars,
+    load_game_config,
+)
 from src.game_loader.factory import create_loader, register_loader
 
 
@@ -140,6 +148,141 @@ class TestLoadGameConfig:
         assert cfg.serve_port == 1234
 
 
+# ── Environment variable expansion ──────────────────────────────────
+
+
+class TestEnvVarExpansion:
+    """Tests for $VAR and ${VAR} expansion in config values."""
+
+    def test_expand_dollar_var(self):
+        """$VAR syntax is expanded from environment."""
+        with mock.patch.dict(os.environ, {"MY_GAME_DIR": "/opt/games"}):
+            result = _expand_vars("$MY_GAME_DIR/breakout")
+        assert result == "/opt/games/breakout"
+
+    def test_expand_braced_var(self):
+        """${VAR} syntax is expanded from environment."""
+        with mock.patch.dict(os.environ, {"MY_GAME_DIR": "/opt/games"}):
+            result = _expand_vars("${MY_GAME_DIR}/breakout")
+        assert result == "/opt/games/breakout"
+
+    def test_expand_braced_with_default(self):
+        """${VAR:-default} uses the default when VAR is unset."""
+        env = os.environ.copy()
+        env.pop("UNSET_VAR_12345", None)
+        with mock.patch.dict(os.environ, env, clear=True):
+            result = _expand_vars("${UNSET_VAR_12345:-/fallback/path}")
+        assert result == "/fallback/path"
+
+    def test_expand_braced_with_default_var_set(self):
+        """${VAR:-default} uses the env value when VAR is set."""
+        with mock.patch.dict(os.environ, {"MY_DIR": "/real/path"}):
+            result = _expand_vars("${MY_DIR:-/fallback}")
+        assert result == "/real/path"
+
+    def test_undefined_var_left_as_is(self):
+        """Undefined $VAR references are left unchanged."""
+        env = os.environ.copy()
+        env.pop("TOTALLY_UNDEFINED_XYZ", None)
+        with mock.patch.dict(os.environ, env, clear=True):
+            result = _expand_vars("$TOTALLY_UNDEFINED_XYZ")
+        assert result == "$TOTALLY_UNDEFINED_XYZ"
+
+    def test_expand_tilde_in_game_dir(self):
+        """~ in game_dir is expanded to the home directory."""
+        cfg = GameLoaderConfig(name="foo", game_dir="~/games/foo")
+        assert "~" not in str(cfg.game_dir)
+        assert cfg.game_dir == Path.home() / "games" / "foo"
+
+    def test_expand_var_in_yaml(self, tmp_path: Path):
+        """Environment variables are expanded when loading from YAML."""
+        yaml_content = textwrap.dedent("""\
+            name: env-game
+            game_dir: $TEST_GAME_DIR_XYZ/sub
+            loader_type: browser
+            serve_command: echo hi
+            serve_port: 8080
+            url: http://localhost:8080
+        """)
+        (tmp_path / "env-game.yaml").write_text(yaml_content, encoding="utf-8")
+
+        with mock.patch.dict(os.environ, {"TEST_GAME_DIR_XYZ": "/resolved"}):
+            cfg = load_game_config("env-game", configs_dir=tmp_path)
+        assert cfg.game_dir == Path("/resolved/sub")
+
+    def test_expand_braced_default_in_yaml(self, tmp_path: Path):
+        """${VAR:-default} in YAML falls back correctly."""
+        yaml_content = textwrap.dedent("""\
+            name: default-game
+            game_dir: ${NONEXISTENT_VAR_ABC:-/default/path}
+            loader_type: browser
+            serve_command: echo hi
+            serve_port: 8080
+            url: http://localhost:8080
+        """)
+        (tmp_path / "default-game.yaml").write_text(yaml_content, encoding="utf-8")
+
+        env = os.environ.copy()
+        env.pop("NONEXISTENT_VAR_ABC", None)
+        with mock.patch.dict(os.environ, env, clear=True):
+            cfg = load_game_config("default-game", configs_dir=tmp_path)
+        assert cfg.game_dir == Path("/default/path")
+
+
+# ── YAML config validation ──────────────────────────────────────────
+
+
+class TestConfigValidation:
+    """Tests for YAML config validation and helpful error messages."""
+
+    def test_unknown_field_raises_valueerror(self, tmp_path: Path):
+        """Unknown fields in YAML produce a ValueError listing valid fields."""
+        yaml_content = textwrap.dedent("""\
+            name: bad-game
+            game_dir: /tmp/game
+            serv_command: echo hi
+        """)
+        (tmp_path / "bad-game.yaml").write_text(yaml_content, encoding="utf-8")
+
+        with pytest.raises(ValueError, match="Unknown fields.*serv_command"):
+            load_game_config("bad-game", configs_dir=tmp_path)
+
+    def test_unknown_field_lists_valid_fields(self, tmp_path: Path):
+        """The error message includes the list of valid field names."""
+        yaml_content = textwrap.dedent("""\
+            name: bad-game
+            game_dir: /tmp/game
+            typo_field: oops
+        """)
+        (tmp_path / "bad-game.yaml").write_text(yaml_content, encoding="utf-8")
+
+        with pytest.raises(ValueError, match="Valid fields:"):
+            load_game_config("bad-game", configs_dir=tmp_path)
+
+    def test_non_mapping_yaml_raises(self, tmp_path: Path):
+        """A YAML file that isn't a mapping raises ValueError."""
+        (tmp_path / "list-game.yaml").write_text("- item1\n- item2\n", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="Expected a YAML mapping"):
+            load_game_config("list-game", configs_dir=tmp_path)
+
+    def test_valid_yaml_still_works(self, tmp_path: Path):
+        """A correct YAML file still loads without error."""
+        yaml_content = textwrap.dedent("""\
+            name: ok-game
+            game_dir: /tmp/game
+            loader_type: browser
+            serve_command: echo hi
+            serve_port: 5000
+            url: http://localhost:5000
+        """)
+        (tmp_path / "ok-game.yaml").write_text(yaml_content, encoding="utf-8")
+
+        cfg = load_game_config("ok-game", configs_dir=tmp_path)
+        assert cfg.name == "ok-game"
+        assert cfg.serve_port == 5000
+
+
 # ── GameLoader ABC ──────────────────────────────────────────────────
 
 
@@ -170,6 +313,13 @@ class TestGameLoaderABC:
         cfg = _make_config()
         loader = BrowserGameLoader(cfg)
         assert loader.running is False
+
+    def test_exit_returns_false(self):
+        """__exit__ returns False so exceptions propagate."""
+        cfg = _make_config(install_command=None)
+        loader = BrowserGameLoader(cfg)
+        result = loader.__exit__(None, None, None)
+        assert result is False
 
 
 # ── BrowserGameLoader ───────────────────────────────────────────────
@@ -239,6 +389,35 @@ class TestBrowserGameLoader:
         cfg = _make_config()
         loader = BrowserGameLoader(cfg)
         assert loader.is_ready() is False
+
+    @mock.patch("src.game_loader.browser_loader.socket.create_connection")
+    def test_tcp_probe_returns_true_on_connect(self, mock_conn):
+        """_tcp_probe() returns True when the port accepts connections."""
+        mock_conn.return_value.__enter__ = mock.Mock()
+        mock_conn.return_value.__exit__ = mock.Mock(return_value=False)
+        cfg = _make_config()
+        loader = BrowserGameLoader(cfg)
+        assert loader._tcp_probe() is True
+
+    @mock.patch(
+        "src.game_loader.browser_loader.socket.create_connection",
+        side_effect=ConnectionRefusedError,
+    )
+    def test_tcp_probe_returns_false_on_refused(self, mock_conn):
+        """_tcp_probe() returns False when connection is refused."""
+        cfg = _make_config()
+        loader = BrowserGameLoader(cfg)
+        assert loader._tcp_probe() is False
+
+    @mock.patch(
+        "src.game_loader.browser_loader.socket.create_connection",
+        side_effect=OSError("timeout"),
+    )
+    def test_tcp_probe_returns_false_on_oserror(self, mock_conn):
+        """_tcp_probe() returns False on timeout/OS error."""
+        cfg = _make_config()
+        loader = BrowserGameLoader(cfg)
+        assert loader._tcp_probe() is False
 
     def test_stop_is_safe_when_not_started(self):
         """stop() does not raise when called before start()."""

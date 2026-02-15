@@ -97,8 +97,9 @@ class GameLoader(abc.ABC):
         self.start()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:  # noqa: ANN001
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:  # noqa: ANN001
         self.stop()
+        return False
 
     # -- Repr -----------------------------------------------------------
 

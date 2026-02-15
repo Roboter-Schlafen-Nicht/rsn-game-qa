@@ -10,10 +10,12 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
 from typing import Optional
+from urllib.parse import urlparse
 
 import urllib.request
 import urllib.error
@@ -143,14 +145,25 @@ class BrowserGameLoader(GameLoader):
         logger.info("[%s] Game is ready at %s", self.name, self.config.url)
 
     def is_ready(self) -> bool:
-        """Check if the dev server is responding to HTTP requests.
+        """Check if the dev server is responding.
+
+        Uses a two-stage probe:
+
+        1. **TCP connect** to ``serve_port`` — fast check that the
+           process is listening.
+        2. **HTTP GET** to the ``readiness_endpoint`` — confirms the
+           application layer is serving content (status < 400).
 
         Returns
         -------
         bool
-            ``True`` if an HTTP GET to the readiness endpoint returns
-            a status code < 400.
+            ``True`` if both probes succeed.
         """
+        # Stage 1: lightweight TCP socket probe.
+        if not self._tcp_probe():
+            return False
+
+        # Stage 2: HTTP GET to confirm the application is ready.
         try:
             req = urllib.request.Request(
                 self.config.readiness_endpoint,
@@ -161,11 +174,22 @@ class BrowserGameLoader(GameLoader):
         except (urllib.error.URLError, OSError, ValueError):
             return False
 
+    def _tcp_probe(self) -> bool:
+        """Return ``True`` if ``serve_port`` accepts a TCP connection."""
+        parsed = urlparse(self.config.readiness_endpoint)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or self.config.serve_port
+        try:
+            with socket.create_connection((host, port), timeout=2):
+                return True
+        except (OSError, ConnectionRefusedError):
+            return False
+
     def stop(self) -> None:
         """Terminate the dev server process and clean up.
 
-        On Windows, sends ``CTRL_BREAK_EVENT`` to the process group.
-        On POSIX, sends ``SIGTERM`` to the process group.
+        On Windows, uses ``taskkill /F /T`` to kill the entire process
+        tree.  On POSIX, sends ``SIGTERM`` to the process group.
         """
         if self._process is None:
             self._running = False

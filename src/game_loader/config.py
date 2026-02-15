@@ -5,11 +5,17 @@ know about a game: where its source lives, how to install dependencies,
 how to serve it, and how to tell when it is ready.
 
 Configs can be loaded from YAML files via :func:`load_game_config`.
+String values in YAML configs support environment variable expansion
+using ``$VAR`` or ``${VAR}`` syntax, as well as ``~`` for the user
+home directory.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -20,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 # Default search path for game config YAML files.
 _CONFIGS_DIR = Path(__file__).resolve().parent.parent.parent / "configs" / "games"
+
+# Pattern matching $VAR or ${VAR} for environment variable expansion.
+_ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
 
 
 @dataclass
@@ -78,9 +87,65 @@ class GameLoaderConfig:
     env_vars: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        self.game_dir = Path(self.game_dir)
+        self.game_dir = Path(os.path.expanduser(_expand_vars(str(self.game_dir))))
         if not self.readiness_endpoint:
             self.readiness_endpoint = self.url
+
+
+def _expand_vars(value: str) -> str:
+    """Expand ``$VAR`` and ``${VAR}`` references in a string.
+
+    Undefined variables are left as-is (no error).
+
+    Parameters
+    ----------
+    value : str
+        String potentially containing environment variable references.
+
+    Returns
+    -------
+    str
+        String with known variables expanded.
+    """
+
+    def _replace(match: re.Match) -> str:
+        braced = match.group(1)  # From ${...}
+        bare = match.group(2)  # From $VAR
+        original: str = match.group(0) or ""
+
+        if braced is not None:
+            # Support ${VAR:-default} syntax.
+            if ":-" in braced:
+                var_name, default = braced.split(":-", 1)
+                return os.environ.get(var_name, default)
+            return os.environ.get(braced, original)
+
+        return os.environ.get(bare or "", original)
+
+    return _ENV_VAR_RE.sub(_replace, value)
+
+
+def _expand_vars_recursive(data: dict) -> dict:
+    """Expand environment variables in all string values of *data*.
+
+    Parameters
+    ----------
+    data : dict
+        Raw YAML dict whose string values may contain ``$VAR`` or
+        ``${VAR}`` references.
+
+    Returns
+    -------
+    dict
+        A new dict with all string values expanded.
+    """
+    expanded: dict = {}
+    for key, value in data.items():
+        if isinstance(value, str):
+            expanded[key] = _expand_vars(value)
+        else:
+            expanded[key] = value
+    return expanded
 
 
 def load_game_config(
@@ -90,7 +155,9 @@ def load_game_config(
     """Load a :class:`GameLoaderConfig` from a YAML file.
 
     Searches ``configs_dir`` (default ``configs/games/``) for a file
-    named ``<name>.yaml``.
+    named ``<name>.yaml``.  String values in the YAML undergo
+    environment variable expansion (``$VAR`` / ``${VAR}``) and home
+    directory expansion (``~``).
 
     Parameters
     ----------
@@ -107,6 +174,8 @@ def load_game_config(
     ------
     FileNotFoundError
         If no YAML file is found for ``name``.
+    ValueError
+        If the YAML contains unknown or missing fields.
     """
     search_dir = Path(configs_dir) if configs_dir else _CONFIGS_DIR
     config_path = search_dir / f"{name}.yaml"
@@ -121,4 +190,27 @@ def load_game_config(
     with open(config_path, "r", encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
 
-    return GameLoaderConfig(**raw)
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"Expected a YAML mapping in {config_path}, got {type(raw).__name__}"
+        )
+
+    # Expand environment variables in string values.
+    raw = _expand_vars_recursive(raw)
+
+    # Validate fields against the dataclass definition.
+    valid_fields = {f.name for f in dataclasses.fields(GameLoaderConfig)}
+    unknown = set(raw) - valid_fields
+    if unknown:
+        raise ValueError(
+            f"Unknown fields in {config_path}: {sorted(unknown)}. "
+            f"Valid fields: {sorted(valid_fields)}"
+        )
+
+    try:
+        return GameLoaderConfig(**raw)
+    except TypeError as exc:
+        raise ValueError(
+            f"Invalid config in {config_path}: {exc}. "
+            f"Valid fields: {sorted(valid_fields)}"
+        ) from exc
