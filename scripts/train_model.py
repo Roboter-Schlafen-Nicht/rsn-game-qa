@@ -106,9 +106,16 @@ def _patch_ultralytics_xpu() -> None:
 
     This function wraps the original functions so that XPU is handled
     correctly without modifying the ultralytics package on disk.
+
+    The patches are idempotent — calling this function multiple times
+    is safe and will not wrap functions repeatedly.
     """
     import torch
     from ultralytics.utils import torch_utils
+
+    # Guard: skip if already patched
+    if getattr(_patch_ultralytics_xpu, "_applied", False):
+        return
 
     # --- Patch 1: select_device ---
     _original = torch_utils.select_device
@@ -175,6 +182,9 @@ def _patch_ultralytics_xpu() -> None:
         return _original_get_memory(self, fraction=fraction)
 
     BaseTrainer._get_memory = _patched_get_memory
+
+    # Mark as applied to prevent re-wrapping
+    _patch_ultralytics_xpu._applied = True  # type: ignore[attr-defined]
 
     logger.debug("Patched ultralytics select_device + GradScaler + _get_memory for XPU")
 

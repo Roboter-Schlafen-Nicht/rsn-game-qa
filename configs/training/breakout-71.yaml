@@ -22,8 +22,10 @@ classes:
 base_model: yolov8n.pt   # nano: fast, sufficient for simple game objects
 
 # Dataset path — points to YOLO-format data.yaml prepared by prepare_dataset.py
-# To regenerate: python scripts/prepare_dataset.py --source output/dataset_YYYYMMDD_HHMMSS
-dataset_path: output/dataset_20260215_175739_yolo/data.yaml
+# To generate a dataset locally, run for example:
+#   python scripts/prepare_dataset.py --source output/dataset_YYYYMMDD_HHMMSS
+# Then either update dataset_path to the resulting data.yaml, or override it via CLI/env.
+dataset_path: null
 
 # Training hyperparameters
 epochs: 100

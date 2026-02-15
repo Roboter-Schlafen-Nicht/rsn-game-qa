@@ -120,12 +120,21 @@ def prepare_dataset(
 
     logger.info("Found %d valid image/label pairs", len(pairs))
 
+    # Validate val_ratio
+    if not (0 < val_ratio < 1):
+        raise ValueError(
+            f"val_ratio must be between 0 and 1 (exclusive), got {val_ratio}"
+        )
+
     # Shuffle and split
     random.seed(seed)
     indices = list(range(len(pairs)))
     random.shuffle(indices)
 
     n_val = max(1, int(len(pairs) * val_ratio))
+    # Ensure train set is non-empty
+    if n_val >= len(pairs):
+        n_val = len(pairs) - 1
     val_indices = set(indices[:n_val])
     train_indices = set(indices[n_val:])
 

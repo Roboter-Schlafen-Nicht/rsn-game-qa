@@ -79,11 +79,10 @@ class TestLoadTrainingConfig:
         cfg = load_training_config("breakout-71")
         assert cfg["amp"] is False
 
-    def test_config_dataset_path_is_set(self):
-        """Dataset path points to the prepared YOLO dataset."""
+    def test_config_dataset_path_initially_null(self):
+        """Dataset path is null until user sets it after prepare_dataset.py."""
         cfg = load_training_config("breakout-71")
-        assert cfg["dataset_path"] is not None
-        assert "data.yaml" in cfg["dataset_path"]
+        assert cfg["dataset_path"] is None
 
     def test_missing_config_raises(self):
         """Loading a nonexistent config raises FileNotFoundError."""
@@ -177,7 +176,7 @@ class TestTrainValidation:
     def test_raises_without_dataset_path(self):
         """train() raises RuntimeError when dataset_path is null."""
         cfg = load_training_config("breakout-71")
-        cfg["dataset_path"] = None  # Force null for this test
+        assert cfg["dataset_path"] is None
 
         with pytest.raises(RuntimeError, match="dataset_path is not set"):
             train(cfg)
@@ -204,10 +203,9 @@ class TestTrainValidation:
     def test_none_overrides_ignored(self):
         """None values in overrides dict are ignored."""
         cfg = load_training_config("breakout-71")
-        cfg["dataset_path"] = None  # Force null for this test
         overrides = {"epochs": None, "device": None, "dataset_path": None}
 
-        # Should still fail because dataset_path remains None
+        # Should still fail because dataset_path remains None from config
         with pytest.raises(RuntimeError, match="dataset_path is not set"):
             train(cfg, overrides=overrides)
 
@@ -237,7 +235,6 @@ class TestValidateModel:
     def test_raises_without_dataset_path(self, tmp_path):
         """validate_model raises RuntimeError when dataset_path not set."""
         cfg = load_training_config("breakout-71")
-        cfg["dataset_path"] = None  # Force null for this test
 
         # Create a fake weights file so we get past that check
         fake_weights = tmp_path / "best.pt"
