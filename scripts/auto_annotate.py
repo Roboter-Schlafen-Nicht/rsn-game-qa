@@ -87,6 +87,7 @@ MOTION_THRESHOLD = 25
 # Motion overlap: fraction of a detection's bounding box that must
 # overlap with the motion mask to be considered "moving".
 MOTION_OVERLAP_BALL = 0.10  # ball is small, even a few motion pixels count
+MOTION_OVERLAP_BALL_CONFIRMED = 0.50  # high-confidence ball confirmation
 MOTION_OVERLAP_COIN = 0.05  # coins are tiny
 MOTION_OVERLAP_PADDLE = 0.05  # paddle may move slowly
 
@@ -111,7 +112,7 @@ def compute_motion_mask(
     frame, prev_frame : np.ndarray
         BGR uint8 images of the same size.
     threshold : int
-        Per-channel intensity difference threshold.
+        Grayscale intensity difference threshold.
 
     Returns
     -------
@@ -549,8 +550,9 @@ def _detect_paddle(
 ) -> list[dict]:
     """Detect the paddle (white, wide, near bottom of frame).
 
-    When a motion mask is available, the paddle must show some motion.
-    Without motion data (first frame), falls back to color + shape only.
+    Detection is always based on color and shape; when a motion mask is
+    available it is used only as an auxiliary signal (for logging /
+    diagnostics), not as a hard requirement for accepting the paddle.
 
     Parameters
     ----------
@@ -732,8 +734,9 @@ def _detect_ball(
 
     # Prefer candidates with high motion overlap, then prefer SMALLER
     # area (actual ball vs. large particle trail blob).  Require at
-    # least 0.5 motion overlap to be "confirmed", then pick smallest.
-    confirmed = [c for c in candidates if c[1] >= 0.5]
+    # least MOTION_OVERLAP_BALL_CONFIRMED to be "confirmed", then pick
+    # smallest.
+    confirmed = [c for c in candidates if c[1] >= MOTION_OVERLAP_BALL_CONFIRMED]
     if confirmed:
         confirmed.sort(key=lambda c: c[0])  # smallest area first
         return [confirmed[0][2]]

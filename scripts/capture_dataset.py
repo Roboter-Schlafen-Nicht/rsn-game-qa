@@ -9,7 +9,6 @@ The bot automatically detects and handles game UI states:
 - **Gameplay**: random paddle movements via Selenium ActionChains
 - **Perk selection**: picks a random perk from the upgrade modal
 - **Game over**: clicks "New Run" to restart
-- **Paused**: clicks the canvas or presses Space to resume
 
 Detection uses ``driver.execute_script()`` to query the DOM directly
 (``body.classList.contains('has-alert-open')``, ``#close-modale``
@@ -51,7 +50,6 @@ logger = logging.getLogger(__name__)
 
 # Game UI states returned by _detect_game_state()
 STATE_GAMEPLAY = "gameplay"
-STATE_PAUSED = "paused"
 STATE_PERK_PICKER = "perk_picker"
 STATE_GAME_OVER = "game_over"
 STATE_MENU = "menu"
@@ -69,10 +67,9 @@ return (function() {
     var closeBtn = document.getElementById('close-modale');
 
     if (!hasAlert) {
-        // No modal open — either gameplay or paused
-        // We can't easily check gameState.running from the DOM, but
-        // if the game is running the ball is moving.  For our purposes,
-        // "no modal = gameplay or paused" is fine — we click to unpause.
+        // No modal open — treat as gameplay.  We cannot distinguish
+        // paused vs. running from the DOM alone, but the bot's periodic
+        // paddle actions and canvas clicks keep the game unpaused.
         result.state = "gameplay";
         return result;
     }
@@ -157,7 +154,7 @@ return (function() {
 """
 
 # JavaScript snippet to dismiss game-over modal.
-# Strategy: click the close button first, or find a restart/new-run button.
+# Strategy: try restart-like buttons first, fall back to the close button.
 _DISMISS_GAME_OVER_JS = """
 return (function() {
     var popup = document.getElementById('popup');
@@ -450,9 +447,9 @@ def main() -> int:
 
         modal_action = None
         if game_state in (STATE_PERK_PICKER, STATE_GAME_OVER, STATE_MENU):
-            # Capture the modal frame BEFORE dismissing it — these are
-            # still useful for training (the model should learn to
-            # recognize non-gameplay states).
+            # Handle the modal (perk selection, game over, or menu).
+            # Note: the frame capture happens later in the loop, after
+            # the modal has been dismissed.
             modal_action = _handle_modal(driver, state_info)
             modal_actions.append({"frame": i, "state": game_state, **modal_action})
             # Wait for the modal animation to finish
@@ -473,13 +470,6 @@ def main() -> int:
                     _click_to_start(driver, game_canvas, canvas_dims)
                 except Exception as exc:
                     logger.debug("Post-perk click failed: %s", exc)
-
-        elif game_state == STATE_PAUSED:
-            # Click to unpause
-            try:
-                _click_to_start(driver, game_canvas, canvas_dims)
-            except Exception as exc:
-                logger.debug("Unpause click failed: %s", exc)
 
         # ── Periodic random paddle action during gameplay ────────────
         action_meta = None
