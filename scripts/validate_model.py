@@ -101,6 +101,12 @@ def validate_model(
     device = resolve_device(config.get("device", "auto"))
     logger.info("Using device: %s", device)
 
+    # Patch ultralytics select_device to support Intel XPU
+    if device == "xpu":
+        from scripts.train_model import _patch_ultralytics_xpu
+
+        _patch_ultralytics_xpu()
+
     logger.info("Running validation on %s ...", dataset_path)
     with Timer("validation") as t:
         metrics = model.val(

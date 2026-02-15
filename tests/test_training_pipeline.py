@@ -55,12 +55,13 @@ class TestLoadTrainingConfig:
         """Config includes a device field."""
         cfg = load_training_config("breakout-71")
         assert "device" in cfg
-        assert cfg["device"] == "auto"
+        assert cfg["device"] == "cpu"
 
     def test_config_has_validation_thresholds(self):
         """Config includes mAP validation thresholds."""
         cfg = load_training_config("breakout-71")
-        assert cfg["min_map50"] == 0.80
+        # Lowered from 0.80 to 0.65 for initial auto-annotated dataset
+        assert cfg["min_map50"] == 0.65
         assert cfg["min_map50_95"] == 0.50
 
     def test_config_has_output_dir(self):
@@ -79,7 +80,7 @@ class TestLoadTrainingConfig:
         assert cfg["amp"] is False
 
     def test_config_dataset_path_initially_null(self):
-        """Dataset path is null until user sets it after Roboflow export."""
+        """Dataset path is null until user sets it after prepare_dataset.py."""
         cfg = load_training_config("breakout-71")
         assert cfg["dataset_path"] is None
 
