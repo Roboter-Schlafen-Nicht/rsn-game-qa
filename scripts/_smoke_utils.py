@@ -241,10 +241,17 @@ class BrowserInstance:
         window_size: tuple[int, int] = (1280, 720),
         browser: str | None = None,
     ) -> None:
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options as ChromeOptions
-        from selenium.webdriver.edge.options import Options as EdgeOptions
-        from selenium.webdriver.firefox.options import Options as FirefoxOptions
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options as ChromeOptions
+            from selenium.webdriver.edge.options import Options as EdgeOptions
+            from selenium.webdriver.firefox.options import Options as FirefoxOptions
+        except ImportError as exc:
+            raise RuntimeError(
+                "Selenium is required for BrowserInstance but is not installed. "
+                "Install it with 'pip install selenium' or add it to "
+                "environment.yml pip dependencies."
+            ) from exc
 
         # Resolve which browser to use
         if browser is None:
