@@ -113,16 +113,19 @@ def main() -> int:
         "--action-interval",
         type=int,
         default=5,
-        help="Perform a random action every N frames (default: %(default)s)",
+        help="Perform a random action every N frames (default: %(default)s, min: 1)",
     )
     parser.add_argument(
-        "--click-start",
-        action="store_true",
-        default=True,
-        help="Click the canvas to start the game (default: %(default)s)",
+        "--no-click-start",
+        action="store_false",
+        dest="click_start",
+        help="Skip clicking the canvas to start the game",
     )
     args = parser.parse_args()
     setup_logging(args.verbose)
+
+    if args.action_interval < 1:
+        parser.error("--action-interval must be >= 1")
 
     from dotenv import load_dotenv
 

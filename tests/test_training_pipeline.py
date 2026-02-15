@@ -122,15 +122,16 @@ class TestResolveDevice:
     """Tests for resolve_device."""
 
     def test_explicit_cpu(self):
-        """Requesting 'cpu' returns 'cpu'."""
+        """Requesting 'cpu' returns 'cpu' without importing torch."""
+        # torch import is now after the early return, so no mock needed
         assert resolve_device("cpu") == "cpu"
 
     def test_explicit_cuda(self):
-        """Requesting 'cuda' returns 'cuda' (even if unavailable)."""
+        """Requesting 'cuda' returns 'cuda' without importing torch."""
         assert resolve_device("cuda") == "cuda"
 
     def test_explicit_xpu(self):
-        """Requesting 'xpu' returns 'xpu' (even if unavailable)."""
+        """Requesting 'xpu' returns 'xpu' without importing torch."""
         assert resolve_device("xpu") == "xpu"
 
     def test_auto_falls_back_to_cpu(self):
@@ -292,6 +293,14 @@ class TestUploadState:
 
         result = _load_upload_state(state_path)
         assert result == {"frame_00001.png", "frame_00002.png"}
+
+    def test_corrupted_state_file_returns_empty(self, tmp_path):
+        """Corrupted state file gracefully returns empty set."""
+        state_path = tmp_path / ".upload_state.json"
+        state_path.write_text("not valid json{{{")
+
+        result = _load_upload_state(state_path)
+        assert result == set()
 
 
 # ---------------------------------------------------------------------------

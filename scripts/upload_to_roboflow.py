@@ -50,9 +50,15 @@ def _load_upload_state(state_path: Path) -> set[str]:
         Filenames that have already been uploaded.
     """
     if state_path.exists():
-        with open(state_path) as f:
-            data = json.load(f)
-        return set(data.get("uploaded", []))
+        try:
+            with open(state_path) as f:
+                data = json.load(f)
+            return set(data.get("uploaded", []))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning(
+                "Corrupted upload state file %s (%s) — starting fresh", state_path, exc
+            )
+            return set()
     return set()
 
 
@@ -186,14 +192,14 @@ def main() -> int:
     )
     parser.add_argument(
         "--project",
-        default=_DEFAULT_PROJECT,
-        help="Roboflow project slug (default: %(default)s)",
+        default=None,
+        help="Roboflow project slug (or set ROBOFLOW_PROJECT env var, default: breakout71)",
     )
     parser.add_argument(
         "--batch",
         type=int,
         default=50,
-        help="Log progress every N uploads (default: %(default)s)",
+        help="Log progress every N uploads (default: %(default)s, min: 1)",
     )
     parser.add_argument(
         "--split",
@@ -219,6 +225,8 @@ def main() -> int:
         args.api_key = os.environ.get("ROBOFLOW_API_KEY", "")
     if not args.workspace:
         args.workspace = os.environ.get("ROBOFLOW_WORKSPACE", "")
+    if not args.project:
+        args.project = os.environ.get("ROBOFLOW_PROJECT", "breakout71")
 
     if not args.api_key:
         logger.error(
@@ -230,6 +238,10 @@ def main() -> int:
         logger.error(
             "No workspace provided. Set ROBOFLOW_WORKSPACE env var or pass --workspace."
         )
+        return 1
+
+    if args.batch < 1:
+        logger.error("--batch must be >= 1")
         return 1
 
     if not args.dataset_dir.is_dir():

@@ -82,10 +82,10 @@ def resolve_device(requested: str = "auto") -> str:
     str
         Device string suitable for Ultralytics ``model.train(device=...)``.
     """
-    import torch
-
     if requested != "auto":
         return requested
+
+    import torch
 
     if hasattr(torch, "xpu") and torch.xpu.is_available():
         return "xpu"
@@ -107,7 +107,8 @@ def train(config: dict, overrides: dict | None = None) -> Path:
     Returns
     -------
     Path
-        Path to the best weights file (``best.pt``).
+        Path to the best weights file (``best.pt``), or the training
+        output directory if ``best.pt`` was not found.
 
     Raises
     ------
@@ -193,12 +194,10 @@ def train(config: dict, overrides: dict | None = None) -> Path:
         shutil.copy2(best_weights, final_weights)
         logger.info("Best weights saved to: %s", final_weights)
         return final_weights
-    else:
-        logger.warning("best.pt not found at expected location: %s", best_weights)
-        # Return the train directory so user can find the weights
-        return train_dir
 
-    return best_weights
+    logger.warning("best.pt not found at expected location: %s", best_weights)
+    logger.warning("Returning train directory instead: %s", train_dir)
+    return train_dir
 
 
 def main() -> int:
