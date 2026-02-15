@@ -40,6 +40,16 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **Selenium 4.40.0 has built-in Selenium Manager** — handles driver binaries automatically; no `webdriver-manager` needed
 - **`selenium` is imported lazily** inside `BrowserInstance.__init__` only — no CI impact
 
+### YOLO Training Pipeline (session 9)
+
+- **`scripts/` needs `__init__.py`** — Without it, `from scripts.train_model import ...` fails in CI
+- **ultralytics import triggers cv2 → libGL.so.1 failure in CI Docker** — Move all input validation BEFORE `from ultralytics import YOLO` import
+- **`torch` import is local in `resolve_device()`** — Must mock via `mock.patch.dict("sys.modules", {"torch": mock_torch})`; moved after early return so explicit device selection doesn't require torch
+- **Windows path backslashes in test assertions** — Use generic match strings like `"does not exist"` instead of literal paths in `pytest.raises(match=...)`
+- **`roboflow` package uses `>=1.1.0`** — Pinned as minimum version in `environment.yml`
+- **`python-dotenv==1.1.0`** — Added to `environment.yml` pip dependencies
+- **`argparse` `action="store_true"` + `default=True` is a no-op** — Use `--no-X` with `action="store_false"` + `dest="X"` instead
+
 ### Breakout 71 Game Mechanics (session 8 — source study)
 
 - **Scoring is coin-based, not brick-based** — breaking bricks spawns coins that fly with physics; catching coins with the paddle adds to the score. Combo system multiplies coin value. Combo resets if ball returns to paddle without hitting a brick.
@@ -64,14 +74,22 @@ src/
   perception/     # DONE — YoloDetector, breakout_capture (41 tests)
   oracles/        # DONE — 12 oracles with on_step detection (132 tests)
   env/            # DONE — Breakout71Env gymnasium wrapper (69 tests)
+configs/
+  games/                  # Per-game loader configs (breakout-71.yaml)
+  training/               # Per-game YOLO training configs (breakout-71.yaml)
 tests/
   conftest.py             # Integration test fixtures (Selenium browser parameterization)
   test_integration.py     # 12 integration tests × 2 browsers
+  test_training_pipeline.py  # 41 training pipeline tests
 scripts/
   _smoke_utils.py         # BrowserInstance (Selenium), get_available_browsers(), utilities
   smoke_launch.py         # Game launch + proof screenshot
   smoke_capture.py        # Multi-frame capture verification
   smoke_oracle.py         # Oracle run + JSON report
+  capture_dataset.py      # Frame capture with random bot for YOLO training
+  upload_to_roboflow.py   # Roboflow API upload with resume support
+  train_model.py          # Config-driven YOLO training
+  validate_model.py       # mAP threshold validation
 documentation/
   BigRocks/checklist.md   # Master checklist — the source of truth for what's done and what's next
   specs/                  # Canonical spec files
@@ -79,7 +97,7 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-8)
+## What's Done (sessions 1-9)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -89,14 +107,15 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 6. **Session 6** — Oracle `on_step` detection logic, 12 oracles (PR #13)
 7. **Session 7** — Smoke scripts, integration tests, Selenium browser management (PR #15)
 8. **Session 8** — Game source study, revised env design, Breakout71Env v1 implementation (PR #17)
+9. **Session 9** — Config-driven YOLO training pipeline: capture, upload, train, validate (PR #19)
 
-Total: **357 tests** (357 unit + 24 integration), 6 subsystems complete.
+Total: **398 tests** (398 unit + 24 integration), 6 subsystems + training pipeline complete.
 
 ## What's Next
 
 Read `documentation/BigRocks/checklist.md` for the full breakdown. In order:
 
-1. **Data collection & YOLO training pipeline** — automated capture, annotation, training (deferred — env can be fully tested with mocks)
+1. **Data collection (manual)** — capture ~500 frames, annotate in Roboflow, train + validate YOLO model
 2. **Integration & E2E** — wire all subsystems, run episodes, generate reports
 
 ## Reference Files

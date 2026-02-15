@@ -53,16 +53,26 @@
   - [x] 69 unit tests (357 total unit + 24 integration)
   - [x] Copilot review: fixed step counter increment ordering (truncation bug)
 
+- [x] **YOLO training pipeline** (PR #19)
+  - [x] Config-driven architecture (`configs/training/<game>.yaml`)
+  - [x] Frame capture with random bot (`scripts/capture_dataset.py`)
+  - [x] Roboflow upload with resume support (`scripts/upload_to_roboflow.py`)
+  - [x] YOLO training script (`scripts/train_model.py`)
+  - [x] Trained weights validation (`scripts/validate_model.py`)
+  - [x] `.env` / `python-dotenv` for API keys
+  - [x] 41 unit tests (398 total unit + 24 integration)
+  - [x] Copilot review: 8 fixes (flag semantics, zero checks, dead code, docstring, error recovery)
+
 ## To Do
 
 ### 1. Data collection & YOLO training pipeline
-- [x] Automated frame capture during gameplay (save frames + metadata)
-- [x] Annotation tooling integration (Roboflow upload / labeling)
-- [x] YOLO training script for Breakout 71 classes (`paddle`, `ball`, `brick`, `powerup`, `wall`)
-- [x] Trained weights validation (mAP threshold)
-- [x] Config-driven architecture (`configs/training/<game>.yaml`)
-- [x] `.env` / `python-dotenv` for API keys
-- [x] 40 unit tests
+- [x] Automated frame capture during gameplay (PR #19)
+- [x] Annotation tooling integration (PR #19 — Roboflow upload)
+- [x] YOLO training script for Breakout 71 classes (PR #19)
+- [x] Trained weights validation / mAP threshold (PR #19)
+- [x] Config-driven architecture (PR #19)
+- [x] `.env` / `python-dotenv` for API keys (PR #19)
+- [x] 41 unit tests (PR #19)
 - [ ] Capture ~500 frames from live game
 - [ ] Annotate frames in Roboflow
 - [ ] Train and validate model
