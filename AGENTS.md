@@ -40,6 +40,20 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **Selenium 4.40.0 has built-in Selenium Manager** — handles driver binaries automatically; no `webdriver-manager` needed
 - **`selenium` is imported lazily** inside `BrowserInstance.__init__` only — no CI impact
 
+### Breakout 71 Game Mechanics (session 8 — source study)
+
+- **Scoring is coin-based, not brick-based** — breaking bricks spawns coins that fly with physics; catching coins with the paddle adds to the score. Combo system multiplies coin value. Combo resets if ball returns to paddle without hitting a brick.
+- **No traditional lives** — the `extra_life` perk (max 7 levels) acts as expendable rescues. When last ball is lost with `extra_life > 0`, ball is rescued. When `extra_life == 0` and all balls lost → game over.
+- **Multi-ball is a perk** — `multiball` perk spawns additional balls. Losing one ball isn't game over unless ALL are lost.
+- **Level system** — 7 + `extra_levels` levels per run. Between levels: perk selection screen (`openUpgradesPicker()`). ~60+ perks available. `chill` perk = infinite levels.
+- **No explicit state machine** — uses boolean flags: `running`, `isGameOver`, `ballStickToPuck`
+- **Input** — mouse position sets paddle directly; keyboard `ArrowLeft`/`ArrowRight` move incrementally (`gameZoneWidth/50` per tick, 3x with Shift); `Space` toggles play/pause
+- **Android version** — thin Kotlin WebView wrapper loading the same compiled `index.html`. 100% identical game logic. Only differences: touch input (hold-to-play), portrait lock, video/save export via Android intents.
+- **Canvas** — `#game` element, fills `innerWidth x innerHeight` (x pixelRatio). Game zone width = `brickWidth * gridSize`, centered horizontally.
+- **Level completion** — when `remainingBricks === 0 && !hasPendingBricks`, either instant win (no coins) or 5s delay (`winAt` timer) for coin collection.
+- **Ball physics** — speed normalizes toward `baseSpeed * sqrt(2)` each tick; multiple sub-steps per frame to prevent tunneling; bounce angle depends on paddle hit position and `concave_puck` perk.
+- **YOLO class `"powerup"` maps to coins** in the perception subsystem.
+
 ## Project Structure
 
 ```
@@ -65,7 +79,7 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-7)
+## What's Done (sessions 1-8)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -74,15 +88,16 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 5. **Session 5** — Perception subsystem (PR #12)
 6. **Session 6** — Oracle `on_step` detection logic, 12 oracles (PR #13)
 7. **Session 7** — Smoke scripts, integration tests, Selenium browser management (PR #15)
+8. **Session 8** — Game source study, revised env design, Breakout71Env v1 implementation
 
-Total: **316 tests** (293 unit + 23 integration), 5 subsystems complete.
+Total: **316 tests** (293 unit + 23 integration), 5 subsystems complete. Session 8 in progress.
 
 ## What's Next
 
 Read `documentation/BigRocks/checklist.md` for the full breakdown. In order:
 
-1. **Data collection & YOLO training pipeline** — automated capture, annotation, training
-2. **Breakout71 Env** (`src/env/`) — Gymnasium env core methods
+1. **Breakout71 Env v1** (`src/env/`) — Gymnasium env core methods, 8-element observation, brick-based reward with score_delta placeholder (in progress — session 8)
+2. **Data collection & YOLO training pipeline** — automated capture, annotation, training (deferred — env can be fully tested with mocks)
 3. **Integration & E2E** — wire all subsystems, run episodes, generate reports
 
 ## Reference Files
