@@ -50,6 +50,19 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **`python-dotenv==1.1.0`** — Added to `environment.yml` pip dependencies
 - **`argparse` `action="store_true"` + `default=True` is a no-op** — Use `--no-X` with `action="store_false"` + `dest="X"` instead
 
+### Data Collection & Auto-Annotation (session 10)
+
+- **Selenium `execute_script()` IIFE bug** — Must use `return (function() { ... })();` — outer `return` required for Selenium to capture IIFE return value. Without it, returns `null`.
+- **Browser chrome ~130px** — Tab bar + URL bar + "Chrome is being controlled" banner at top of captured frames. Must account for when mapping game coordinates.
+- **21 palette colors → 11 HSV groups** — `palette.json` defines 21 brick colors; mapped to 11 HSV detection ranges (blue, yellow, red, orange, green, cyan, purple, pink, beige, white, gray). Adjacent same-color bricks merge — grid-splitting logic handles this.
+- **Ball particle trail** — Ball emits multiple white fragments. Solution: dilate to merge nearby blobs, pick smallest confirmed candidate.
+- **UI false positives** — "Level 1/7" button, "$0/$10" score, coin counter icon all trigger false detections. Eliminated via UI mask zones + frame differencing.
+- **White/gray brick detection** — Must restrict to "brick zone" (upper 65% of game area) to avoid false-positiving on paddle, ball, or background.
+- **Game zone boundaries** — Columns ~324 to ~956 (632px wide) at 1280x1024. Coins/ball must be within these boundaries.
+- **Individual bricks ~89x89 pixels** at 1280x1024. Client area = 1264x1016 pixels.
+- **Random bot dies quickly** — Never clears level 1, so dataset is 93.7% gameplay + 6.3% game-over (no perk picker states)
+- **Game state detection via DOM** — `document.body.classList.contains('has-alert-open')` for modal detection, `#popup` for content, `#close-modale` for dismissible modals
+
 ### Breakout 71 Game Mechanics (session 8 — source study)
 
 - **Scoring is coin-based, not brick-based** — breaking bricks spawns coins that fly with physics; catching coins with the paddle adds to the score. Combo system multiplies coin value. Combo resets if ball returns to paddle without hitting a brick.
@@ -86,7 +99,8 @@ scripts/
   smoke_launch.py         # Game launch + proof screenshot
   smoke_capture.py        # Multi-frame capture verification
   smoke_oracle.py         # Oracle run + JSON report
-  capture_dataset.py      # Frame capture with random bot for YOLO training
+  capture_dataset.py      # Frame capture with random bot + game state detection
+  auto_annotate.py        # OpenCV auto-annotation (HSV segmentation, frame differencing)
   upload_to_roboflow.py   # Roboflow API upload with resume support
   train_model.py          # Config-driven YOLO training
   validate_model.py       # mAP threshold validation
@@ -97,7 +111,7 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-9)
+## What's Done (sessions 1-10)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -108,6 +122,7 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 7. **Session 7** — Smoke scripts, integration tests, Selenium browser management (PR #15)
 8. **Session 8** — Game source study, revised env design, Breakout71Env v1 implementation (PR #17)
 9. **Session 9** — Config-driven YOLO training pipeline: capture, upload, train, validate (PR #19)
+10. **Session 10** — Data collection pipeline: 300-frame capture with game state detection, auto-annotation with OpenCV (PR #21)
 
 Total: **398 tests** (398 unit + 24 integration), 6 subsystems + training pipeline complete.
 
@@ -115,8 +130,9 @@ Total: **398 tests** (398 unit + 24 integration), 6 subsystems + training pipeli
 
 Read `documentation/BigRocks/checklist.md` for the full breakdown. In order:
 
-1. **Data collection (manual)** — capture ~500 frames, annotate in Roboflow, train + validate YOLO model
-2. **Integration & E2E** — wire all subsystems, run episodes, generate reports
+1. **Roboflow upload + review** — upload 300 auto-annotated frames, human review/correction
+2. **Train + validate YOLO model** — train on reviewed annotations, validate mAP thresholds
+3. **Integration & E2E** — wire all subsystems, run episodes, generate reports
 
 ## Reference Files
 
