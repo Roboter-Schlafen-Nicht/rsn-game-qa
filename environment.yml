@@ -81,6 +81,8 @@ dependencies:
       # Windows capture / input (platform-specific)
       - pywin32==310
       - pydirectinput==1.0.4
+      # Game loader configuration
+      - pyyaml==6.0.3
       # Templating (for reporting dashboard)
       - jinja2==3.1.6
       # Documentation

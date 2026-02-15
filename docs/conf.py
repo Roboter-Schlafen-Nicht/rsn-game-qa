@@ -58,6 +58,7 @@ autodoc_mock_imports = [
     "imagehash",
     "pandas",
     "polars",
+    "yaml",
 ]
 
 # Napoleon settings (for Google-style docstrings)

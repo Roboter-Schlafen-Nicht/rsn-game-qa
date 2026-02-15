@@ -12,14 +12,14 @@ The system uses a two-layer design:
 2. **Bug-detection oracles** inspect traces and flag anomalies (crashes, stuck states, score anomalies, visual glitches, performance drops)
 
 ```
- Capture          Perception        Policy / RL         Oracles           Reporting
-+-----------+    +------------+    +-------------+    +-------------+    +-----------+
-| Window    |--->| YOLO       |--->| Help Policy |    | Crash       |    | Episode   |
-| Capture   |    | Detector   |    | RL Policy   |--->| Stuck       |--->| Report    |
-| ADB       |    |            |    | PPO (SB3)   |    | ScoreAnom.  |    | Dashboard |
-+-----------+    +------------+    +-------------+    | VisGlitch   |    +-----------+
-                                                      | Performance |
-                                                      +-------------+
+ Game Loader      Capture          Perception        Policy / RL         Oracles           Reporting
++------------+   +-----------+    +------------+    +-------------+    +-------------+    +-----------+
+| Config     |   | Window    |--->| YOLO       |--->| Help Policy |    | Crash       |    | Episode   |
+| (YAML)     |-->| Capture   |    | Detector   |    | RL Policy   |--->| Stuck       |--->| Report    |
+| Browser    |   | ADB       |    |            |    | PPO (SB3)   |    | ScoreAnom.  |    | Dashboard |
+| Loader     |   +-----------+    +------------+    +-------------+    | VisGlitch   |    +-----------+
++------------+                                                         | Performance |
+                                                                       +-------------+
 ```
 
 ## Target games
@@ -37,16 +37,19 @@ src/
   capture/              Window capture (GDI) + input controller (pydirectinput) [stub]
   controllers/          ADB emulator controller, game-specific controllers
   env/                  Gymnasium environments (Breakout71Env [stub])
+  game_loader/          Configurable game loading (browser dev server lifecycle)
   oracles/              Bug-detection oracles (crash, stuck, score, visual, perf) [stub on_step]
   perception/           YOLO detector wrapper [stub]
   policies/             YOLO-based + RL-based policies for Last War
   reporting/            Episode/session reports + Jinja2 dashboard [stub]
   rl/                   RL training env + PPO training script for help policy
+configs/
+  games/                Game loader YAML configs (breakout-71.yaml, ...)
 scripts/                YOLO training, dataset dedup, ADB test
-tests/                  pytest suite (30 tests: 26 pass, 4 skip)
+tests/                  pytest suite (66 tests)
 docs/                   Sphinx docs (Furo theme, MyST Markdown)
 documentation/
-  specs/                Design specs for env, oracles, capture, reporting
+  specs/                Design specs for env, oracles, capture, reporting, game loader
   sessions/             Development session notes
   business/             2026 plan
 data/
@@ -75,6 +78,33 @@ conda activate yolo
 Platform-specific dependencies (`pywin32`, `pydirectinput`) are guarded with `try/except ImportError` so the codebase loads on Linux as well.
 
 ## Running
+
+### Load a game for testing
+
+The game loader manages the lifecycle of getting a game running before QA or RL begins. Games are configured via YAML files in `configs/games/`.
+
+```python
+from src.game_loader import load_game_config, create_loader
+
+config = load_game_config("breakout-71")
+with create_loader(config) as loader:
+    print(f"Game ready at {loader.url}")
+    # … run QA / RL against the game …
+```
+
+Or use the Breakout 71 convenience constructor directly:
+
+```python
+from src.game_loader import Breakout71Loader
+
+loader = Breakout71Loader.from_repo_path(r"F:\work\breakout71-testbed")
+loader.setup()   # npm install
+loader.start()   # parcel dev server → http://localhost:1234
+# … game is running …
+loader.stop()
+```
+
+To add a new browser game, drop a YAML file in `configs/games/` — no Python code needed if it follows the standard Node dev server pattern (npm install + serve command).
 
 ### Last War help bot (requires Android emulator + ADB)
 
@@ -111,7 +141,7 @@ GitHub Actions runs on every push to `main` or `big-rock-*` branches and on PRs 
 | Job | What it does |
 |-----|-------------|
 | **Lint** | `ruff check` + `ruff format --check` |
-| **Test** | `pytest` (26 passed, 4 skipped) |
+| **Test** | `pytest` (66 passed) |
 | **Build Check** | Verifies all module imports succeed |
 | **Build Docs** | Sphinx HTML build with `-W` (warnings as errors) |
 
@@ -131,7 +161,7 @@ Build the Sphinx documentation:
 python -m sphinx.cmd.build -b html docs docs/_build/html
 ```
 
-Design specs live in `documentation/specs/` and cover the Breakout71 env, oracle system, capture/input, and reporting system.
+Design specs live in `documentation/specs/` and cover the Breakout71 env, oracle system, capture/input, reporting system, and game loader.
 
 ## License
 
