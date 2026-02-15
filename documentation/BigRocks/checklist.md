@@ -26,10 +26,10 @@
   - [x] `WindowCapture` -- BitBlt/GDI via pywin32 (`_find_window`, `capture_frame`, `is_window_visible`, `release`)
   - [x] `InputController` -- pydirectinput (`apply_action`, `move_mouse_to`, `click`, `press_key`, `hold_key`, `release_key`)
   - [x] 37 tests (133 total), Sphinx docs, `pydirectinput` added to `autodoc_mock_imports`
-- [x] **Perception subsystem** (PR #TBD)
+- [x] **Perception subsystem** (PR #12)
   - [x] `YoloDetector` -- `load` (weights validation, XPU→CPU fallback), `detect` (inference + result parsing), `detect_to_game_state` (grouping, normalization)
   - [x] `breakout_capture.py` -- `grab_frame` (visibility check), `detect_objects` (auto-infer dimensions)
-  - [x] 40 tests (169 total), Sphinx docs updated
+  - [x] 41 tests (170 total), Sphinx docs updated
 
 ## To Do
 

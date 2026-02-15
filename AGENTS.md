@@ -29,6 +29,7 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **pywin32 + pydirectinput ARE installed** in conda env — tests simulating "missing" must use `importlib.reload` with `sys.modules` patched to `None`
 - **Windows `NUL` file artifact**: `> NUL` redirect can create a literal file; delete with `rm -f NUL`
 - **GitHub self-approval not allowed** — use Copilot as reviewer
+- **Copilot code review is web-UI only** — `gh pr edit --add-reviewer copilot`, `gh pr create --reviewer copilot`, and `gh api .../requested_reviewers` all silently fail. Must request Copilot review manually via the GitHub web UI (PR page → Reviewers dropdown → select "Copilot"). The `gh agent-task` CLI commands are for the Copilot *coding agent*, not the code reviewer. Allow several minutes for Copilot to post its review after requesting.
 - **`git pull` times out** — use `git fetch origin main && git reset --hard origin/main`
 - **`gh pr merge` times out** but often succeeds — verify with `gh pr view N --json state,mergedAt`
 - LSP unresolved import errors (cv2, gymnasium, pydirectinput, etc.) are pre-existing and harmless
@@ -40,7 +41,7 @@ src/
   game_loader/    # DONE — YAML config, factory, loaders (82 tests)
   reporting/      # DONE — JSON reports, HTML dashboard (26 tests)
   capture/        # DONE — BitBlt window capture, pydirectinput input (37 tests)
-  perception/     # STUB — YoloDetector, breakout_capture
+  perception/     # DONE — YoloDetector, breakout_capture (41 tests)
   oracles/        # STUB on_step — base.py complete, 5 oracle stubs
   env/            # STUB — Breakout71Env gymnasium wrapper
 tests/
@@ -51,23 +52,23 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-4)
+## What's Done (sessions 1-5)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
 3. **Session 3** — Reporting subsystem (PR #7, #8)
 4. **Session 4** — Capture & Input subsystem (PR #9, #10, #11)
+5. **Session 5** — Perception subsystem (PR #12)
 
-Total: **133 tests passing**, 3 subsystems complete.
+Total: **170 tests passing**, 4 subsystems complete.
 
 ## What's Next
 
 Read `documentation/BigRocks/checklist.md` for the full breakdown. In order:
 
-1. **Perception subsystem** (`src/perception/`) — `YoloDetector`, `breakout_capture.py`
-2. **Oracle `on_step`** (`src/oracles/`) — detection logic for all 5 oracles
-3. **Breakout71 Env** (`src/env/`) — Gymnasium env core methods
-4. **Integration & E2E** — wire all subsystems, run episodes, generate reports
+1. **Oracle `on_step`** (`src/oracles/`) — detection logic for all 5 oracles
+2. **Breakout71 Env** (`src/env/`) — Gymnasium env core methods
+3. **Integration & E2E** — wire all subsystems, run episodes, generate reports
 
 ## Reference Files
 
