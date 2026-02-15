@@ -58,6 +58,8 @@ class TemporalAnomalyOracle(Oracle):
         # Track presence (True) / absence (False) history per key
         self._presence_history: dict[str, list[bool]] = {}
         self._step_count: int = 0
+        # Cooldown: step at which flicker was last reported per key
+        self._flicker_cooldown: dict[str, int] = {}
 
     def on_reset(self, obs: np.ndarray, info: dict[str, Any]) -> None:
         """Reset tracking at episode start.
@@ -72,6 +74,7 @@ class TemporalAnomalyOracle(Oracle):
         self._prev_positions = {}
         self._presence_history = {key: [] for key in self.tracked_keys}
         self._step_count = 0
+        self._flicker_cooldown = {}
 
     def on_step(
         self,
@@ -154,6 +157,11 @@ class TemporalAnomalyOracle(Oracle):
         if len(history) < self.flicker_window:
             return
 
+        # Cooldown: suppress if we reported within the last flicker_window steps
+        last_reported = self._flicker_cooldown.get(key, -self.flicker_window)
+        if (self._step_count - last_reported) < self.flicker_window:
+            return
+
         # Count transitions (present -> absent or absent -> present)
         transitions = sum(
             1 for i in range(1, len(history)) if history[i] != history[i - 1]
@@ -175,5 +183,6 @@ class TemporalAnomalyOracle(Oracle):
                     "history": history.copy(),
                 },
             )
-            # Reset history to avoid repeated findings
+            # Record cooldown and reset history
+            self._flicker_cooldown[key] = self._step_count
             self._presence_history[key] = [history[-1]]

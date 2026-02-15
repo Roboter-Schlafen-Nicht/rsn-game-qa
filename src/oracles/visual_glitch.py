@@ -177,7 +177,10 @@ class VisualGlitchOracle(Oracle):
             return None
 
         # Convert BGR numpy array to PIL Image
-        import cv2
+        try:
+            import cv2
+        except ImportError:
+            return None
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pil_image = Image.fromarray(rgb)
@@ -202,7 +205,14 @@ class VisualGlitchOracle(Oracle):
             SSIM value in [0.0, 1.0].
         """
         # Convert to grayscale float
-        import cv2
+        try:
+            import cv2
+        except ImportError as exc:
+            raise RuntimeError(
+                "OpenCV (cv2) is required to compute SSIM in "
+                "VisualGlitchOracle. Install 'opencv-python' or "
+                "'opencv-python-headless'."
+            ) from exc
 
         gray_a = cv2.cvtColor(frame_a, cv2.COLOR_BGR2GRAY).astype(np.float64)
         gray_b = cv2.cvtColor(frame_b, cv2.COLOR_BGR2GRAY).astype(np.float64)

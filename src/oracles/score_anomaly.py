@@ -55,6 +55,7 @@ class ScoreAnomalyOracle(Oracle):
         self._prev_score: float | None = None
         self._score_history: list[float] = []
         self._step_count: int = 0
+        self._negative_score_reported: bool = False
 
     def on_reset(self, obs: np.ndarray, info: dict[str, Any]) -> None:
         """Reset score tracking at episode start.
@@ -69,6 +70,7 @@ class ScoreAnomalyOracle(Oracle):
         self._prev_score = info.get(self.score_key)
         self._score_history.clear()
         self._step_count = 0
+        self._negative_score_reported = False
 
     def on_step(
         self,
@@ -101,14 +103,18 @@ class ScoreAnomalyOracle(Oracle):
 
         current_score = float(current_score)
 
-        # 1. Check for negative score
+        # 1. Check for negative score (report once per negative streak)
         if not self.allow_negative and current_score < 0:
-            self._add_finding(
-                severity="warning",
-                step=self._step_count,
-                description=f"Negative score detected: {current_score}",
-                data={"score": current_score},
-            )
+            if not self._negative_score_reported:
+                self._add_finding(
+                    severity="warning",
+                    step=self._step_count,
+                    description=f"Negative score detected: {current_score}",
+                    data={"score": current_score},
+                )
+                self._negative_score_reported = True
+        else:
+            self._negative_score_reported = False
 
         # 2. Check for impossible jump
         if self._prev_score is not None:

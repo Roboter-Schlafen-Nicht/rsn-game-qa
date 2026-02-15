@@ -45,6 +45,8 @@ class CrashOracle(Oracle):
         self._prev_frame: np.ndarray | None = None
         self._identical_count: int = 0
         self._step_count: int = 0
+        self._black_frame_reported: bool = False
+        self._freeze_reported: bool = False
 
     def on_reset(self, obs: np.ndarray, info: dict[str, Any]) -> None:
         """Reset internal state at episode start.
@@ -59,6 +61,8 @@ class CrashOracle(Oracle):
         self._prev_frame = None
         self._identical_count = 0
         self._step_count = 0
+        self._black_frame_reported = False
+        self._freeze_reported = False
 
     def on_step(
         self,
@@ -101,31 +105,40 @@ class CrashOracle(Oracle):
         # 2. Check for frame freeze / black frame
         frame = info.get("frame")
         if frame is not None:
-            # Check for black frame
+            # Check for black frame (report once per episode)
             if np.all(frame == 0):
-                self._add_finding(
-                    severity="critical",
-                    step=self._step_count,
-                    description="Black frame detected — possible crash or hang",
-                    data={"type": "black_frame"},
-                    frame=frame,
-                )
+                if not self._black_frame_reported:
+                    self._add_finding(
+                        severity="critical",
+                        step=self._step_count,
+                        description="Black frame detected — possible crash or hang",
+                        data={"type": "black_frame"},
+                        frame=frame,
+                    )
+                    self._black_frame_reported = True
+            else:
+                # Reset flag when we see a non-black frame
+                self._black_frame_reported = False
 
-            # Check for frozen frame
+            # Check for frozen frame (report once per freeze sequence)
             if self._check_frame_frozen(frame):
-                self._add_finding(
-                    severity="critical",
-                    step=self._step_count,
-                    description=(
-                        f"Frame frozen for {self.freeze_threshold} consecutive "
-                        f"steps — possible hang"
-                    ),
-                    data={
-                        "type": "frozen_frame",
-                        "identical_count": self._identical_count,
-                    },
-                    frame=frame,
-                )
+                if not self._freeze_reported:
+                    self._add_finding(
+                        severity="critical",
+                        step=self._step_count,
+                        description=(
+                            f"Frame frozen for {self.freeze_threshold} "
+                            f"consecutive steps — possible hang"
+                        ),
+                        data={
+                            "type": "frozen_frame",
+                            "identical_count": self._identical_count,
+                        },
+                        frame=frame,
+                    )
+                    self._freeze_reported = True
+            else:
+                self._freeze_reported = False
 
     def _check_process_alive(self) -> bool:
         """Check whether the game process is still running.

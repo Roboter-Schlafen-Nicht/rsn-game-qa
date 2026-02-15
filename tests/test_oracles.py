@@ -22,6 +22,10 @@ Tests cover:
 - TemporalAnomalyOracle: teleportation, flickering detection
 - RewardConsistencyOracle: score/reward, lives/reward, brick/reward mismatches
 - SoakOracle: memory leak trend, FPS degradation across episodes
+- CrashOracle dedup: black frame / frozen frame finding deduplication
+- ScoreAnomalyOracle dedup: negative score finding deduplication
+- TemporalAnomalyOracle cooldown: flicker finding cooldown
+- VisualGlitchOracle cv2 guard: graceful cv2 import failure handling
 """
 
 from __future__ import annotations
@@ -2249,3 +2253,216 @@ class TestSoakOracle:
 
         leak = [f for f in oracle.get_findings() if f.data.get("type") == "memory_leak"]
         assert len(leak) == 1  # Fires exactly once
+
+
+# ── Dedup / Cooldown Tests (Copilot review fixes) ──────────────────
+
+
+class TestCrashOracleDedup:
+    """Verify CrashOracle dedup for black-frame and frozen-frame findings."""
+
+    def test_consecutive_black_frames_single_finding(self):
+        """Consecutive black frames should produce only one finding."""
+        from src.oracles.crash import CrashOracle
+
+        oracle = CrashOracle(freeze_threshold=100)
+        oracle.on_reset(_obs(), {})
+
+        black = np.zeros((100, 100, 3), dtype=np.uint8)
+        for _ in range(5):
+            oracle.on_step(_obs(), 0.0, False, False, {"frame": black})
+
+        bf = [f for f in oracle.get_findings() if f.data.get("type") == "black_frame"]
+        assert len(bf) == 1
+
+    def test_black_frame_resets_after_normal(self):
+        """After a non-black frame, the next black frame produces a new finding."""
+        from src.oracles.crash import CrashOracle
+
+        oracle = CrashOracle(freeze_threshold=100)
+        oracle.on_reset(_obs(), {})
+
+        black = np.zeros((100, 100, 3), dtype=np.uint8)
+        normal = _frame()
+
+        # First black streak
+        oracle.on_step(_obs(), 0.0, False, False, {"frame": black})
+        oracle.on_step(_obs(), 0.0, False, False, {"frame": black})
+        # Non-black resets the flag
+        oracle.on_step(_obs(), 0.0, False, False, {"frame": normal})
+        # Second black streak
+        oracle.on_step(_obs(), 0.0, False, False, {"frame": black})
+
+        bf = [f for f in oracle.get_findings() if f.data.get("type") == "black_frame"]
+        assert len(bf) == 2
+
+    def test_frozen_frame_dedup(self):
+        """Frozen frame detected at threshold fires only once per freeze."""
+        from src.oracles.crash import CrashOracle
+
+        threshold = 3
+        oracle = CrashOracle(freeze_threshold=threshold)
+        oracle.on_reset(_obs(), {})
+
+        same = _frame(color=(50, 50, 50))
+        # Send threshold + 5 identical frames to well exceed threshold
+        for _ in range(threshold + 5):
+            oracle.on_step(_obs(), 0.0, False, False, {"frame": same})
+
+        ff = [f for f in oracle.get_findings() if f.data.get("type") == "frozen_frame"]
+        assert len(ff) == 1
+
+    def test_frozen_frame_re_fires_after_change(self):
+        """After a different frame, a new freeze produces another finding."""
+        from src.oracles.crash import CrashOracle
+
+        threshold = 3
+        oracle = CrashOracle(freeze_threshold=threshold)
+        oracle.on_reset(_obs(), {})
+
+        same1 = _frame(color=(50, 50, 50))
+        diff = _frame(color=(200, 200, 200))
+        same2 = _frame(color=(80, 80, 80))
+
+        # First freeze
+        for _ in range(threshold + 2):
+            oracle.on_step(_obs(), 0.0, False, False, {"frame": same1})
+        # Break the freeze
+        oracle.on_step(_obs(), 0.0, False, False, {"frame": diff})
+        # Second freeze
+        for _ in range(threshold + 2):
+            oracle.on_step(_obs(), 0.0, False, False, {"frame": same2})
+
+        ff = [f for f in oracle.get_findings() if f.data.get("type") == "frozen_frame"]
+        assert len(ff) == 2
+
+
+class TestScoreAnomalyDedup:
+    """Verify ScoreAnomalyOracle dedup for negative-score findings."""
+
+    def test_consecutive_negative_scores_single_finding(self):
+        """Consecutive negative scores should produce only one finding."""
+        from src.oracles.score_anomaly import ScoreAnomalyOracle
+
+        oracle = ScoreAnomalyOracle(max_delta=1000, allow_negative=False)
+        oracle.on_reset(_obs(), {})
+
+        for i in range(5):
+            oracle.on_step(_obs(), 0.0, False, False, {"score": -10.0 - i})
+
+        neg = [f for f in oracle.get_findings() if "Negative" in f.description]
+        assert len(neg) == 1
+
+    def test_negative_score_re_fires_after_positive(self):
+        """After score goes positive, the next negative produces a new finding."""
+        from src.oracles.score_anomaly import ScoreAnomalyOracle
+
+        oracle = ScoreAnomalyOracle(max_delta=1000, allow_negative=False)
+        oracle.on_reset(_obs(), {})
+
+        # First negative streak
+        oracle.on_step(_obs(), 0.0, False, False, {"score": -5.0})
+        oracle.on_step(_obs(), 0.0, False, False, {"score": -3.0})
+        # Back to positive
+        oracle.on_step(_obs(), 0.0, False, False, {"score": 10.0})
+        # Second negative
+        oracle.on_step(_obs(), 0.0, False, False, {"score": -1.0})
+
+        neg = [f for f in oracle.get_findings() if "Negative" in f.description]
+        assert len(neg) == 2
+
+
+class TestTemporalAnomalyCooldown:
+    """Verify TemporalAnomalyOracle flicker cooldown."""
+
+    def test_flicker_cooldown_suppresses_immediate_refire(self):
+        """After reporting a flicker, another flicker within the window is suppressed."""
+        from src.oracles.temporal_anomaly import TemporalAnomalyOracle
+
+        oracle = TemporalAnomalyOracle(
+            tracked_keys=["ball_pos"],
+            flicker_window=6,
+            flicker_threshold=4,
+        )
+        oracle.on_reset(_obs(), {})
+
+        # Alternate present/absent to trigger flicker
+        for i in range(6):
+            info = {"ball_pos": [0.5, 0.5]} if i % 2 == 0 else {}
+            oracle.on_step(_obs(), 0.0, False, False, info)
+
+        # Should have fired once
+        flicker1 = [
+            f for f in oracle.get_findings() if f.data.get("type") == "flickering"
+        ]
+        assert len(flicker1) == 1
+
+        # Continue flickering immediately — still within cooldown
+        for i in range(4):
+            info = {"ball_pos": [0.5, 0.5]} if i % 2 == 0 else {}
+            oracle.on_step(_obs(), 0.0, False, False, info)
+
+        flicker2 = [
+            f for f in oracle.get_findings() if f.data.get("type") == "flickering"
+        ]
+        # Should still be just 1 — cooldown suppresses
+        assert len(flicker2) == 1
+
+    def test_flicker_re_fires_after_cooldown(self):
+        """After cooldown expires, a new flicker sequence produces a new finding."""
+        from src.oracles.temporal_anomaly import TemporalAnomalyOracle
+
+        oracle = TemporalAnomalyOracle(
+            tracked_keys=["ball_pos"],
+            flicker_window=4,
+            flicker_threshold=3,
+        )
+        oracle.on_reset(_obs(), {})
+
+        # Alternate to trigger first flicker (4 steps)
+        for i in range(4):
+            info = {"ball_pos": [0.5, 0.5]} if i % 2 == 0 else {}
+            oracle.on_step(_obs(), 0.0, False, False, info)
+
+        f1 = [f for f in oracle.get_findings() if f.data.get("type") == "flickering"]
+        assert len(f1) == 1
+
+        # Wait out the cooldown (flicker_window = 4 more stable steps)
+        for _ in range(4):
+            oracle.on_step(_obs(), 0.0, False, False, {"ball_pos": [0.5, 0.5]})
+
+        # New flicker sequence
+        for i in range(4):
+            info = {"ball_pos": [0.5, 0.5]} if i % 2 == 0 else {}
+            oracle.on_step(_obs(), 0.0, False, False, info)
+
+        f2 = [f for f in oracle.get_findings() if f.data.get("type") == "flickering"]
+        assert len(f2) == 2
+
+
+class TestVisualGlitchCv2Guard:
+    """Verify cv2 import guards in VisualGlitchOracle."""
+
+    def test_compute_phash_returns_none_without_cv2(self):
+        """_compute_phash returns None when cv2 is unavailable."""
+        from src.oracles.visual_glitch import VisualGlitchOracle
+
+        oracle = VisualGlitchOracle()
+        frame = _frame()
+
+        with mock.patch.dict("sys.modules", {"cv2": None}):
+            result = oracle._compute_phash(frame)
+        # Should return None gracefully (cv2 import fails)
+        assert result is None
+
+    def test_compute_ssim_raises_runtime_error_without_cv2(self):
+        """_compute_ssim raises RuntimeError when cv2 is unavailable."""
+        from src.oracles.visual_glitch import VisualGlitchOracle
+
+        oracle = VisualGlitchOracle()
+        frame_a = _frame()
+        frame_b = _frame(color=(200, 200, 200))
+
+        with mock.patch.dict("sys.modules", {"cv2": None}):
+            with pytest.raises(RuntimeError, match="OpenCV"):
+                oracle._compute_ssim(frame_a, frame_b)
