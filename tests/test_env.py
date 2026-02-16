@@ -897,7 +897,7 @@ class TestHandleGameState:
 
     @mock.patch("src.env.breakout71_env.time")
     def test_game_over_dismissed(self, mock_time):
-        """Game over state should trigger dismiss JS execution."""
+        """Game over state should trigger dismiss JS execution by default."""
         driver = _mock_driver()
         driver.execute_script.side_effect = [
             {"state": "game_over", "details": {}},
@@ -909,6 +909,22 @@ class TestHandleGameState:
 
         assert state == "game_over"
         assert driver.execute_script.call_count == 2
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_game_over_not_dismissed_when_flag_false(self, mock_time):
+        """Game over should be detected but NOT dismissed when dismiss_game_over=False."""
+        driver = _mock_driver()
+        driver.execute_script.return_value = {
+            "state": "game_over",
+            "details": {},
+        }
+        env = Breakout71Env(driver=driver)
+
+        state = env._handle_game_state(dismiss_game_over=False)
+
+        assert state == "game_over"
+        # Only the detect call — no dismiss call
+        driver.execute_script.assert_called_once()
 
     @mock.patch("src.env.breakout71_env.time")
     def test_perk_picker_clicks_perk(self, mock_time):
@@ -1381,7 +1397,7 @@ class TestStep:
 
     @mock.patch("src.env.breakout71_env.time")
     def test_step_handles_mid_episode_modal(self, mock_time):
-        """step() should handle modals that appear mid-episode."""
+        """step() should handle perk_picker modals that appear mid-episode."""
         env = self._make_env_ready()
         # Make game state return perk_picker on first call, gameplay after
         env._driver.execute_script.side_effect = [
@@ -1391,6 +1407,60 @@ class TestStep:
 
         # Should not crash; modal is handled
         env.step(_action())
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_terminates_on_game_over_modal(self, mock_time):
+        """step() should return terminated=True when game_over modal detected."""
+        env = self._make_env_ready()
+        env._driver.execute_script.return_value = {
+            "state": "game_over",
+            "details": {},
+        }
+
+        _, _, terminated, _, _ = env.step(_action())
+
+        assert terminated is True
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_game_over_does_not_dismiss_modal(self, mock_time):
+        """step() should NOT dismiss game_over modal (only reset() does)."""
+        env = self._make_env_ready()
+        env._driver.execute_script.return_value = {
+            "state": "game_over",
+            "details": {},
+        }
+
+        env.step(_action())
+
+        # Only 1 JS call (detect state), NOT 2 (detect + dismiss)
+        assert env._driver.execute_script.call_count == 1
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_game_over_still_increments_step_count(self, mock_time):
+        """step() should still increment _step_count when game_over detected."""
+        env = self._make_env_ready()
+        env._driver.execute_script.return_value = {
+            "state": "game_over",
+            "details": {},
+        }
+        assert env._step_count == 0
+
+        env.step(_action())
+
+        assert env._step_count == 1
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_perk_picker_does_not_terminate(self, mock_time):
+        """step() should NOT terminate on perk_picker — it's part of gameplay."""
+        env = self._make_env_ready()
+        env._driver.execute_script.side_effect = [
+            {"state": "perk_picker", "details": {"numPerks": 3}},
+            {"clicked": 0, "text": "Speed"},
+        ]
+
+        _, _, terminated, _, _ = env.step(_action())
+
+        assert terminated is False
 
 
 # -- Render & Close ------------------------------------------------------------

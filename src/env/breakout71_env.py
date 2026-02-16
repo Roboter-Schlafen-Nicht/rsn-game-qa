@@ -572,12 +572,29 @@ class Breakout71Env(gym.Env):
         # fast as capture + inference allow.
         self._apply_action(action)
 
-        # Handle any modals that appeared mid-episode (perk picker,
-        # game over, menu).  Without this the modal overlay blocks the
-        # game canvas causing YOLO to miss the ball and the episode to
-        # terminate prematurely.
-        mid_state = self._handle_game_state()
-        if mid_state in ("game_over", "perk_picker", "menu"):
+        # Check for game-over modal — if detected, terminate the
+        # episode immediately WITHOUT dismissing the modal.  The modal
+        # will be dismissed in reset() when the next episode starts.
+        # This fixes the critical bug where game-over modals were
+        # silently dismissed mid-episode, merging multiple games into
+        # one never-ending episode.
+        mid_state = self._handle_game_state(dismiss_game_over=False)
+        if mid_state == "game_over":
+            # Return last observation with terminated=True
+            frame = self._capture_frame()
+            detections = self._detect_objects(frame)
+            obs = self._build_observation(detections)
+            self._step_count += 1
+            truncated = self._step_count >= self.max_steps
+            reward = self._compute_reward(detections, True, False)
+            info = self._build_info(detections)
+            findings = self._run_oracles(obs, reward, True, truncated, info)
+            info["oracle_findings"] = findings
+            return obs, reward, True, truncated, info
+
+        # Handle perk picker / menu modals — these are part of normal
+        # gameplay and should be dismissed mid-episode.
+        if mid_state in ("perk_picker", "menu"):
             self._click_canvas()
             time.sleep(0.3)
 
@@ -961,12 +978,22 @@ class Breakout71Env(gym.Env):
         except Exception as exc:
             logger.debug("Headless action failed: %s", exc)
 
-    def _handle_game_state(self) -> str:
+    def _handle_game_state(self, *, dismiss_game_over: bool = True) -> str:
         """Detect and handle game UI state (modals, game over, perks).
 
         Uses JavaScript execution via Selenium to query the game DOM
         and dismiss modals as needed.  This is the **only** use of
         Selenium at runtime — all observation and control is pixel-based.
+
+        Parameters
+        ----------
+        dismiss_game_over : bool
+            If True (default), dismiss game-over modals by clicking
+            "Restart game".  If False, only detect the state but leave
+            the modal in place.  ``step()`` passes False so that
+            game-over terminates the episode; ``reset()`` passes True
+            (the default) to clear the modal before starting a new
+            episode.
 
         Returns
         -------
@@ -1008,16 +1035,19 @@ class Breakout71Env(gym.Env):
             time.sleep(0.5)
 
         elif state == "game_over":
-            try:
-                result = self._driver.execute_script(DISMISS_GAME_OVER_JS)
-                logger.info(
-                    "Game over dismissed: %s (%s)",
-                    result.get("action", "?"),
-                    result.get("text", ""),
-                )
-            except Exception as exc:
-                logger.warning("Game over dismiss failed: %s", exc)
-            time.sleep(1.0)
+            if dismiss_game_over:
+                try:
+                    result = self._driver.execute_script(DISMISS_GAME_OVER_JS)
+                    logger.info(
+                        "Game over dismissed: %s (%s)",
+                        result.get("action", "?"),
+                        result.get("text", ""),
+                    )
+                except Exception as exc:
+                    logger.warning("Game over dismiss failed: %s", exc)
+                time.sleep(1.0)
+            else:
+                logger.info("Game over detected — episode will terminate")
 
         elif state == "menu":
             try:
