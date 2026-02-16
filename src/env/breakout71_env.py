@@ -696,12 +696,28 @@ class Breakout71Env(gym.Env):
         -------
         np.ndarray
             BGR image decoded from the screenshot.
+
+        Raises
+        ------
+        RuntimeError
+            If the driver is unavailable or the screenshot cannot be
+            decoded.
         """
-        import cv2
+        if self._driver is None:
+            raise RuntimeError("Cannot capture headless frame: driver is None")
+
+        try:
+            import cv2
+        except ImportError as exc:
+            raise RuntimeError(
+                "cv2 (opencv-python) is required for headless frame capture"
+            ) from exc
 
         png_bytes = self._driver.get_screenshot_as_png()
         nparr = np.frombuffer(png_bytes, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if frame is None:
+            raise RuntimeError("Failed to decode screenshot PNG to BGR frame")
         self._last_frame = frame
         return frame
 
@@ -928,6 +944,8 @@ class Breakout71Env(gym.Env):
         value = float(np.clip(action[0], -1.0, 1.0))
         canvas_w, canvas_h = self._canvas_size
 
+        # Selenium 4's move_to_element_with_offset uses the element's
+        # CENTRE as origin (changed from top-left in Selenium 3).
         # x_offset from centre: value * half-width
         x_offset = int(value * (canvas_w / 2))
 

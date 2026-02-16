@@ -9,6 +9,7 @@ Covers:
 - Validation thresholds
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -734,6 +735,42 @@ class TestResolveWindowSize:
         config = mock.MagicMock()
         with pytest.raises(ValueError, match="Invalid --window-size"):
             resolve_window_size(args, config)
+
+    def test_non_integer_window_size_raises(self):
+        """Non-integer --window-size values should raise ValueError."""
+        from scripts.train_rl import parse_args, resolve_window_size
+
+        args = parse_args(["--window-size", "abcxdef"])
+        config = mock.MagicMock()
+        with pytest.raises(ValueError, match="must be integers"):
+            resolve_window_size(args, config)
+
+    def test_negative_window_size_raises(self):
+        """Negative --window-size values should raise ValueError."""
+        from scripts.train_rl import resolve_window_size
+
+        # Bypass argparse (which rejects -100x200 as a flag) by
+        # constructing the Namespace directly.
+        args = argparse.Namespace(window_size="100x-200", orientation="portrait")
+        config = mock.MagicMock()
+        with pytest.raises(ValueError, match="must be positive"):
+            resolve_window_size(args, config)
+
+    def test_zero_window_size_raises(self):
+        """Zero --window-size values should raise ValueError."""
+        from scripts.train_rl import parse_args, resolve_window_size
+
+        args = parse_args(["--window-size", "0x1024"])
+        config = mock.MagicMock()
+        with pytest.raises(ValueError, match="must be positive"):
+            resolve_window_size(args, config)
+
+    def test_browser_choices_use_edge_not_msedge(self):
+        """--browser should accept 'edge' not 'msedge'."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args(["--browser", "edge"])
+        assert args.browser == "edge"
 
 
 class TestTrainingLogger:

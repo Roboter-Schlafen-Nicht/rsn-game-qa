@@ -88,7 +88,7 @@ def _action(value=0.0):
 def _mock_driver():
     """Create a mock Selenium WebDriver for modal handling.
 
-    Returns (driver, ) where driver has ``execute_script`` set to return
+    Returns a mock driver with ``execute_script`` set to return
     a gameplay state by default.
     """
     driver = mock.MagicMock()
@@ -1588,6 +1588,28 @@ class TestHeadless:
         assert isinstance(frame, np.ndarray)
         assert frame.shape == (10, 10, 3)
         assert env._last_frame is frame
+
+    def test_headless_capture_frame_no_driver_raises(self):
+        """_capture_frame_headless should raise RuntimeError if driver is None."""
+        env = Breakout71Env(headless=True)
+        env._driver = None
+
+        with pytest.raises(RuntimeError, match="driver is None"):
+            env._capture_frame_headless()
+
+    def test_headless_capture_frame_decode_fails_raises(self):
+        """_capture_frame_headless should raise if imdecode returns None."""
+        env = Breakout71Env(headless=True)
+        env._driver = mock.MagicMock()
+        env._driver.get_screenshot_as_png.return_value = b"corrupt-png"
+
+        mock_cv2 = mock.MagicMock()
+        mock_cv2.IMREAD_COLOR = 1
+        mock_cv2.imdecode.return_value = None
+
+        with mock.patch.dict(sys.modules, {"cv2": mock_cv2}):
+            with pytest.raises(RuntimeError, match="Failed to decode"):
+                env._capture_frame_headless()
 
     def test_headless_apply_action_uses_action_chains(self):
         """_apply_action in headless mode should use ActionChains."""

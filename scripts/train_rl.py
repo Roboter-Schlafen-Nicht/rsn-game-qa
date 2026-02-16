@@ -142,7 +142,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--browser",
         type=str,
         default=None,
-        choices=["chrome", "msedge", "firefox"],
+        choices=["chrome", "edge", "firefox"],
         help="Browser to use (default: auto-select)",
     )
     parser.add_argument(
@@ -275,7 +275,19 @@ def resolve_window_size(args: argparse.Namespace, config: Any) -> tuple[int, int
                 f"Invalid --window-size format: {args.window_size!r}. "
                 "Expected WxH, e.g. 768x1024"
             )
-        return int(parts[0]), int(parts[1])
+        try:
+            w, h = int(parts[0]), int(parts[1])
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid --window-size values: {args.window_size!r}. "
+                "Width and height must be integers, e.g. 768x1024"
+            ) from exc
+        if w <= 0 or h <= 0:
+            raise ValueError(
+                f"Invalid --window-size values: {args.window_size!r}. "
+                "Width and height must be positive integers"
+            )
+        return w, h
     if args.orientation in _ORIENTATION_PRESETS:
         return _ORIENTATION_PRESETS[args.orientation]
     return config.window_width, config.window_height
@@ -369,6 +381,7 @@ class FrameCollectionCallback:
                 self._episode_fps_samples: list[float] = []
                 self._last_step_time = time.perf_counter()
                 self._train_start_time = time.perf_counter()
+                self.training_stop_reason: str | None = None
 
             def _on_step(self) -> bool:
                 now = time.perf_counter()
@@ -398,6 +411,9 @@ class FrameCollectionCallback:
                                     "max_time_seconds": max_time,
                                 }
                             )
+                        # Propagate stop reason so outer code can distinguish
+                        # max-time stop from normal completion.
+                        self.training_stop_reason = "max_time_reached"
                         return False
 
                 # Accumulate reward
@@ -861,6 +877,7 @@ def main(argv: list[str] | None = None) -> int:
         ep_rewards = cb_factory._episode_rewards
         ep_lengths = cb_factory._episode_lengths
         total_steps = callback.num_timesteps if callback is not None else args.timesteps
+        stop_reason = getattr(callback, "training_stop_reason", None)
 
         summary = {
             "event": "summary",
@@ -875,6 +892,8 @@ def main(argv: list[str] | None = None) -> int:
             "model_path": str(model_path) if model_path else None,
             "frames_collected": (collector.frame_count if collector else 0),
             "completed": not interrupted,
+            "stop_reason": stop_reason
+            or ("interrupted" if interrupted else "completed"),
         }
         tlog.log(summary)
 
@@ -894,10 +913,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Frames saved:    {collector.frame_count}")
         print(f"Log file:        {log_path}")
         print(f"JSONL log:       {jsonl_path}")
-        if interrupted:
-            print("Status:          INTERRUPTED")
-        else:
-            print("Status:          COMPLETED")
+        status = stop_reason or ("INTERRUPTED" if interrupted else "COMPLETED")
+        print(f"Status:          {status.upper()}")
 
     finally:
         if "env" in locals():
@@ -906,6 +923,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("Stopping dev server ...")
         loader.stop()
         tlog.close()
+        logging.shutdown()
 
     return 0
 
