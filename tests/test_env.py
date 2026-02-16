@@ -2,14 +2,16 @@
 
 Covers:
 - Construction and space definitions (observation, action)
-- Lazy initialisation (_lazy_init)
+- Lazy initialisation (_lazy_init) with WinCamCapture/WindowCapture fallback
 - Frame capture delegation (_capture_frame)
 - Object detection delegation (_detect_objects)
 - Observation building (_build_observation) with reset, missing detections,
   velocity computation, clipping
 - Reward computation (_compute_reward) with brick delta, time penalty,
   terminal rewards, score_delta placeholder
-- Action application (_apply_action) via JS puckPosition injection
+- Action application (_apply_action) via pydirectinput.moveTo()
+- Coordinate mapping helpers (_norm_to_screen, _get_client_origin,
+  _update_client_origin)
 - Game state handling (_handle_game_state, _click_canvas)
 - Oracle execution (_run_oracles)
 - Full reset() lifecycle
@@ -27,16 +29,15 @@ import pytest
 
 # ---------------------------------------------------------------------------
 # Ensure the ``selenium`` package is importable even in CI where it is
-# not installed.  The lazy imports inside the env module use
-# ``from selenium.webdriver.common.action_chains import ActionChains``
-# and ``mock.patch("selenium.webdriver.common.action_chains.ActionChains")``
-# requires the module path to be resolvable.
+# not installed.  The env module uses Selenium for modal handling only,
+# via ``driver.execute_script()``.
 # ---------------------------------------------------------------------------
 _SELENIUM_MODULES = [
     "selenium",
     "selenium.webdriver",
     "selenium.webdriver.common",
     "selenium.webdriver.common.action_chains",
+    "selenium.webdriver.common.by",
 ]
 _injected: list[str] = []
 for _mod in _SELENIUM_MODULES:
@@ -44,7 +45,11 @@ for _mod in _SELENIUM_MODULES:
         sys.modules[_mod] = mock.MagicMock()
         _injected.append(_mod)
 
-from src.env.breakout71_env import Breakout71Env  # noqa: E402
+from src.env.breakout71_env import (  # noqa: E402
+    Breakout71Env,
+    _get_client_origin,
+    _norm_to_screen,
+)
 
 
 # -- Helpers -------------------------------------------------------------------
@@ -81,14 +86,25 @@ def _action(value=0.0):
 
 
 def _mock_driver():
-    """Create a mock Selenium WebDriver with canvas element."""
+    """Create a mock Selenium WebDriver for modal handling.
+
+    Returns (driver, ) where driver has ``execute_script`` set to return
+    a gameplay state by default.
+    """
     driver = mock.MagicMock()
-    canvas = mock.MagicMock()
-    canvas.rect = {"x": 0, "y": 0, "width": 1280, "height": 1024}
-    driver.find_element.return_value = canvas
     # Default: gameplay state (no modals)
     driver.execute_script.return_value = {"state": "gameplay", "details": {}}
-    return driver, canvas
+    return driver
+
+
+def _setup_capture_mock(env, *, width=640, height=480, hwnd=12345):
+    """Set up a mock capture subsystem on the env."""
+    env._capture = mock.MagicMock()
+    env._capture.width = width
+    env._capture.height = height
+    env._capture.hwnd = hwnd
+    env._capture.capture_frame.return_value = _frame(height, width)
+    return env._capture
 
 
 # -- Construction & Spaces -----------------------------------------------------
@@ -143,6 +159,16 @@ class TestConstruction:
         env = Breakout71Env(driver=driver)
         assert env._driver is driver
 
+    def test_device_parameter(self):
+        """Constructor should accept and store device parameter."""
+        env = Breakout71Env(device="cpu")
+        assert env.device == "cpu"
+
+    def test_device_default_auto(self):
+        """Device should default to 'auto'."""
+        env = Breakout71Env()
+        assert env.device == "auto"
+
     def test_initial_state(self):
         """Internal state should be properly initialised."""
         env = Breakout71Env()
@@ -153,7 +179,7 @@ class TestConstruction:
         assert env._capture is None
         assert env._detector is None
         assert env._driver is None
-        assert env._game_canvas is None
+        assert env._client_origin is None
 
     def test_render_mode_rgb_array_no_frame(self):
         """render() should return None when no frame captured yet."""
@@ -164,6 +190,116 @@ class TestConstruction:
         """close() should not raise if sub-components were never initialized."""
         env = Breakout71Env()
         env.close()  # should not raise
+
+
+# -- Coordinate Mapping Helpers ------------------------------------------------
+
+
+class TestNormToScreen:
+    """Tests for _norm_to_screen helper function."""
+
+    def test_centre_mapping(self):
+        """(0.5, 0.5) should map to centre of client area."""
+        sx, sy = _norm_to_screen(0.5, 0.5, 1280, 1024, (100, 200))
+        assert sx == 100 + 640
+        assert sy == 200 + 512
+
+    def test_top_left(self):
+        """(0.0, 0.0) should map to client origin."""
+        sx, sy = _norm_to_screen(0.0, 0.0, 1280, 1024, (100, 200))
+        assert sx == 100
+        assert sy == 200
+
+    def test_bottom_right(self):
+        """(1.0, 1.0) should map to client_origin + (w-1, h-1)."""
+        sx, sy = _norm_to_screen(1.0, 1.0, 1280, 1024, (100, 200))
+        assert sx == 100 + 1279
+        assert sy == 200 + 1023
+
+    def test_clamping_above(self):
+        """Values > 1.0 should be clamped to 1.0."""
+        sx, sy = _norm_to_screen(2.0, 2.0, 1280, 1024, (0, 0))
+        sx_max, sy_max = _norm_to_screen(1.0, 1.0, 1280, 1024, (0, 0))
+        assert sx == sx_max
+        assert sy == sy_max
+
+    def test_clamping_below(self):
+        """Values < 0.0 should be clamped to 0.0."""
+        sx, sy = _norm_to_screen(-1.0, -1.0, 1280, 1024, (100, 200))
+        assert sx == 100
+        assert sy == 200
+
+    def test_quarter_position(self):
+        """(0.25, 0.75) should map correctly."""
+        sx, sy = _norm_to_screen(0.25, 0.75, 1000, 800, (50, 50))
+        assert sx == 50 + 250
+        assert sy == 50 + 600
+
+    def test_zero_size_client(self):
+        """Zero-size client area should not crash."""
+        sx, sy = _norm_to_screen(0.5, 0.5, 0, 0, (100, 200))
+        assert sx == 100
+        assert sy == 200
+
+
+class TestGetClientOrigin:
+    """Tests for _get_client_origin helper function."""
+
+    def test_returns_screen_coords(self):
+        """Should return the screen coordinates from ClientToScreen."""
+        mock_win32gui = mock.MagicMock()
+        mock_win32gui.ClientToScreen.return_value = (150, 250)
+        with mock.patch.dict(sys.modules, {"win32gui": mock_win32gui}):
+            # Force re-import inside _get_client_origin
+            result = _get_client_origin(12345)
+        assert result == (150, 250)
+        mock_win32gui.ClientToScreen.assert_called_once_with(12345, (0, 0))
+
+
+class TestUpdateClientOrigin:
+    """Tests for _update_client_origin method."""
+
+    @mock.patch("src.env.breakout71_env._get_client_origin")
+    def test_sets_origin_from_capture(self, mock_get_origin):
+        """Should call _get_client_origin with capture's hwnd."""
+        mock_get_origin.return_value = (100, 200)
+        env = Breakout71Env()
+        _setup_capture_mock(env)
+
+        env._update_client_origin()
+
+        assert env._client_origin == (100, 200)
+        mock_get_origin.assert_called_once_with(12345)
+
+    def test_no_capture_sets_none(self):
+        """Without capture, _client_origin should be set to None."""
+        env = Breakout71Env()
+        env._capture = None
+
+        env._update_client_origin()
+
+        assert env._client_origin is None
+
+    def test_hwnd_zero_sets_none(self):
+        """Capture with hwnd=0 should set _client_origin to None."""
+        env = Breakout71Env()
+        env._capture = mock.MagicMock()
+        env._capture.hwnd = 0
+
+        env._update_client_origin()
+
+        assert env._client_origin is None
+
+    @mock.patch("src.env.breakout71_env._get_client_origin")
+    def test_exception_sets_none(self, mock_get_origin):
+        """Exception from win32gui should set _client_origin to None."""
+        mock_get_origin.side_effect = RuntimeError("no window")
+        env = Breakout71Env()
+        _setup_capture_mock(env)
+
+        env._update_client_origin()
+
+        assert env._client_origin is None
 
 
 # -- Lazy Init -----------------------------------------------------------------
@@ -178,87 +314,144 @@ class TestLazyInit:
         Breakout71Env()
         mock_init.assert_not_called()
 
-    def test_lazy_init_sets_initialized_flag(self):
-        """_lazy_init should set _initialized to True."""
+    @mock.patch("src.env.breakout71_env.Breakout71Env._update_client_origin")
+    @mock.patch("src.perception.yolo_detector.YoloDetector")
+    @mock.patch("src.capture.wincam_capture.WinCamCapture")
+    def test_lazy_init_prefers_wincam(self, mock_wincam, mock_det, mock_update):
+        """_lazy_init should prefer WinCamCapture when available."""
+        mock_det_instance = mock.MagicMock()
+        mock_det.return_value = mock_det_instance
+        mock_wincam_instance = mock.MagicMock()
+        mock_wincam.return_value = mock_wincam_instance
+        mock_wincam_instance.hwnd = 12345
+        mock_wincam_instance.width = 1280
+        mock_wincam_instance.height = 1024
+
         env = Breakout71Env()
-        with (
-            mock.patch("src.capture.window_capture.WindowCapture") as mock_cap,
-            mock.patch("src.perception.yolo_detector.YoloDetector") as mock_det,
-        ):
-            mock_det_instance = mock.MagicMock()
-            mock_det.return_value = mock_det_instance
-            mock_cap_instance = mock.MagicMock()
-            mock_cap.return_value = mock_cap_instance
+        env._lazy_init()
 
-            env._lazy_init()
+        assert env._initialized is True
+        assert env._capture is mock_wincam_instance
+        assert env._detector is not None
+        mock_wincam.assert_called_once()
 
-            assert env._initialized is True
-            assert env._capture is not None
-            assert env._detector is not None
+    @mock.patch("src.env.breakout71_env.Breakout71Env._update_client_origin")
+    @mock.patch("src.perception.yolo_detector.YoloDetector")
+    @mock.patch(
+        "src.capture.wincam_capture.WinCamCapture",
+        side_effect=ImportError("no wincam"),
+    )
+    @mock.patch("src.capture.window_capture.WindowCapture")
+    def test_lazy_init_falls_back_to_window_capture(
+        self, mock_wc, mock_wincam, mock_det, mock_update
+    ):
+        """_lazy_init should fall back to WindowCapture when WinCamCapture fails."""
+        mock_det.return_value = mock.MagicMock()
+        mock_wc_instance = mock.MagicMock()
+        mock_wc.return_value = mock_wc_instance
 
-    def test_lazy_init_idempotent(self):
+        env = Breakout71Env()
+        env._lazy_init()
+
+        assert env._initialized is True
+        assert env._capture is mock_wc_instance
+        mock_wc.assert_called_once()
+
+    @mock.patch("src.env.breakout71_env.Breakout71Env._update_client_origin")
+    @mock.patch("src.perception.yolo_detector.YoloDetector")
+    @mock.patch("src.capture.wincam_capture.WinCamCapture")
+    def test_lazy_init_idempotent(self, mock_wincam, mock_det, mock_update):
         """_lazy_init should only execute once (idempotent)."""
+        mock_det.return_value = mock.MagicMock()
+        mock_wincam.return_value = mock.MagicMock()
+
         env = Breakout71Env()
-        with (
-            mock.patch("src.capture.window_capture.WindowCapture") as mock_cap,
-            mock.patch("src.perception.yolo_detector.YoloDetector") as mock_det,
-        ):
-            mock_det.return_value = mock.MagicMock()
-            mock_cap.return_value = mock.MagicMock()
+        env._lazy_init()
+        env._lazy_init()  # second call should be a no-op
 
-            env._lazy_init()
-            env._lazy_init()  # second call should be a no-op
+        mock_wincam.assert_called_once()
+        mock_det.assert_called_once()
 
-            mock_cap.assert_called_once()
-            mock_det.assert_called_once()
-
-    def test_lazy_init_loads_detector(self):
+    @mock.patch("src.env.breakout71_env.Breakout71Env._update_client_origin")
+    @mock.patch("src.perception.yolo_detector.YoloDetector")
+    @mock.patch("src.capture.wincam_capture.WinCamCapture")
+    def test_lazy_init_loads_detector(self, mock_wincam, mock_det, mock_update):
         """_lazy_init should call detector.load()."""
+        mock_det_instance = mock.MagicMock()
+        mock_det.return_value = mock_det_instance
+        mock_wincam.return_value = mock.MagicMock()
+
         env = Breakout71Env()
-        with (
-            mock.patch("src.capture.window_capture.WindowCapture"),
-            mock.patch("src.perception.yolo_detector.YoloDetector") as mock_det,
-        ):
-            mock_det_instance = mock.MagicMock()
-            mock_det.return_value = mock_det_instance
+        env._lazy_init()
 
+        mock_det_instance.load.assert_called_once()
+
+    @mock.patch("src.env.breakout71_env.Breakout71Env._update_client_origin")
+    @mock.patch("src.perception.yolo_detector.YoloDetector")
+    @mock.patch("src.capture.wincam_capture.WinCamCapture")
+    def test_lazy_init_passes_device_to_detector(
+        self, mock_wincam, mock_det, mock_update
+    ):
+        """_lazy_init should pass device param to YoloDetector."""
+        mock_det.return_value = mock.MagicMock()
+        mock_wincam.return_value = mock.MagicMock()
+
+        env = Breakout71Env(device="cpu")
+        env._lazy_init()
+
+        mock_det.assert_called_once_with(
+            weights_path=env.yolo_weights,
+            device="cpu",
+        )
+
+    @mock.patch("src.env.breakout71_env.Breakout71Env._update_client_origin")
+    @mock.patch("src.perception.yolo_detector.YoloDetector")
+    @mock.patch("src.capture.wincam_capture.WinCamCapture")
+    def test_lazy_init_calls_update_client_origin(
+        self, mock_wincam, mock_det, mock_update
+    ):
+        """_lazy_init should call _update_client_origin."""
+        mock_det.return_value = mock.MagicMock()
+        mock_wincam.return_value = mock.MagicMock()
+
+        env = Breakout71Env()
+        env._lazy_init()
+
+        mock_update.assert_called_once()
+
+    @mock.patch("src.env.breakout71_env.Breakout71Env._update_client_origin")
+    @mock.patch("src.perception.yolo_detector.YoloDetector")
+    @mock.patch("src.capture.wincam_capture.WinCamCapture")
+    def test_lazy_init_sets_pydirectinput_pause(
+        self, mock_wincam, mock_det, mock_update
+    ):
+        """_lazy_init should set pydirectinput.PAUSE = 0."""
+        mock_det.return_value = mock.MagicMock()
+        mock_wincam.return_value = mock.MagicMock()
+
+        mock_pdi = mock.MagicMock()
+        mock_pdi.PAUSE = 0.1  # default value
+
+        env = Breakout71Env()
+        with mock.patch.dict(sys.modules, {"pydirectinput": mock_pdi}):
             env._lazy_init()
 
-            mock_det_instance.load.assert_called_once()
+        assert mock_pdi.PAUSE == 0
 
-    def test_lazy_init_finds_canvas_with_driver(self):
-        """_lazy_init should find the game canvas when driver is provided."""
-        driver, canvas = _mock_driver()
-        env = Breakout71Env(driver=driver)
-        with (
-            mock.patch("src.capture.window_capture.WindowCapture"),
-            mock.patch("src.perception.yolo_detector.YoloDetector") as mock_det,
-        ):
-            mock_det.return_value = mock.MagicMock()
+    @mock.patch("src.env.breakout71_env.Breakout71Env._update_client_origin")
+    @mock.patch("src.perception.yolo_detector.YoloDetector")
+    @mock.patch("src.capture.wincam_capture.WinCamCapture")
+    def test_lazy_init_pydirectinput_import_error(
+        self, mock_wincam, mock_det, mock_update
+    ):
+        """_lazy_init should not fail if pydirectinput is unavailable."""
+        mock_det.return_value = mock.MagicMock()
+        mock_wincam.return_value = mock.MagicMock()
 
-            env._lazy_init()
-
-            assert env._game_canvas is canvas
-            assert env._canvas_dims == (0, 0, 1280, 1024)
-            driver.find_element.assert_called_with("css selector", "#game")
-
-    def test_lazy_init_falls_back_to_body(self):
-        """_lazy_init should fall back to <body> if #game not found."""
-        driver = mock.MagicMock()
-        body_element = mock.MagicMock()
-        body_element.rect = {"x": 0, "y": 0, "width": 1280, "height": 1024}
-        # First call (#game) raises, second call (body) returns body_element
-        driver.find_element.side_effect = [Exception("not found"), body_element]
-        env = Breakout71Env(driver=driver)
-        with (
-            mock.patch("src.capture.window_capture.WindowCapture"),
-            mock.patch("src.perception.yolo_detector.YoloDetector") as mock_det,
-        ):
-            mock_det.return_value = mock.MagicMock()
-
-            env._lazy_init()
-
-            assert env._game_canvas is body_element
+        env = Breakout71Env()
+        # pydirectinput import will raise ImportError in CI, should be caught
+        env._lazy_init()
+        assert env._initialized is True
 
 
 # -- Capture Frame -------------------------------------------------------------
@@ -268,7 +461,7 @@ class TestCaptureFrame:
     """Tests for _capture_frame delegation."""
 
     def test_capture_frame_delegates(self):
-        """_capture_frame should delegate to WindowCapture.capture_frame."""
+        """_capture_frame should delegate to capture.capture_frame."""
         env = Breakout71Env()
         expected = _frame()
         env._capture = mock.MagicMock()
@@ -557,219 +750,128 @@ class TestComputeReward:
 
 
 class TestApplyAction:
-    """Tests for _apply_action via JS puckPosition injection."""
+    """Tests for _apply_action via pydirectinput.moveTo()."""
 
-    def test_centre_action_sets_puck_position(self):
-        """Action 0.0 (centre) should set puckPosition to zone midpoint."""
-        driver, canvas = _mock_driver()
-        env = Breakout71Env(driver=driver)
-        env._game_canvas = canvas
-        env._canvas_dims = (0, 0, 1280, 1024)
-        env._game_zone_left = 320.0
-        env._game_zone_right = 960.0
+    def _make_env_for_action(self, *, client_w=1280, client_h=1024, origin=(100, 200)):
+        """Create an env with capture and client origin for action tests."""
+        env = Breakout71Env()
+        _setup_capture_mock(env, width=client_w, height=client_h)
+        env._client_origin = origin
+        return env
 
-        env._apply_action(np.array([0.0], dtype=np.float32))
+    def test_centre_action_maps_to_centre(self):
+        """Action 0.0 (centre) should move to horizontal centre of client."""
+        env = self._make_env_for_action()
+        mock_pdi = mock.MagicMock()
 
-        driver.execute_script.assert_called_once()
-        call_args = driver.execute_script.call_args
-        pixel_x = call_args[0][1]
-        assert abs(pixel_x - 640.0) < 1e-6  # midpoint
+        with mock.patch.dict(sys.modules, {"pydirectinput": mock_pdi}):
+            env._apply_action(np.array([0.0], dtype=np.float32))
+
+        mock_pdi.moveTo.assert_called_once()
+        sx, sy = mock_pdi.moveTo.call_args[0]
+        # 0.0 -> x_norm = 0.5 -> 100 + 640 = 740
+        assert sx == 100 + 640
+        # y_norm = 0.90 -> 200 + int(0.9 * 1024) = 200 + 921 = 1121
+        assert sy == 200 + int(0.90 * 1024)
 
     def test_left_edge_action(self):
-        """Action -1.0 should set puckPosition to game zone left edge."""
-        driver, canvas = _mock_driver()
-        env = Breakout71Env(driver=driver)
-        env._game_canvas = canvas
-        env._canvas_dims = (0, 0, 1280, 1024)
-        env._game_zone_left = 320.0
-        env._game_zone_right = 960.0
+        """Action -1.0 should move to the left edge of the client area."""
+        env = self._make_env_for_action()
+        mock_pdi = mock.MagicMock()
 
-        env._apply_action(np.array([-1.0], dtype=np.float32))
+        with mock.patch.dict(sys.modules, {"pydirectinput": mock_pdi}):
+            env._apply_action(np.array([-1.0], dtype=np.float32))
 
-        call_args = driver.execute_script.call_args
-        pixel_x = call_args[0][1]
-        assert abs(pixel_x - 320.0) < 1e-6
+        sx, _ = mock_pdi.moveTo.call_args[0]
+        # -1.0 -> x_norm = 0.0 -> 100 + 0 = 100
+        assert sx == 100
 
     def test_right_edge_action(self):
-        """Action +1.0 should set puckPosition to game zone right edge."""
-        driver, canvas = _mock_driver()
-        env = Breakout71Env(driver=driver)
-        env._game_canvas = canvas
-        env._canvas_dims = (0, 0, 1280, 1024)
-        env._game_zone_left = 320.0
-        env._game_zone_right = 960.0
+        """Action +1.0 should move to the right edge of the client area."""
+        env = self._make_env_for_action()
+        mock_pdi = mock.MagicMock()
 
-        env._apply_action(np.array([1.0], dtype=np.float32))
+        with mock.patch.dict(sys.modules, {"pydirectinput": mock_pdi}):
+            env._apply_action(np.array([1.0], dtype=np.float32))
 
-        call_args = driver.execute_script.call_args
-        pixel_x = call_args[0][1]
-        assert abs(pixel_x - 960.0) < 1e-6
+        sx, _ = mock_pdi.moveTo.call_args[0]
+        # +1.0 -> x_norm = 1.0 -> 100 + min(1280, 1279) = 100 + 1279 = 1379
+        assert sx == 100 + 1279
 
     def test_action_clamped_to_bounds(self):
         """Action values outside [-1, 1] should be clipped."""
-        driver, canvas = _mock_driver()
-        env = Breakout71Env(driver=driver)
-        env._game_canvas = canvas
-        env._canvas_dims = (0, 0, 1280, 1024)
-        env._game_zone_left = 320.0
-        env._game_zone_right = 960.0
+        env = self._make_env_for_action()
+        mock_pdi = mock.MagicMock()
 
-        env._apply_action(np.array([2.0], dtype=np.float32))
+        with mock.patch.dict(sys.modules, {"pydirectinput": mock_pdi}):
+            env._apply_action(np.array([2.0], dtype=np.float32))
 
-        call_args = driver.execute_script.call_args
-        pixel_x = call_args[0][1]
+        sx, _ = mock_pdi.moveTo.call_args[0]
         # Clipped to +1.0 -> right edge
-        assert abs(pixel_x - 960.0) < 1e-6
-
-    def test_fallback_without_game_zone(self):
-        """Without game zone boundaries, should use canvas-based fallback."""
-        driver, canvas = _mock_driver()
-        env = Breakout71Env(driver=driver)
-        env._game_canvas = canvas
-        env._canvas_dims = (0, 0, 1280, 1024)
-        # _game_zone_left/right are None (not queried)
-
-        env._apply_action(np.array([0.0], dtype=np.float32))
-
-        # Fallback: 25%-75% of canvas = 320-960, centre = 640
-        call_args = driver.execute_script.call_args
-        pixel_x = call_args[0][1]
-        assert abs(pixel_x - 640.0) < 1e-6
-
-    def test_no_driver_is_noop(self):
-        """Without a driver, _apply_action should be a no-op."""
-        env = Breakout71Env()  # no driver
-
-        # Should not raise
-        env._apply_action(np.array([0.5], dtype=np.float32))
-        env._apply_action(np.array([-0.5], dtype=np.float32))
+        sx_right = 100 + 1279
+        assert sx == sx_right
 
     def test_quarter_position(self):
-        """Action -0.5 should map to 25% between left and right edges."""
-        driver, canvas = _mock_driver()
-        env = Breakout71Env(driver=driver)
-        env._game_canvas = canvas
-        env._canvas_dims = (0, 0, 1280, 1024)
-        env._game_zone_left = 320.0
-        env._game_zone_right = 960.0
+        """Action -0.5 should map to 25% of client width."""
+        env = self._make_env_for_action()
+        mock_pdi = mock.MagicMock()
 
-        env._apply_action(np.array([-0.5], dtype=np.float32))
+        with mock.patch.dict(sys.modules, {"pydirectinput": mock_pdi}):
+            env._apply_action(np.array([-0.5], dtype=np.float32))
 
-        call_args = driver.execute_script.call_args
-        pixel_x = call_args[0][1]
-        # -0.5 -> (−0.5 + 1) / 2 = 0.25 -> 320 + 0.25 * 640 = 480
-        assert abs(pixel_x - 480.0) < 1e-6
+        sx, _ = mock_pdi.moveTo.call_args[0]
+        # -0.5 -> x_norm = 0.25 -> 100 + int(0.25 * 1280) = 100 + 320 = 420
+        assert sx == 100 + 320
+
+    def test_no_capture_is_noop(self):
+        """Without capture, _apply_action should be a no-op."""
+        env = Breakout71Env()
+        # Should not raise
+        env._apply_action(np.array([0.5], dtype=np.float32))
+
+    def test_no_client_origin_is_noop(self):
+        """Without client_origin, _apply_action should be a no-op."""
+        env = Breakout71Env()
+        env._capture = mock.MagicMock()
+        env._client_origin = None
+        # Should not raise
+        env._apply_action(np.array([0.5], dtype=np.float32))
 
     def test_action_scalar_input(self):
         """Scalar action (0-d array or float) is normalised to (1,)."""
-        driver, canvas = _mock_driver()
-        env = Breakout71Env(driver=driver)
-        env._game_zone_left = 320.0
-        env._game_zone_right = 960.0
+        env = self._make_env_for_action()
+        mock_pdi = mock.MagicMock()
 
-        # 0-d numpy array
-        env._apply_action(np.float32(0.0))
-        pixel_x = driver.execute_script.call_args[0][1]
-        assert abs(pixel_x - 640.0) < 1e-6
+        with mock.patch.dict(sys.modules, {"pydirectinput": mock_pdi}):
+            # 0-d numpy array
+            env._apply_action(np.float32(0.0))
+            sx, _ = mock_pdi.moveTo.call_args[0]
+            assert sx == 100 + 640
 
-        # Plain Python float
-        driver.execute_script.reset_mock()
-        env._apply_action(0.0)
-        pixel_x = driver.execute_script.call_args[0][1]
-        assert abs(pixel_x - 640.0) < 1e-6
+            # Plain Python float
+            mock_pdi.moveTo.reset_mock()
+            env._apply_action(0.0)
+            sx, _ = mock_pdi.moveTo.call_args[0]
+            assert sx == 100 + 640
 
     def test_action_wrong_size_raises(self):
         """Action with size != 1 should raise ValueError."""
-        driver, canvas = _mock_driver()
-        env = Breakout71Env(driver=driver)
-        env._game_zone_left = 320.0
-        env._game_zone_right = 960.0
+        env = self._make_env_for_action()
 
         with pytest.raises(ValueError, match="size 1"):
             env._apply_action(np.array([0.1, 0.2], dtype=np.float32))
 
+    def test_y_position_is_paddle_row(self):
+        """Y position should be fixed at ~90% of client height."""
+        env = self._make_env_for_action(client_h=1000, origin=(0, 0))
+        mock_pdi = mock.MagicMock()
 
-# -- Game Zone Query -----------------------------------------------------------
+        with mock.patch.dict(sys.modules, {"pydirectinput": mock_pdi}):
+            env._apply_action(np.array([0.0], dtype=np.float32))
 
-
-class TestQueryGameZone:
-    """Tests for _query_game_zone with mocked driver."""
-
-    def test_successful_query_sets_zone(self):
-        """Valid JS result sets _game_zone_left and _game_zone_right."""
-        driver, canvas = _mock_driver()
-        driver.execute_script.return_value = {
-            "left": 350.0,
-            "right": 930.0,
-            "offsetX": 324.0,
-            "gameZoneWidth": 632.0,
-            "puckWidth": 52.0,
-        }
-        env = Breakout71Env(driver=driver)
-
-        env._query_game_zone()
-
-        assert env._game_zone_left == 350.0
-        assert env._game_zone_right == 930.0
-
-    def test_null_result_keeps_existing_values(self):
-        """Null JS result should not overwrite existing zone values."""
-        driver, canvas = _mock_driver()
-        driver.execute_script.return_value = None
-        env = Breakout71Env(driver=driver)
-        env._game_zone_left = 100.0
-        env._game_zone_right = 900.0
-
-        env._query_game_zone()
-
-        assert env._game_zone_left == 100.0
-        assert env._game_zone_right == 900.0
-
-    def test_non_dict_result_keeps_existing_values(self):
-        """Non-dict JS result should not overwrite existing zone values."""
-        driver, canvas = _mock_driver()
-        driver.execute_script.return_value = "unexpected"
-        env = Breakout71Env(driver=driver)
-        env._game_zone_left = 100.0
-        env._game_zone_right = 900.0
-
-        env._query_game_zone()
-
-        assert env._game_zone_left == 100.0
-        assert env._game_zone_right == 900.0
-
-    def test_missing_keys_keeps_existing_values(self):
-        """Dict missing 'left'/'right' should not overwrite zone values."""
-        driver, canvas = _mock_driver()
-        driver.execute_script.return_value = {"offsetX": 324.0}
-        env = Breakout71Env(driver=driver)
-        env._game_zone_left = 100.0
-        env._game_zone_right = 900.0
-
-        env._query_game_zone()
-
-        assert env._game_zone_left == 100.0
-        assert env._game_zone_right == 900.0
-
-    def test_exception_keeps_existing_values(self):
-        """JS exception should not overwrite zone values."""
-        driver, canvas = _mock_driver()
-        driver.execute_script.side_effect = RuntimeError("JS error")
-        env = Breakout71Env(driver=driver)
-        env._game_zone_left = 100.0
-        env._game_zone_right = 900.0
-
-        env._query_game_zone()
-
-        assert env._game_zone_left == 100.0
-        assert env._game_zone_right == 900.0
-
-    def test_no_driver_is_noop(self):
-        """Without a driver, _query_game_zone should be a no-op."""
-        env = Breakout71Env()
-        env._query_game_zone()
-        assert env._game_zone_left is None
-        assert env._game_zone_right is None
+        _, sy = mock_pdi.moveTo.call_args[0]
+        # y_norm = 0.90 -> int(0.90 * 1000) = 900
+        assert sy == 900
 
 
 # -- Game State Handling -------------------------------------------------------
@@ -779,8 +881,8 @@ class TestHandleGameState:
     """Tests for _handle_game_state and _click_canvas."""
 
     def test_gameplay_state_no_action(self):
-        """Gameplay state should return 'gameplay' without JS calls."""
-        driver, canvas = _mock_driver()
+        """Gameplay state should return 'gameplay' without extra JS calls."""
+        driver = _mock_driver()
         driver.execute_script.return_value = {
             "state": "gameplay",
             "details": {},
@@ -796,7 +898,7 @@ class TestHandleGameState:
     @mock.patch("src.env.breakout71_env.time")
     def test_game_over_dismissed(self, mock_time):
         """Game over state should trigger dismiss JS execution."""
-        driver, canvas = _mock_driver()
+        driver = _mock_driver()
         driver.execute_script.side_effect = [
             {"state": "game_over", "details": {}},
             {"action": "restart_button", "text": "New Run"},
@@ -811,7 +913,7 @@ class TestHandleGameState:
     @mock.patch("src.env.breakout71_env.time")
     def test_perk_picker_clicks_perk(self, mock_time):
         """Perk picker state should click a random perk button."""
-        driver, canvas = _mock_driver()
+        driver = _mock_driver()
         driver.execute_script.side_effect = [
             {"state": "perk_picker", "details": {"numPerks": 3}},
             {"clicked": 1, "text": "Extra Life"},
@@ -826,7 +928,7 @@ class TestHandleGameState:
     @mock.patch("src.env.breakout71_env.time")
     def test_menu_dismissed(self, mock_time):
         """Menu state should trigger dismiss."""
-        driver, canvas = _mock_driver()
+        driver = _mock_driver()
         driver.execute_script.side_effect = [
             {"state": "menu", "details": {}},
             {"action": "close_button"},
@@ -843,29 +945,52 @@ class TestHandleGameState:
 
         assert env._handle_game_state() == "gameplay"
 
-    def test_click_canvas(self):
-        """_click_canvas should click the game canvas element."""
-        driver, canvas = _mock_driver()
+    def test_state_detection_exception_returns_unknown(self):
+        """Exception during state detection should return 'unknown'."""
+        driver = _mock_driver()
+        driver.execute_script.side_effect = RuntimeError("WebDriver error")
         env = Breakout71Env(driver=driver)
-        env._game_canvas = canvas
 
-        with mock.patch(
-            "selenium.webdriver.common.action_chains.ActionChains"
-        ) as mock_ac_cls:
-            mock_chain = mock.MagicMock()
-            mock_ac_cls.return_value = mock_chain
-            mock_chain.move_to_element.return_value = mock_chain
-            mock_chain.click.return_value = mock_chain
+        state = env._handle_game_state()
 
+        assert state == "unknown"
+
+    def test_state_detection_returns_none(self):
+        """Null state detection result should return 'unknown'."""
+        driver = _mock_driver()
+        driver.execute_script.return_value = None
+        env = Breakout71Env(driver=driver)
+
+        state = env._handle_game_state()
+
+        assert state == "unknown"
+
+    def test_click_canvas_uses_pydirectinput(self):
+        """_click_canvas should use pydirectinput.click at canvas centre."""
+        env = Breakout71Env()
+        _setup_capture_mock(env, width=1280, height=1024)
+        env._client_origin = (100, 200)
+        mock_pdi = mock.MagicMock()
+
+        with mock.patch.dict(sys.modules, {"pydirectinput": mock_pdi}):
             env._click_canvas()
 
-            mock_chain.move_to_element.assert_called_once_with(canvas)
-            mock_chain.click.assert_called_once()
-            mock_chain.perform.assert_called_once()
+        mock_pdi.click.assert_called_once()
+        sx, sy = mock_pdi.click.call_args[0]
+        # Centre of client area: 100 + 640 = 740, 200 + 512 = 712
+        assert sx == 100 + 640
+        assert sy == 200 + 512
 
-    def test_click_canvas_no_driver(self):
-        """_click_canvas without driver should be a no-op."""
+    def test_click_canvas_no_capture(self):
+        """_click_canvas without capture should be a no-op."""
         env = Breakout71Env()
+        env._click_canvas()  # should not raise
+
+    def test_click_canvas_no_client_origin(self):
+        """_click_canvas without client_origin should be a no-op."""
+        env = Breakout71Env()
+        env._capture = mock.MagicMock()
+        env._client_origin = None
         env._click_canvas()  # should not raise
 
 
@@ -994,16 +1119,14 @@ class TestReset:
     """Tests for the full reset() lifecycle."""
 
     def _make_env_with_mocks(self):
-        """Create env with mocked sub-components."""
-        driver, canvas = _mock_driver()
+        """Create env with mocked sub-components for reset/step tests."""
+        driver = _mock_driver()
         env = Breakout71Env(driver=driver)
         env._initialized = True
-        env._capture = mock.MagicMock()
-        env._capture.capture_frame.return_value = _frame()
+        _setup_capture_mock(env)
         env._detector = mock.MagicMock()
         env._detector.detect_to_game_state.return_value = _detections()
-        env._game_canvas = canvas
-        env._canvas_dims = (0, 0, 1280, 1024)
+        env._client_origin = (100, 200)
         return env
 
     @mock.patch("src.env.breakout71_env.time")
@@ -1058,16 +1181,14 @@ class TestReset:
     @mock.patch("src.env.breakout71_env.time")
     def test_reset_calls_lazy_init_when_not_initialized(self, mock_time):
         """reset() should call _lazy_init on first call."""
-        driver, canvas = _mock_driver()
+        driver = _mock_driver()
         env = Breakout71Env(driver=driver)
         env._lazy_init = mock.MagicMock()
         # After lazy_init, we need the sub-components set up
-        env._capture = mock.MagicMock()
-        env._capture.capture_frame.return_value = _frame()
+        _setup_capture_mock(env)
         env._detector = mock.MagicMock()
         env._detector.detect_to_game_state.return_value = _detections()
-        env._game_canvas = canvas
-        env._canvas_dims = (0, 0, 1280, 1024)
+        env._client_origin = (100, 200)
 
         env.reset()
 
@@ -1076,18 +1197,24 @@ class TestReset:
     @mock.patch("src.env.breakout71_env.time")
     def test_reset_raises_after_ball_retry_exhausted(self, mock_time):
         """reset() raises RuntimeError if ball never detected after 5 retries."""
-        driver, canvas = _mock_driver()
+        driver = _mock_driver()
         env = Breakout71Env(driver=driver)
         env._initialized = True
-        env._capture = mock.MagicMock()
-        env._capture.capture_frame.return_value = _frame()
+        _setup_capture_mock(env)
         env._detector = mock.MagicMock()
         env._detector.detect_to_game_state.return_value = _detections(ball=None)
-        env._game_canvas = canvas
-        env._canvas_dims = (0, 0, 1280, 1024)
+        env._client_origin = (100, 200)
 
         with pytest.raises(RuntimeError, match="failed to detect a ball"):
             env.reset()
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_reset_updates_client_origin(self, mock_time):
+        """reset() should call _update_client_origin to handle window movement."""
+        env = self._make_env_with_mocks()
+        with mock.patch.object(env, "_update_client_origin") as mock_update:
+            env.reset()
+            mock_update.assert_called()
 
 
 # -- Step ----------------------------------------------------------------------
@@ -1098,7 +1225,7 @@ class TestStep:
 
     def _make_env_ready(self, bricks_count=10):
         """Create env in a post-reset state with mocked sub-components."""
-        driver, canvas = _mock_driver()
+        driver = _mock_driver()
         env = Breakout71Env(driver=driver)
         env._initialized = True
         env._bricks_total = bricks_count
@@ -1108,11 +1235,9 @@ class TestStep:
         env._no_ball_count = 0
         env._no_bricks_count = 0
         env._last_frame = _frame()
-        env._game_canvas = canvas
-        env._canvas_dims = (0, 0, 1280, 1024)
+        env._client_origin = (100, 200)
 
-        env._capture = mock.MagicMock()
-        env._capture.capture_frame.return_value = _frame()
+        _setup_capture_mock(env)
         env._detector = mock.MagicMock()
         env._detector.detect_to_game_state.return_value = _detections(
             bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(bricks_count)]
@@ -1146,15 +1271,12 @@ class TestStep:
 
     @mock.patch("src.env.breakout71_env.time")
     def test_step_applies_action(self, mock_time):
-        """step() should set puckPosition via JS execution."""
+        """step() should call _apply_action."""
         env = self._make_env_ready()
-        env._game_zone_left = 320.0
-        env._game_zone_right = 960.0
 
-        env.step(_action(0.5))  # Move right of centre
-
-        # execute_script called for puckPosition (and game state)
-        assert env._driver.execute_script.call_count >= 1
+        with mock.patch.object(env, "_apply_action") as mock_apply:
+            env.step(_action(0.5))
+            mock_apply.assert_called_once()
 
     @mock.patch("src.env.breakout71_env.time")
     def test_step_normal_not_terminated(self, mock_time):
@@ -1257,6 +1379,19 @@ class TestStep:
 
         assert env.observation_space.contains(obs)
 
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_handles_mid_episode_modal(self, mock_time):
+        """step() should handle modals that appear mid-episode."""
+        env = self._make_env_ready()
+        # Make game state return perk_picker on first call, gameplay after
+        env._driver.execute_script.side_effect = [
+            {"state": "perk_picker", "details": {"numPerks": 3}},
+            {"clicked": 0, "text": "Speed"},
+        ]
+
+        # Should not crash; modal is handled
+        env.step(_action())
+
 
 # -- Render & Close ------------------------------------------------------------
 
@@ -1301,9 +1436,8 @@ class TestRenderClose:
 
     def test_close_does_not_close_driver(self):
         """close() should NOT close the Selenium driver (caller owns it)."""
-        driver, canvas = _mock_driver()
+        driver = _mock_driver()
         env = Breakout71Env(driver=driver)
-        env._game_canvas = canvas
 
         env.close()
 
@@ -1320,6 +1454,17 @@ class TestRenderClose:
         env.close()
 
         assert env._initialized is False
+
+    def test_close_clears_client_origin(self):
+        """close() should clear _client_origin."""
+        env = Breakout71Env()
+        env._initialized = True
+        env._capture = mock.MagicMock()
+        env._client_origin = (100, 200)
+
+        env.close()
+
+        assert env._client_origin is None
 
 
 # -- Prev Brick Count ---------------------------------------------------------
@@ -1342,3 +1487,224 @@ class TestPrevBrickCount:
         env._bricks_total = None
 
         assert env._prev_brick_count() == 0
+
+
+# -- Headless Mode -------------------------------------------------------------
+
+
+class TestHeadless:
+    """Tests for headless mode (Selenium-based capture/input)."""
+
+    def test_headless_param_default_false(self):
+        """Headless mode should default to False."""
+        env = Breakout71Env()
+        assert env.headless is False
+
+    def test_headless_param_set(self):
+        """Constructor should accept headless parameter."""
+        env = Breakout71Env(headless=True)
+        assert env.headless is True
+
+    def test_headless_init_state(self):
+        """Headless mode should initialise canvas state to None."""
+        env = Breakout71Env(headless=True)
+        assert env._game_canvas is None
+        assert env._canvas_size is None
+
+    def test_headless_lazy_init_requires_driver(self):
+        """_lazy_init in headless mode should raise if no driver."""
+        env = Breakout71Env(headless=True, driver=None)
+        with pytest.raises(RuntimeError, match="Headless mode requires"):
+            env._lazy_init()
+
+    @mock.patch("src.perception.yolo_detector.YoloDetector")
+    def test_headless_lazy_init_finds_canvas(self, mock_det):
+        """_lazy_init in headless mode should find the game canvas."""
+        mock_det.return_value = mock.MagicMock()
+        driver = _mock_driver()
+        canvas_el = mock.MagicMock()
+        canvas_el.size = {"width": 1280, "height": 1024}
+        driver.find_element.return_value = canvas_el
+
+        env = Breakout71Env(headless=True, driver=driver)
+        env._lazy_init()
+
+        assert env._initialized is True
+        assert env._game_canvas is canvas_el
+        assert env._canvas_size == (1280, 1024)
+        assert env._capture is None  # No Win32 capture in headless
+
+    @mock.patch("src.perception.yolo_detector.YoloDetector")
+    def test_headless_lazy_init_body_fallback(self, mock_det):
+        """_lazy_init should fall back to <body> if #game not found."""
+        mock_det.return_value = mock.MagicMock()
+        driver = _mock_driver()
+        body_el = mock.MagicMock()
+        body_el.size = {"width": 800, "height": 600}
+        # First call raises (for By.ID "game"), second returns body
+        driver.find_element.side_effect = [Exception("not found"), body_el]
+
+        env = Breakout71Env(headless=True, driver=driver)
+        env._lazy_init()
+
+        assert env._initialized is True
+        assert env._game_canvas is body_el
+        assert env._canvas_size == (800, 600)
+
+    @mock.patch("src.perception.yolo_detector.YoloDetector")
+    def test_headless_lazy_init_does_not_call_pydirectinput(self, mock_det):
+        """Headless init should NOT set up pydirectinput or client origin."""
+        mock_det.return_value = mock.MagicMock()
+        driver = _mock_driver()
+        canvas_el = mock.MagicMock()
+        canvas_el.size = {"width": 1280, "height": 1024}
+        driver.find_element.return_value = canvas_el
+
+        env = Breakout71Env(headless=True, driver=driver)
+        env._lazy_init()
+
+        assert env._client_origin is None  # Not set in headless
+
+    def test_headless_capture_frame_via_screenshot(self):
+        """_capture_frame in headless mode should use Selenium screenshot."""
+        env = Breakout71Env(headless=True)
+        env._driver = mock.MagicMock()
+
+        # Provide dummy PNG bytes (content doesn't matter — cv2 is mocked)
+        env._driver.get_screenshot_as_png.return_value = b"fake-png-bytes"
+
+        # Mock cv2 to avoid libGL.so.1 dependency in CI Docker
+        dummy_frame = np.zeros((10, 10, 3), dtype=np.uint8)
+        dummy_frame[:] = (255, 0, 0)  # blue BGR
+        mock_cv2 = mock.MagicMock()
+        mock_cv2.IMREAD_COLOR = 1
+        mock_cv2.imdecode.return_value = dummy_frame
+
+        with mock.patch.dict(sys.modules, {"cv2": mock_cv2}):
+            frame = env._capture_frame()
+
+        env._driver.get_screenshot_as_png.assert_called_once()
+        mock_cv2.imdecode.assert_called_once()
+        assert isinstance(frame, np.ndarray)
+        assert frame.shape == (10, 10, 3)
+        assert env._last_frame is frame
+
+    def test_headless_apply_action_uses_action_chains(self):
+        """_apply_action in headless mode should use ActionChains."""
+        env = Breakout71Env(headless=True)
+        env._driver = mock.MagicMock()
+        env._game_canvas = mock.MagicMock()
+        env._canvas_size = (1280, 1024)
+
+        # The lazy import reads from sys.modules["selenium...action_chains"]
+        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
+        mock_chains_instance = mock.MagicMock()
+        mock_chains_instance.move_to_element_with_offset.return_value = (
+            mock_chains_instance
+        )
+        mock_ac_module.ActionChains.return_value = mock_chains_instance
+
+        env._apply_action(_action(0.5))
+
+        mock_ac_module.ActionChains.assert_called_with(env._driver)
+        mock_chains_instance.move_to_element_with_offset.assert_called_once()
+        mock_chains_instance.perform.assert_called_once()
+
+    def test_headless_apply_action_maps_position(self):
+        """_apply_action should map [-1,1] to pixel offsets from centre."""
+        env = Breakout71Env(headless=True)
+        env._driver = mock.MagicMock()
+        env._game_canvas = mock.MagicMock()
+        env._canvas_size = (1000, 800)
+
+        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
+        mock_chains_instance = mock.MagicMock()
+        mock_chains_instance.move_to_element_with_offset.return_value = (
+            mock_chains_instance
+        )
+        mock_ac_module.ActionChains.return_value = mock_chains_instance
+
+        env._apply_action(_action(-1.0))
+
+        # x_offset should be -1.0 * (1000/2) = -500
+        args, kwargs = mock_chains_instance.move_to_element_with_offset.call_args
+        assert args[0] is env._game_canvas
+        assert args[1] == -500  # x_offset
+        assert args[2] == int(800 * 0.4)  # y_offset
+
+    def test_headless_apply_action_no_driver(self):
+        """_apply_action in headless mode should do nothing without driver."""
+        env = Breakout71Env(headless=True)
+        env._driver = None
+        env._apply_action(_action(0.0))  # should not raise
+
+    def test_headless_apply_action_no_canvas(self):
+        """_apply_action in headless mode should do nothing without canvas."""
+        env = Breakout71Env(headless=True)
+        env._driver = mock.MagicMock()
+        env._game_canvas = None
+        env._apply_action(_action(0.0))  # should not raise
+
+    def test_headless_click_canvas(self):
+        """_click_canvas in headless mode should use ActionChains click."""
+        env = Breakout71Env(headless=True)
+        env._driver = mock.MagicMock()
+        env._game_canvas = mock.MagicMock()
+
+        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
+        mock_chains_instance = mock.MagicMock()
+        mock_chains_instance.move_to_element.return_value = mock_chains_instance
+        mock_chains_instance.click.return_value = mock_chains_instance
+        mock_ac_module.ActionChains.return_value = mock_chains_instance
+
+        env._click_canvas()
+
+        mock_chains_instance.move_to_element.assert_called_once_with(env._game_canvas)
+        mock_chains_instance.click.assert_called_once()
+        mock_chains_instance.perform.assert_called_once()
+
+    def test_headless_click_canvas_no_driver(self):
+        """_click_canvas in headless mode should do nothing without driver."""
+        env = Breakout71Env(headless=True)
+        env._driver = None
+        env._click_canvas()  # should not raise
+
+    def test_close_clears_headless_state(self):
+        """close() should clear headless-specific state."""
+        env = Breakout71Env(headless=True)
+        env._game_canvas = mock.MagicMock()
+        env._canvas_size = (1280, 1024)
+        env._initialized = True
+
+        env.close()
+
+        assert env._game_canvas is None
+        assert env._canvas_size is None
+        assert env._initialized is False
+
+
+# -- Build Info (no_ball_count) ------------------------------------------------
+
+
+class TestBuildInfoNoBallCount:
+    """Tests for no_ball_count in _build_info."""
+
+    def test_info_includes_no_ball_count(self):
+        """_build_info should include no_ball_count field."""
+        env = Breakout71Env()
+        env._no_ball_count = 3
+        det = _detections()
+
+        info = env._build_info(det)
+
+        assert "no_ball_count" in info
+        assert info["no_ball_count"] == 3
+
+    def test_info_no_ball_count_default_zero(self):
+        """no_ball_count should be 0 initially."""
+        env = Breakout71Env()
+        det = _detections()
+
+        info = env._build_info(det)
+
+        assert info["no_ball_count"] == 0
