@@ -6,8 +6,8 @@ Usage::
     python scripts/train_rl.py --config configs/games/breakout-71.yaml \\
         --timesteps 200000 --browser chrome
 
-Requires a running game server.  Training runs in real-time (~30 FPS),
-so 200k steps takes ~1.85 hours.
+Launches the dev server automatically via GameLoader.  Training runs in
+real-time (~30 FPS), so 200k steps takes ~1.85 hours.
 """
 
 from __future__ import annotations
@@ -18,6 +18,9 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+
+# Ensure project root is on sys.path so ``src.*`` and ``scripts.*`` resolve
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 logger = logging.getLogger(__name__)
 
@@ -236,6 +239,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from scripts._smoke_utils import BrowserInstance
     from src.env.breakout71_env import Breakout71Env
+    from src.game_loader import create_loader
     from src.game_loader.config import load_game_config
     from src.orchestrator.data_collector import FrameCollector
     from src.orchestrator.session_runner import _create_oracles
@@ -249,9 +253,18 @@ def main(argv: list[str] | None = None) -> int:
         configs_dir=config_path.parent,
     )
 
+    # Start dev server via GameLoader
+    loader = create_loader(config)
+    logger.info("Setting up game (npm install) ...")
+    loader.setup()
+    logger.info("Starting dev server ...")
+    loader.start()
+    logger.info("Dev server ready at %s", loader.url or config.url)
+
     # Launch browser
+    url = loader.url or config.url
     browser_instance = BrowserInstance(
-        url=config.url,
+        url=url,
         settle_seconds=8.0,
         window_size=(config.window_width, config.window_height),
         browser=args.browser,
@@ -267,6 +280,7 @@ def main(argv: list[str] | None = None) -> int:
             yolo_weights=args.yolo_weights,
             max_steps=args.max_steps,
             oracles=oracles,
+            driver=browser_instance.driver,
         )
 
         # Create frame collector
@@ -350,6 +364,8 @@ def main(argv: list[str] | None = None) -> int:
         if "env" in locals():
             env.close()
         browser_instance.close()
+        logger.info("Stopping dev server ...")
+        loader.stop()
 
     return 0
 

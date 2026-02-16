@@ -117,6 +117,19 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **`coins_norm` and `score_norm` hardcoded 0.0** — 2 of 8 observation dimensions carry no info. SB3 will learn to ignore them.
 - **Real-time training bottleneck** — Env runs at ~30 FPS with `time.sleep(1/30)` per step. 200k steps ≈ 1.85 hours.
 
+### Selenium-Based Env Control (session 14)
+
+- **pydirectinput keyboard control doesn't work** — The game uses **mouse position** to control the paddle directly; keyboard arrows move incrementally (`gameZoneWidth/50` per tick) — too slow for RL. `Space` via pydirectinput didn't reliably start the game either.
+- **Env refactored from pydirectinput to Selenium** — `Breakout71Env` now accepts a Selenium `WebDriver` via `driver=` parameter. Paddle control uses `ActionChains` mouse movement on the `#game` canvas. Modal handling (game over, perk picker, menu) uses `driver.execute_script()` with JS snippets from `capture_dataset.py`.
+- **`InputController` no longer used by env** — `_input` attribute replaced with `_driver`, `_game_canvas`, `_canvas_dims`. The `src/capture/input_controller.py` module still exists for other use cases but env doesn't import it.
+- **`train_rl.py` needs GameLoader** — Original version only launched `BrowserInstance` (Selenium) without starting the Parcel dev server. Fixed by adding `create_loader(config)` → `loader.setup()` → `loader.start()` before browser launch, and `loader.stop()` in teardown.
+- **JS game state detection snippets** — `_DETECT_STATE_JS` returns `"gameplay"`, `"game_over"`, `"perk_picker"`, or `"menu"` via DOM inspection (`document.body.classList.contains('has-alert-open')`, `#popup` content). `_CLICK_PERK_JS` picks first available perk, `_DISMISS_GAME_OVER_JS` clicks `#close-modale`, `_DISMISS_MENU_JS` clicks `#game`.
+- **`close()` does NOT close the WebDriver** — Caller owns the driver lifecycle (typically `BrowserInstance`). Env only nulls its `_game_canvas` and `_canvas_dims` references.
+- **Canvas element lookup** — `_lazy_init()` finds `#game` canvas via `driver.find_element(By.ID, "game")`, falls back to `body` if not found. Canvas dimensions read via `element.size`.
+- **`pydirectinput` still in conda env and `autodoc_mock_imports`** — Not removed since `src/capture/input_controller.py` still uses it. Just no longer imported by env.
+- **`_apply_action()` must track absolute paddle position** — Selenium `move_to_element_with_offset` positions the mouse at an offset from the element's *centre*, not from current position. Using a fixed ±step_size causes the paddle to oscillate between two positions instead of moving incrementally. Fix: track `_paddle_target_x` (pixels from canvas left edge) and convert to centre-relative offset for each call.
+- **`step()` must handle modals mid-episode** — Without modal handling in `step()`, the game-over/perk-picker modal overlay blocks YOLO detection, causing `_no_ball_count` to reach threshold and the episode to terminate incorrectly. Fix: call `_handle_game_state()` in `step()` before frame capture.
+
 ## Project Structure
 
 ```
@@ -126,7 +139,7 @@ src/
   capture/        # DONE — BitBlt window capture, pydirectinput input (37 tests)
   perception/     # DONE — YoloDetector, breakout_capture (41 tests)
   oracles/        # DONE — 12 oracles with on_step detection (132 tests)
-  env/            # DONE — Breakout71Env gymnasium wrapper (70 tests)
+  env/            # DONE — Breakout71Env gymnasium wrapper (83 tests)
   orchestrator/   # DONE — FrameCollector, SessionRunner (47 tests)
 configs/
   games/                  # Per-game loader configs (breakout-71.yaml)
@@ -149,6 +162,7 @@ scripts/
   prepare_dataset.py        # Restructure flat dataset into YOLO train/val format
   run_session.py            # CLI for N-episode QA evaluation runs
   train_rl.py               # CLI for PPO training with SB3
+  debug_game_state.py       # Diagnostic script for JS game state detection
 documentation/
   BigRocks/checklist.md   # Master checklist — the source of truth for what's done and what's next
   specs/                  # Canonical spec files
@@ -156,7 +170,7 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-13)
+## What's Done (sessions 1-14)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -171,8 +185,9 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 11. **Session 11** — Annotation pipeline improvements: ball-in-brick fix, paddle-zone fix, game-zone wall detection, Roboflow annotation upload, 100% ball detection (PR #23)
 12. **Session 12** — XPU YOLO training: 3 ultralytics monkey patches, dataset preparation, 100-epoch training (mAP50=0.679), open-source contribution to ultralytics #16930 (PR #26)
 13. **Session 13** — Integration & E2E + RL scaffold: orchestrator (FrameCollector, SessionRunner), run_session.py, train_rl.py (SB3 PPO), 6 env bug fixes, legacy code cleanup, pytest-cov (96% coverage) (PR #28)
+14. **Session 14** — Selenium-based env control: replaced pydirectinput with Selenium ActionChains for paddle control and JS execution for modal handling, GameLoader integration in train_rl.py (IN PROGRESS)
 
-Total: **454 tests** (430 unit + 24 integration), 7 subsystems + training pipeline complete.
+Total: **489 tests** (465 unit + 24 integration), 7 subsystems + training pipeline complete.
 
 ## What's Next
 
