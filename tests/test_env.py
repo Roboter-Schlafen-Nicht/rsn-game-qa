@@ -46,6 +46,7 @@ for _mod in _SELENIUM_MODULES:
         _injected.append(_mod)
 
 from src.env.breakout71_env import (  # noqa: E402
+    DISMISS_GAME_OVER_JS,
     Breakout71Env,
     _get_client_origin,
     _norm_to_screen,
@@ -908,7 +909,9 @@ class TestHandleGameState:
         state = env._handle_game_state()
 
         assert state == "game_over"
-        assert driver.execute_script.call_count == 2
+        # Verify the dismiss JS was actually called (not just call count)
+        js_calls = [args[0] for args, _ in driver.execute_script.call_args_list]
+        assert DISMISS_GAME_OVER_JS in js_calls
 
     @mock.patch("src.env.breakout71_env.time")
     def test_game_over_not_dismissed_when_flag_false(self, mock_time):
@@ -923,8 +926,9 @@ class TestHandleGameState:
         state = env._handle_game_state(dismiss_game_over=False)
 
         assert state == "game_over"
-        # Only the detect call — no dismiss call
-        driver.execute_script.assert_called_once()
+        # Verify dismiss JS was NOT called
+        js_calls = [args[0] for args, _ in driver.execute_script.call_args_list]
+        assert DISMISS_GAME_OVER_JS not in js_calls
 
     @mock.patch("src.env.breakout71_env.time")
     def test_perk_picker_clicks_perk(self, mock_time):
@@ -1432,8 +1436,9 @@ class TestStep:
 
         env.step(_action())
 
-        # Only 1 JS call (detect state), NOT 2 (detect + dismiss)
-        assert env._driver.execute_script.call_count == 1
+        # Verify dismiss JS was NOT called (check call_args, not count)
+        js_calls = [args[0] for args, _ in env._driver.execute_script.call_args_list]
+        assert DISMISS_GAME_OVER_JS not in js_calls
 
     @mock.patch("src.env.breakout71_env.time")
     def test_step_game_over_still_increments_step_count(self, mock_time):
@@ -1448,6 +1453,25 @@ class TestStep:
         env.step(_action())
 
         assert env._step_count == 1
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_game_over_returns_fixed_terminal_penalty(self, mock_time):
+        """step() should use fixed penalty on game_over, not detection-based reward.
+
+        The game-over modal occludes bricks, so detection-based reward
+        would produce incorrect brick-count deltas.  The reward must
+        be the fixed terminal penalty (-5.01) regardless of detections.
+        """
+        env = self._make_env_ready()
+        env._driver.execute_script.return_value = {
+            "state": "game_over",
+            "details": {},
+        }
+
+        _, reward, terminated, _, _ = env.step(_action())
+
+        assert terminated is True
+        assert reward == pytest.approx(-5.01)
 
     @mock.patch("src.env.breakout71_env.time")
     def test_step_perk_picker_does_not_terminate(self, mock_time):

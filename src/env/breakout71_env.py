@@ -580,13 +580,17 @@ class Breakout71Env(gym.Env):
         # one never-ending episode.
         mid_state = self._handle_game_state(dismiss_game_over=False)
         if mid_state == "game_over":
-            # Return last observation with terminated=True
+            # Return last observation with terminated=True.
+            # Use a fixed terminal penalty instead of computing reward
+            # from detections — the game-over modal occludes bricks,
+            # producing incorrect brick-count deltas and potentially
+            # spurious positive terminal rewards.
             frame = self._capture_frame()
             detections = self._detect_objects(frame)
             obs = self._build_observation(detections)
             self._step_count += 1
             truncated = self._step_count >= self.max_steps
-            reward = self._compute_reward(detections, True, False)
+            reward = -5.0 - 0.01  # terminal penalty + time penalty
             info = self._build_info(detections)
             findings = self._run_oracles(obs, reward, True, truncated, info)
             info["oracle_findings"] = findings
@@ -982,8 +986,10 @@ class Breakout71Env(gym.Env):
         """Detect and handle game UI state (modals, game over, perks).
 
         Uses JavaScript execution via Selenium to query the game DOM
-        and dismiss modals as needed.  This is the **only** use of
-        Selenium at runtime — all observation and control is pixel-based.
+        and dismiss modals as needed.  Headless mode also relies on
+        Selenium for screenshots and ``ActionChains`` input, but in
+        native mode this DOM-level interaction is the only Selenium
+        use — all observation and control is otherwise pixel-based.
 
         Parameters
         ----------
