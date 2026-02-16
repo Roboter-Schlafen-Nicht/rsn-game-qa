@@ -120,13 +120,24 @@
   - [x] JS snippets made public API (Copilot review), body fallback exception handling (Copilot review)
   - [x] `debug_game_state.py` diagnostic script
   - [x] 489 tests (465 unit + 24 integration), 95% coverage
-  - [x] Post-merge admin (PR #31 — this update)
+  - [x] Post-merge admin (PR #31)
+- [x] **Continuous action space & coverage enforcement** (PR #32)
+  - [x] Action space: `Discrete(3)` → `Box(-1, 1, shape=(1,))` with JS `puckPosition` injection
+  - [x] `_query_game_zone()` — robust defensive parsing (null, non-dict, missing keys) + 7 tests
+  - [x] `_apply_action()` — `np.asarray().reshape(-1)` for scalar/0-d/1-d input + validation
+  - [x] `DashboardRenderer` bug fix in `session_runner.py` (wrong ctor args + wrong method)
+  - [x] Coverage threshold: `fail_under = 80` in `pyproject.toml`; `session_runner.py` 79% → 98%
+  - [x] Spec updated for continuous action space and mid-step modal handling
+  - [x] 510 tests (486 unit + 24 integration), Copilot review: 2 rounds, 7 fixes
+  - [x] Post-merge admin (PR #33)
 
 ### 3. RL training & iteration
-- [x] Switch action space from Discrete(3) to continuous Box(-1,1) with JS puckPosition injection (PR #33 — session 16)
-- [x] Enforce ≥80% test coverage on all source files (`fail_under = 80` in pyproject.toml) (PR #33 — session 16)
-- [x] Fix DashboardRenderer bug in session_runner.py (wrong constructor args + wrong method call) (PR #33 — session 16)
-- [x] Coverage improvements: session_runner.py 79% → 98%, 8 new tests (PR #33 — session 16)
+- [x] Switch action space from Discrete(3) to continuous Box(-1,1) with JS puckPosition injection (PR #32 — session 16)
+- [x] Enforce ≥80% test coverage on all source files (`fail_under = 80` in pyproject.toml) (PR #32 — session 16)
+- [x] Fix DashboardRenderer bug in session_runner.py (wrong constructor args + wrong method call) (PR #32 — session 16)
+- [x] Coverage improvements: session_runner.py 79% → 98%, 8 new tests (PR #32 — session 16)
+- [x] Robust `_query_game_zone` with defensive parsing + 7 new tests (PR #32 — session 16)
+- [x] Post-merge admin (PR #33 — session 16)
 - [ ] Run first real RL training session on Breakout 71 (PPO, ~10k steps validation then 200k)
 - [ ] Evaluate trained policy vs random baseline
 - [ ] Iterate on reward shaping based on observed behavior
