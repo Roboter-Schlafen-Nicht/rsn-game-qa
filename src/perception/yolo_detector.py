@@ -35,7 +35,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Devices where OpenVINO IR models are preferred over PyTorch .pt
-_OPENVINO_PREFERRED_DEVICES = frozenset({"cpu", "auto"})
+_OPENVINO_PREFERRED_DEVICES = frozenset({"cpu"})
 
 # Mapping from resolve_device() output to OpenVINO device names.
 # ultralytics requires "intel:<OV_DEVICE>" for OpenVINO device routing
@@ -98,7 +98,7 @@ def _resolve_openvino_device(requested_device: str) -> str:
                 )
                 return f"intel:{dev}"
     except ImportError:
-        logger.debug("openvino not installed, falling back to intel:AUTO")
+        logger.debug("openvino not installed, falling back to intel:%s", ov_hint)
     except Exception as exc:
         logger.debug("OpenVINO device query failed: %s", exc)
 

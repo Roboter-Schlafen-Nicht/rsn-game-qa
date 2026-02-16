@@ -4,8 +4,9 @@ Provides the same interface as :class:`WindowCapture` but uses the
 `wincam <https://github.com/lovettchris/wincam>`_ library for
 sub-millisecond frame capture via DirectX 11 GPU async buffering.
 
-Falls back to :class:`WindowCapture` (PrintWindow/GDI) when wincam is
-unavailable (CI, headless, non-Windows).
+Raises ``RuntimeError`` if wincam or pywin32 is unavailable (CI,
+headless, non-Windows).  Callers should catch the error and fall
+back to :class:`WindowCapture` (PrintWindow/GDI) themselves.
 
 Key differences from WindowCapture
 -----------------------------------
@@ -32,7 +33,6 @@ except ImportError:
 
 try:
     from wincam import DXCamera
-    from wincam.desktop import DesktopWindow
 
     _WINCAM_AVAILABLE = True
 except (ImportError, OSError):
@@ -97,7 +97,6 @@ class WinCamCapture:
 
         # Lazily created on first capture_frame() call.
         self._camera: Optional[DXCamera] = None
-        self._desktop = DesktopWindow()
 
         # Track the region the camera was created with so we can detect
         # when the window moves/resizes without accessing DXCamera privates.
@@ -242,7 +241,10 @@ class WinCamCapture:
             If the window handle is invalid or capture fails.
         """
         if self.hwnd == 0:
-            raise RuntimeError("No window handle set. Call _find_window() first.")
+            raise RuntimeError(
+                "No window handle set. Construct WinCamCapture with "
+                "window_title or hwnd before calling capture_frame()."
+            )
 
         self._ensure_camera()
         assert self._camera is not None  # noqa: S101

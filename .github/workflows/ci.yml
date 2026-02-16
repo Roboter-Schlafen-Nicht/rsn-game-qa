@@ -43,6 +43,7 @@ jobs:
         with:
           python-version: "3.12"
 
+      # numpy pinned to <2.4.0 because openvino 2025.4 requires it
       - name: Install dependencies
         run: |
           pip install pytest==9.0.2 pytest-cov \
@@ -87,6 +88,7 @@ jobs:
         with:
           python-version: "3.12"
 
+      # numpy pinned to <2.4.0 because openvino 2025.4 requires it
       - name: Install dependencies
         run: |
           pip install gymnasium==1.2.3 \
@@ -127,6 +129,7 @@ jobs:
         with:
           python-version: "3.12"
 
+      # numpy pinned to <2.4.0 because openvino 2025.4 requires it
       - name: Install dependencies
         run: |
           pip install sphinx==9.1.0 \
