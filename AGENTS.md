@@ -170,13 +170,27 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **Combined projection** — OpenVINO + DXcam together: ~10-15ms/frame (60-100 FPS) vs current ~140ms/frame (6-8 FPS).
 - **XPU vs CPU benchmark** — Intel Arc A770: XPU 6-8 FPS vs CPU 5 FPS (+30-60% improvement, but OpenVINO will be much better).
 
+### OpenVINO Inference & wincam Fast Capture (session 21)
+
+- **OpenVINO export paradigm** — `YOLO("best.pt").export(format="openvino")` creates `best_openvino_model/` directory. Load with `YOLO("best_openvino_model/")`. Inference-only (no training).
+- **Ultralytics OpenVINO GPU routing** — Requires `device="intel:<OV_DEVICE>"` prefix (e.g., `"intel:GPU.0"`). Without prefix, OpenVINO defaults to CPU. `"intel:GPU"` (without index) fails validation and falls back to AUTO (which picks CPU).
+- **`_resolve_openvino_device()`** — Queries `ov.Core().available_devices` at runtime, finds first `"GPU.N"` match, returns `"intel:GPU.0"`. Available devices on dev machine: `['CPU', 'GPU.0', 'GPU.1']`.
+- **OpenVINO warmup issue** — Ultralytics runs internal warmup on CPU, then recompiles for GPU.0 on first real call. Fix: explicit warmup inference in `load()` with correct `device` kwarg.
+- **`pydirectinput.PAUSE` bottleneck** — Default `PAUSE = 0.1` adds 100ms sleep to every input call. Fix: `pydirectinput.PAUSE = 0` in `input_controller.py` and `debug_pixel_loop.py`. Result: 46ms → 0.3ms per input.
+- **wincam library** — Direct3D11-based screen capture (<1ms async frame reads). Singleton constraint (1 DXCamera at a time). No CI/headless support (requires GPU + display). Falls back to `WindowCapture` in CI.
+- **wincam dependency conflict** — Pulls `opencv-contrib-python` which conflicts with `opencv-python`. Fixed by reinstalling.
+- **openvino 2025.4.1 requires `numpy<2.4.0`** — Both `environment.yml` AND `ci.yml` must use `numpy>=2.3.0,<2.4.0`.
+- **52 FPS end-to-end** — Capture 4.4ms (wincam) + YOLO 14.4ms (OpenVINO GPU.0) + Input 0.1ms (pydirectinput) = ~19ms/frame.
+- **Multi-GPU strategy** — Dedicate GPU.0 to YOLO inference, GPU.1 to RL policy/other compute.
+- **`step()` frame-rate throttle removed** — `time.sleep(1/30)` in `Breakout71Env.step()` was unnecessary bottleneck; removed entirely.
+
 ## Project Structure
 
 ```
 src/
   game_loader/    # DONE — YAML config, factory, loaders (82 tests)
   reporting/      # DONE — JSON reports, HTML dashboard (26 tests)
-  capture/        # DONE — BitBlt window capture, pydirectinput input (37 tests)
+  capture/        # DONE — BitBlt window capture, wincam fast capture, pydirectinput input (37 tests)
   perception/     # DONE — YoloDetector, breakout_capture (41 tests)
   oracles/        # DONE — 12 oracles with on_step detection (132 tests)
   env/            # DONE — Breakout71Env gymnasium wrapper (94 tests)
@@ -211,7 +225,7 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-20)
+## What's Done (sessions 1-21)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -233,8 +247,9 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 18. **Session 18** — Player behavior specification: abstracted technical spec into player-perspective behavioral contracts (80+ B-IDs), covering observable states, actions, cause-effect behaviors, and RL training implications (PR #37)
 19. **Session 19** — Pixel-based debug loop: 4-phase validation script (capture→YOLO→pydirectinput→modal handling), validated live — Phase 1 (static detection), Phase 2 (paddle tracking, max error 0.119), Phase 3 (100% ball detection), Phase 4 (gameplay loop, FPS=4 on CPU YOLO). Copilot review: 7 fixes (inverted modal logic, pixel clamping, retry resilience, double inference, docstrings) (PR #39)
 20. **Session 20** — XPU auto-detection: `resolve_device()` function (xpu>cuda>cpu priority), all scripts/configs default to `"auto"`, OpenVINO & DXGI Desktop Duplication research (PR #43)
+21. **Session 21** — OpenVINO inference acceleration + wincam fast capture: `.pt` → OpenVINO IR export script, auto device routing (`intel:GPU.0`), warmup fix, `WinCamCapture` via Direct3D11 (<1ms async reads), `pydirectinput.PAUSE=0` (46ms→0.3ms), removed `step()` throttle, 52 FPS end-to-end. 2 Copilot review rounds (10 comments addressed). 45 new tests (PR #45)
 
-Total: **510 tests** (486 unit + 24 integration), 7 subsystems + training pipeline complete.
+Total: **531 tests** (507 unit + 24 integration), 7 subsystems + training pipeline complete.
 
 ## What's Next
 
