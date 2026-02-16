@@ -232,6 +232,10 @@ class BrowserInstance:
     browser : str, optional
         Browser to use (``"chrome"``, ``"edge"``, or ``"firefox"``).
         If ``None``, the first available is used.
+    headless : bool
+        If ``True``, launch the browser in headless mode.  Uses
+        ``--headless=new`` for Chrome/Edge and ``--headless`` for
+        Firefox.  Adds ``--disable-gpu`` for stability.
     """
 
     def __init__(
@@ -240,6 +244,7 @@ class BrowserInstance:
         settle_seconds: float = 6.0,
         window_size: tuple[int, int] = (1280, 720),
         browser: str | None = None,
+        headless: bool = False,
     ) -> None:
         try:
             from selenium import webdriver
@@ -284,6 +289,9 @@ class BrowserInstance:
             opts.add_argument("--no-service-autorun")
             opts.add_argument("--password-store=basic")
             opts.add_argument(f"--window-size={w},{h}")
+            if headless:
+                opts.add_argument("--headless=new")
+                opts.add_argument("--disable-gpu")
             self._driver = webdriver.Chrome(options=opts)
 
         elif self.name == "edge":
@@ -292,6 +300,9 @@ class BrowserInstance:
             opts.add_argument("--no-default-browser-check")
             opts.add_argument("--disable-extensions")
             opts.add_argument(f"--window-size={w},{h}")
+            if headless:
+                opts.add_argument("--headless=new")
+                opts.add_argument("--disable-gpu")
             self._driver = webdriver.Edge(options=opts)
 
         elif self.name == "firefox":
@@ -312,6 +323,8 @@ class BrowserInstance:
             opts.set_preference("datareporting.policy.firstRunURL", "")
             opts.set_preference("browser.aboutwelcome.enabled", False)
             opts.set_preference("trailhead.firstrun.didSeeAboutWelcome", True)
+            if headless:
+                opts.add_argument("--headless")
             opts.add_argument(f"--width={w}")
             opts.add_argument(f"--height={h}")
             self._driver = webdriver.Firefox(options=opts)

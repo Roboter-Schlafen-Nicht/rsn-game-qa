@@ -557,11 +557,11 @@ class TestEnvBugFixes:
         env._initialized = True
         env._capture = mock.MagicMock()
         env._detector = mock.MagicMock()
-        env._game_canvas = mock.MagicMock()
+        env._client_origin = (100, 200)
 
         env.close()
         assert env._initialized is False
-        assert env._game_canvas is None
+        assert env._client_origin is None
 
     def test_step_count_property(self):
         """step_count property returns _step_count."""
@@ -593,7 +593,6 @@ class TestEnvBugFixes:
         from src.env.breakout71_env import Breakout71Env
 
         mock_driver = mock.MagicMock()
-        mock_canvas = mock.MagicMock()
         mock_driver.execute_script.return_value = {
             "state": "gameplay",
             "details": {},
@@ -601,14 +600,16 @@ class TestEnvBugFixes:
 
         env = Breakout71Env(driver=mock_driver)
         env._initialized = True
-        env._game_canvas = mock_canvas
-        env._canvas_dims = (0, 0, 1280, 1024)
+        env._client_origin = (100, 200)
 
         mock_capture = mock.MagicMock()
         mock_detector = mock.MagicMock()
 
         env._capture = mock_capture
         env._detector = mock_detector
+        mock_capture.width = 640
+        mock_capture.height = 480
+        mock_capture.hwnd = 12345
 
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         mock_capture.capture_frame.return_value = frame

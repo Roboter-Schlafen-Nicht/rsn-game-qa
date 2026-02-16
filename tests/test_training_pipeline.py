@@ -9,6 +9,7 @@ Covers:
 - Validation thresholds
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -616,3 +617,231 @@ class TestBuildLabelmap:
 
         result = _build_labelmap(tmp_path)
         assert result == {0: "paddle", 1: "ball", 2: "brick"}
+
+
+# ---------------------------------------------------------------------------
+# train_rl.py — parse_args, resolve_window_size, TrainingLogger
+# ---------------------------------------------------------------------------
+
+
+class TestTrainRlParseArgs:
+    """Tests for train_rl.py argument parsing."""
+
+    def _parse(self, argv=None):
+        from scripts.train_rl import parse_args
+
+        return parse_args(argv or [])
+
+    def test_defaults(self):
+        """Default args should have sensible values."""
+        args = self._parse([])
+        assert args.timesteps == 200_000
+        assert args.mute is True
+        assert args.headless is False
+        assert args.orientation == "portrait"
+        assert args.window_size is None
+        assert args.log_interval == 100
+        assert args.max_time is None
+
+    def test_mute_default_true(self):
+        """--mute should be the default (True)."""
+        args = self._parse([])
+        assert args.mute is True
+
+    def test_no_mute_flag(self):
+        """--no-mute should set mute=False."""
+        args = self._parse(["--no-mute"])
+        assert args.mute is False
+
+    def test_headless_flag(self):
+        """--headless should set headless=True."""
+        args = self._parse(["--headless"])
+        assert args.headless is True
+
+    def test_orientation_portrait(self):
+        """--orientation portrait should be accepted."""
+        args = self._parse(["--orientation", "portrait"])
+        assert args.orientation == "portrait"
+
+    def test_landscape_shorthand(self):
+        """--landscape should set orientation=landscape."""
+        args = self._parse(["--landscape"])
+        assert args.orientation == "landscape"
+
+    def test_window_size_override(self):
+        """--window-size should be stored as a string."""
+        args = self._parse(["--window-size", "800x600"])
+        assert args.window_size == "800x600"
+
+    def test_log_interval(self):
+        """--log-interval should be stored as int."""
+        args = self._parse(["--log-interval", "50"])
+        assert args.log_interval == 50
+
+    def test_max_time_flag(self):
+        """--max-time should be stored as int."""
+        args = self._parse(["--max-time", "180"])
+        assert args.max_time == 180
+
+    def test_max_time_default_none(self):
+        """--max-time should default to None."""
+        args = self._parse([])
+        assert args.max_time is None
+
+
+class TestResolveWindowSize:
+    """Tests for resolve_window_size in train_rl.py."""
+
+    def _resolve(self, argv=None, config=None):
+        from scripts.train_rl import parse_args, resolve_window_size
+
+        args = parse_args(argv or [])
+        if config is None:
+            config = mock.MagicMock()
+            config.window_width = 1280
+            config.window_height = 1024
+        return resolve_window_size(args, config)
+
+    def test_portrait_default(self):
+        """Default orientation=portrait should give 768x1024."""
+        w, h = self._resolve([])
+        assert (w, h) == (768, 1024)
+
+    def test_landscape_shorthand(self):
+        """--landscape shorthand should give 1280x1024."""
+        w, h = self._resolve(["--landscape"])
+        assert (w, h) == (1280, 1024)
+
+    def test_portrait_preset(self):
+        """--orientation portrait should give 768x1024."""
+        w, h = self._resolve(["--orientation", "portrait"])
+        assert (w, h) == (768, 1024)
+
+    def test_window_size_overrides_orientation(self):
+        """--window-size should override --orientation."""
+        w, h = self._resolve(["--orientation", "portrait", "--window-size", "800x600"])
+        assert (w, h) == (800, 600)
+
+    def test_window_size_parsing(self):
+        """--window-size WxH should parse correctly."""
+        w, h = self._resolve(["--window-size", "1920x1080"])
+        assert (w, h) == (1920, 1080)
+
+    def test_invalid_window_size_format(self):
+        """Invalid --window-size format should raise ValueError."""
+        from scripts.train_rl import parse_args, resolve_window_size
+
+        args = parse_args(["--window-size", "badformat"])
+        config = mock.MagicMock()
+        with pytest.raises(ValueError, match="Invalid --window-size"):
+            resolve_window_size(args, config)
+
+    def test_non_integer_window_size_raises(self):
+        """Non-integer --window-size values should raise ValueError."""
+        from scripts.train_rl import parse_args, resolve_window_size
+
+        args = parse_args(["--window-size", "abcxdef"])
+        config = mock.MagicMock()
+        with pytest.raises(ValueError, match="must be integers"):
+            resolve_window_size(args, config)
+
+    def test_negative_window_size_raises(self):
+        """Negative --window-size values should raise ValueError."""
+        from scripts.train_rl import resolve_window_size
+
+        # Bypass argparse (which rejects -100x200 as a flag) by
+        # constructing the Namespace directly.
+        args = argparse.Namespace(window_size="100x-200", orientation="portrait")
+        config = mock.MagicMock()
+        with pytest.raises(ValueError, match="must be positive"):
+            resolve_window_size(args, config)
+
+    def test_zero_window_size_raises(self):
+        """Zero --window-size values should raise ValueError."""
+        from scripts.train_rl import parse_args, resolve_window_size
+
+        args = parse_args(["--window-size", "0x1024"])
+        config = mock.MagicMock()
+        with pytest.raises(ValueError, match="must be positive"):
+            resolve_window_size(args, config)
+
+    def test_browser_choices_use_edge_not_msedge(self):
+        """--browser should accept 'edge' not 'msedge'."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args(["--browser", "edge"])
+        assert args.browser == "edge"
+
+
+class TestTrainingLogger:
+    """Tests for TrainingLogger JSONL writer."""
+
+    def test_creates_jsonl_file(self, tmp_path):
+        """TrainingLogger should create the JSONL file."""
+        from scripts.train_rl import TrainingLogger
+
+        path = tmp_path / "test.jsonl"
+        tlog = TrainingLogger(path)
+        assert path.exists()
+        tlog.close()
+
+    def test_writes_json_lines(self, tmp_path):
+        """log() should write valid JSON lines."""
+        from scripts.train_rl import TrainingLogger
+
+        path = tmp_path / "test.jsonl"
+        tlog = TrainingLogger(path)
+        tlog.log({"event": "test", "value": 42})
+        tlog.log({"event": "test2", "value": 99})
+        tlog.close()
+
+        lines = path.read_text().strip().split("\n")
+        assert len(lines) == 2
+        obj1 = json.loads(lines[0])
+        assert obj1["event"] == "test"
+        assert obj1["value"] == 42
+        assert "timestamp" in obj1
+        obj2 = json.loads(lines[1])
+        assert obj2["event"] == "test2"
+
+    def test_adds_timestamp_if_missing(self, tmp_path):
+        """log() should add timestamp when not in event dict."""
+        from scripts.train_rl import TrainingLogger
+
+        path = tmp_path / "test.jsonl"
+        tlog = TrainingLogger(path)
+        tlog.log({"event": "test"})
+        tlog.close()
+
+        line = json.loads(path.read_text().strip())
+        assert "timestamp" in line
+
+    def test_preserves_existing_timestamp(self, tmp_path):
+        """log() should not overwrite an existing timestamp."""
+        from scripts.train_rl import TrainingLogger
+
+        path = tmp_path / "test.jsonl"
+        tlog = TrainingLogger(path)
+        tlog.log({"event": "test", "timestamp": "2026-01-01T00:00:00"})
+        tlog.close()
+
+        line = json.loads(path.read_text().strip())
+        assert line["timestamp"] == "2026-01-01T00:00:00"
+
+    def test_close_is_idempotent(self, tmp_path):
+        """close() should not raise when called multiple times."""
+        from scripts.train_rl import TrainingLogger
+
+        path = tmp_path / "test.jsonl"
+        tlog = TrainingLogger(path)
+        tlog.close()
+        tlog.close()  # should not raise
+
+    def test_creates_parent_dirs(self, tmp_path):
+        """TrainingLogger should create parent directories."""
+        from scripts.train_rl import TrainingLogger
+
+        path = tmp_path / "subdir" / "nested" / "test.jsonl"
+        tlog = TrainingLogger(path)
+        assert path.exists()
+        tlog.close()
