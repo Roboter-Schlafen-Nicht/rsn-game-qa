@@ -158,8 +158,8 @@ src/
   capture/        # DONE — BitBlt window capture, pydirectinput input (37 tests)
   perception/     # DONE — YoloDetector, breakout_capture (41 tests)
   oracles/        # DONE — 12 oracles with on_step detection (132 tests)
-  env/            # DONE — Breakout71Env gymnasium wrapper (83 tests)
-  orchestrator/   # DONE — FrameCollector, SessionRunner (47 tests)
+  env/            # DONE — Breakout71Env gymnasium wrapper (94 tests)
+  orchestrator/   # DONE — FrameCollector, SessionRunner (55 tests)
 configs/
   games/                  # Per-game loader configs (breakout-71.yaml)
   training/               # Per-game YOLO training configs (breakout-71.yaml)
@@ -167,7 +167,7 @@ tests/
   conftest.py             # Integration test fixtures (Selenium browser parameterization)
   test_integration.py     # 12 integration tests × 2 browsers
   test_training_pipeline.py  # 49 training pipeline tests
-  test_orchestrator.py    # 47 orchestrator tests (FrameCollector, SessionRunner)
+  test_orchestrator.py    # 55 orchestrator tests (FrameCollector, SessionRunner)
 scripts/
   _smoke_utils.py         # BrowserInstance (Selenium), get_available_browsers(), utilities
   smoke_launch.py         # Game launch + proof screenshot
@@ -189,7 +189,7 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-15)
+## What's Done (sessions 1-16)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -206,8 +206,9 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 13. **Session 13** — Integration & E2E + RL scaffold: orchestrator (FrameCollector, SessionRunner), run_session.py, train_rl.py (SB3 PPO), 6 env bug fixes, legacy code cleanup, pytest-cov (96% coverage) (PR #28)
 14. **Session 14** — Selenium-based env control: replaced pydirectinput with Selenium ActionChains for paddle control and JS execution for modal handling, GameLoader integration in train_rl.py, Copilot review fixes (public JS constants, body fallback handling) (PR #30)
 15. **Session 15** — First RL training attempt: pipeline validated end-to-end, diagnosed Discrete(3) action space as wrong for continuous paddle control, decided to switch to Box(-1,1) continuous action with JS puckPosition injection (no PR — interrupted before implementation)
+16. **Session 16** — Continuous action space & coverage: Box(-1,1) with JS puckPosition injection, robust _query_game_zone, DashboardRenderer fix, coverage enforcement (fail_under=80), 21 new tests (PR #32)
 
-Total: **489 tests** (465 unit + 24 integration), 7 subsystems + training pipeline complete.
+Total: **510 tests** (486 unit + 24 integration), 7 subsystems + training pipeline complete.
 
 ## What's Next
 
