@@ -142,6 +142,7 @@
 - [x] Comprehensive game technical specification: all ~80 GameState fields, 63 perks, physics, scoring, combo, level progression, Selenium integration points (PR #35 — session 17)
 - [x] Post-merge admin (PR #36 — session 17)
 - [x] Player behavior specification: observable states, actions, cause-effect behavioral contracts (80+ B-IDs), RL training implications (PR #37 — session 18)
+- [x] Pixel-based debug loop script: 4-phase end-to-end pipeline validation (capture→YOLO→pydirectinput), modal handling via Selenium, all phases validated live (PR #39 — session 19)
 - [ ] Run first real RL training session on Breakout 71 (PPO, ~10k steps validation then 200k)
 - [ ] Evaluate trained policy vs random baseline
 - [ ] Iterate on reward shaping based on observed behavior

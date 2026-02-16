@@ -149,6 +149,16 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **`scripts/train_rl.py` unchanged** — SB3 PPO auto-detects continuous `Box` action space; no code changes needed.
 - **`scripts/capture_dataset.py` unchanged** — Random bot uses its own ActionChains; separate concern from env action space.
 
+### Pixel-Based Debug Loop (session 19)
+
+- **Architecture decision: pixel-based only** — As a QA platform product, we won't always have game source code. The universal interface is pixels in, mouse/keyboard out. YOLO for observations, pydirectinput for input, JS injection only for modal handling (DOM overlays).
+- **Game `mouseup` pauses** — `mouseup` on `#game` canvas while `running=true` pauses the game (game.ts:247-256). Must click only once to start, then use `moveTo` only.
+- **`ballStickToPuck=true` at start** — Ball sticks to paddle and follows it until first click. Key insight for safe phase 2 testing (pre-start phases).
+- **YOLO CPU performance** — ~130-190ms per frame inference on CPU (~5-7 FPS). GPU/XPU will easily exceed 30 FPS.
+- **Selenium modal handling throttling** — Calling `_ensure_gameplay` every frame drops FPS from ~7 to ~4 due to HTTP round-trip (~100ms). Throttling to every 2s restores FPS.
+- **Phase 2 paddle tracking accuracy** — Edge positions (0.20, 0.80) have ~0.11 error due to game zone clamping; center positions (0.35, 0.50, 0.65) have near-perfect accuracy (~0.006 error).
+- **Copilot review: 7 fixes** — Inverted `modal_recoveries` logic (phases 3 & 4), pixel clamping in `_norm_to_screen`, retry resilience in `_ensure_gameplay`, double YOLO inference in phase 2, docstring accuracy (FPS threshold, output path).
+
 ## Project Structure
 
 ```
@@ -182,6 +192,7 @@ scripts/
   run_session.py            # CLI for N-episode QA evaluation runs
   train_rl.py               # CLI for PPO training with SB3
   debug_game_state.py       # Diagnostic script for JS game state detection
+  debug_pixel_loop.py       # 4-phase pixel-based pipeline validation (capture→YOLO→pydirectinput)
 documentation/
   BigRocks/checklist.md   # Master checklist — the source of truth for what's done and what's next
   specs/                  # Canonical spec files
@@ -189,7 +200,7 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-18)
+## What's Done (sessions 1-19)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -209,6 +220,7 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 16. **Session 16** — Continuous action space & coverage: Box(-1,1) with JS puckPosition injection, robust _query_game_zone, DashboardRenderer fix, coverage enforcement (fail_under=80), 21 new tests (PR #32)
 17. **Session 17** — Deep source code analysis & game spec: read all 11 critical testbed source files, TypeDoc generation (PR #34), comprehensive game technical specification covering ~80 GameState fields, 63 perks, physics, scoring, combo, level progression, Selenium integration points (PR #35)
 18. **Session 18** — Player behavior specification: abstracted technical spec into player-perspective behavioral contracts (80+ B-IDs), covering observable states, actions, cause-effect behaviors, and RL training implications (PR #37)
+19. **Session 19** — Pixel-based debug loop: 4-phase validation script (capture→YOLO→pydirectinput→modal handling), validated live — Phase 1 (static detection), Phase 2 (paddle tracking, max error 0.119), Phase 3 (100% ball detection), Phase 4 (gameplay loop, FPS=4 on CPU YOLO). Copilot review: 7 fixes (inverted modal logic, pixel clamping, retry resilience, double inference, docstrings) (PR #39)
 
 Total: **510 tests** (486 unit + 24 integration), 7 subsystems + training pipeline complete.
 
