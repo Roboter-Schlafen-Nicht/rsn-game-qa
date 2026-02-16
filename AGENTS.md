@@ -312,7 +312,7 @@ src/
   capture/        # DONE — BitBlt window capture, wincam fast capture, pydirectinput input (37 tests)
   perception/     # DONE — YoloDetector, breakout_capture (41 tests)
   oracles/        # DONE — 12 oracles with on_step detection (132 tests)
-  env/            # DONE — Breakout71Env gymnasium wrapper (94 tests)
+  env/            # DONE — Breakout71Env gymnasium wrapper (137 tests)
   orchestrator/   # DONE — FrameCollector, SessionRunner (55 tests)
 configs/
   games/                  # Per-game loader configs (breakout-71.yaml)
@@ -381,8 +381,9 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 20. **Session 20** — XPU auto-detection: `resolve_device()` function (xpu>cuda>cpu priority), all scripts/configs default to `"auto"`, OpenVINO & DXGI Desktop Duplication research (PR #43)
 21. **Session 21** — OpenVINO inference acceleration + wincam fast capture: `.pt` → OpenVINO IR export script, auto device routing (`intel:GPU.0`), warmup fix, `WinCamCapture` via Direct3D11 (<1ms async reads), `pydirectinput.PAUSE=0` (46ms→0.3ms), removed `step()` throttle, 52 FPS end-to-end. 2 Copilot review rounds (10 comments addressed). 45 new tests (PR #45)
 22. **Session 22** — RL training features: mute control, headless mode, portrait/landscape orientation, rich structured logging (TrainingLogger), max-time clean shutdown, continuous action space validated end-to-end. Copilot review: 7 fixes. 7 new tests (PR #47)
+23. **Session 23** — Episode boundary bug fix + TDD convention: game-over modals no longer silently dismissed mid-episode (merged multiple games into one infinite episode), fixed terminal penalty for modal-occluded frames, TDD convention formalized in AGENTS.md. Copilot review: 4 fixes (PR #51)
 
-Total: **594 tests** (570 unit + 24 integration), 7 subsystems + training pipeline complete.
+Total: **600 tests** (576 unit + 24 integration), 7 subsystems + training pipeline complete.
 
 ## What's Next
 
