@@ -809,6 +809,12 @@ def main() -> int:
         default=0.4,
         help="YOLO confidence threshold (default: %(default)s)",
     )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        help="Torch device for YOLO inference: auto, xpu, cuda, cpu (default: auto)",
+    )
     args = parser.parse_args()
     setup_logging(args.verbose)
 
@@ -826,13 +832,14 @@ def main() -> int:
     logger.info("Output directory: %s", out_dir)
 
     # ── Load YOLO model ──────────────────────────────────────────────
-    from src.perception import YoloDetector
+    from src.perception import YoloDetector, resolve_device
 
-    logger.info("Loading YOLO model: %s", args.weights)
+    device = resolve_device(args.device)
+    logger.info("Loading YOLO model: %s (device=%s)", args.weights, device)
     with Timer("yolo_load") as t:
         detector = YoloDetector(
             weights_path=args.weights,
-            device="cpu",
+            device=device,
             confidence_threshold=args.confidence,
         )
         detector.load()

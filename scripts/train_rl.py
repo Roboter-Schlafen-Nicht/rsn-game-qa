@@ -103,7 +103,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
     parser.add_argument("--clip-range", type=float, default=0.2, help="PPO clip range")
     parser.add_argument("--ent-coef", type=float, default=0.01, help="Entropy coeff")
-    parser.add_argument("--device", type=str, default="cpu", help="Torch device")
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        help="Torch device: auto, xpu, cuda, cpu (default: auto)",
+    )
     parser.add_argument(
         "-v",
         "--verbose",
@@ -301,6 +306,9 @@ def main(argv: list[str] | None = None) -> int:
         callback = cb_factory.create()
 
         # Create PPO model
+        # Note: SB3 device is for the policy network, not YOLO.
+        # SB3 supports "auto", "cpu", "cuda" but not "xpu".
+        sb3_device = args.device if args.device != "xpu" else "cpu"
         model = PPO(
             "MlpPolicy",
             env,
@@ -311,7 +319,7 @@ def main(argv: list[str] | None = None) -> int:
             learning_rate=args.lr,
             clip_range=args.clip_range,
             ent_coef=args.ent_coef,
-            device=args.device,
+            device=sb3_device,
             verbose=1,
         )
 

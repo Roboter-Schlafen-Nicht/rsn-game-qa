@@ -110,7 +110,7 @@ class TestYoloDetectorInit:
         """YoloDetector can be constructed with default args."""
         detector = YoloDetector()
         assert detector.confidence_threshold == 0.5
-        assert detector.device == "xpu"
+        assert detector.device in ("xpu", "cuda", "cpu")  # resolved from "auto"
         assert detector.iou_threshold == 0.45
         assert detector.img_size == 640
 
