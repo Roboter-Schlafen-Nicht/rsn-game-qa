@@ -774,22 +774,42 @@ class Breakout71Env(gym.Env):
 
         try:
             result = self._driver.execute_script(QUERY_GAME_ZONE_JS)
-            if result is not None:
-                self._game_zone_left = float(result["left"])
-                self._game_zone_right = float(result["right"])
-                logger.info(
-                    "Game zone: left=%.1f, right=%.1f (offsetX=%.1f, "
-                    "gameZoneWidth=%.1f, puckWidth=%.1f)",
-                    self._game_zone_left,
-                    self._game_zone_right,
-                    result["offsetX"],
-                    result["gameZoneWidth"],
-                    result["puckWidth"],
+
+            if not result:
+                logger.debug(
+                    "Game zone query returned null/empty; "
+                    "keeping current values (transient during init)"
                 )
-            else:
-                logger.warning(
-                    "Game zone query returned null; using canvas-based fallback"
+                return
+
+            if not isinstance(result, dict):
+                logger.debug(
+                    "Game zone query returned non-dict %r; keeping current values",
+                    result,
                 )
+                return
+
+            left = result.get("left")
+            right = result.get("right")
+            if left is None or right is None:
+                logger.debug(
+                    "Game zone query missing 'left'/'right' in %r; "
+                    "keeping current values",
+                    result,
+                )
+                return
+
+            self._game_zone_left = float(left)
+            self._game_zone_right = float(right)
+            logger.debug(
+                "Game zone: left=%.1f, right=%.1f (offsetX=%s, "
+                "gameZoneWidth=%s, puckWidth=%s)",
+                self._game_zone_left,
+                self._game_zone_right,
+                result.get("offsetX"),
+                result.get("gameZoneWidth"),
+                result.get("puckWidth"),
+            )
         except Exception as exc:
             logger.debug("Game zone query failed: %s", exc)
 

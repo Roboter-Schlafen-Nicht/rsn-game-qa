@@ -114,7 +114,9 @@ the absolute paddle position via JavaScript ``puckPosition`` injection:
 | +1.0  | Right edge of the game zone                  |
 
 There is no FIRE action in the action space. Canvas clicks via Selenium
-ActionChains are only used during ``reset()`` to start a new game.
+ActionChains are used during ``reset()`` to start a new game and may also
+be triggered from ``step()`` when modal dialogs (e.g., game over,
+perk picker, menu) appear mid-episode.
 
 **Implementation:** The env queries the game's ``offsetX``,
 ``gameZoneWidth``, and ``puckWidth`` JavaScript globals to determine the

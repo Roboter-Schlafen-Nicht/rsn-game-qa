@@ -689,6 +689,89 @@ class TestApplyAction:
             env._apply_action(np.array([0.1, 0.2], dtype=np.float32))
 
 
+# -- Game Zone Query -----------------------------------------------------------
+
+
+class TestQueryGameZone:
+    """Tests for _query_game_zone with mocked driver."""
+
+    def test_successful_query_sets_zone(self):
+        """Valid JS result sets _game_zone_left and _game_zone_right."""
+        driver, canvas = _mock_driver()
+        driver.execute_script.return_value = {
+            "left": 350.0,
+            "right": 930.0,
+            "offsetX": 324.0,
+            "gameZoneWidth": 632.0,
+            "puckWidth": 52.0,
+        }
+        env = Breakout71Env(driver=driver)
+
+        env._query_game_zone()
+
+        assert env._game_zone_left == 350.0
+        assert env._game_zone_right == 930.0
+
+    def test_null_result_keeps_existing_values(self):
+        """Null JS result should not overwrite existing zone values."""
+        driver, canvas = _mock_driver()
+        driver.execute_script.return_value = None
+        env = Breakout71Env(driver=driver)
+        env._game_zone_left = 100.0
+        env._game_zone_right = 900.0
+
+        env._query_game_zone()
+
+        assert env._game_zone_left == 100.0
+        assert env._game_zone_right == 900.0
+
+    def test_non_dict_result_keeps_existing_values(self):
+        """Non-dict JS result should not overwrite existing zone values."""
+        driver, canvas = _mock_driver()
+        driver.execute_script.return_value = "unexpected"
+        env = Breakout71Env(driver=driver)
+        env._game_zone_left = 100.0
+        env._game_zone_right = 900.0
+
+        env._query_game_zone()
+
+        assert env._game_zone_left == 100.0
+        assert env._game_zone_right == 900.0
+
+    def test_missing_keys_keeps_existing_values(self):
+        """Dict missing 'left'/'right' should not overwrite zone values."""
+        driver, canvas = _mock_driver()
+        driver.execute_script.return_value = {"offsetX": 324.0}
+        env = Breakout71Env(driver=driver)
+        env._game_zone_left = 100.0
+        env._game_zone_right = 900.0
+
+        env._query_game_zone()
+
+        assert env._game_zone_left == 100.0
+        assert env._game_zone_right == 900.0
+
+    def test_exception_keeps_existing_values(self):
+        """JS exception should not overwrite zone values."""
+        driver, canvas = _mock_driver()
+        driver.execute_script.side_effect = RuntimeError("JS error")
+        env = Breakout71Env(driver=driver)
+        env._game_zone_left = 100.0
+        env._game_zone_right = 900.0
+
+        env._query_game_zone()
+
+        assert env._game_zone_left == 100.0
+        assert env._game_zone_right == 900.0
+
+    def test_no_driver_is_noop(self):
+        """Without a driver, _query_game_zone should be a no-op."""
+        env = Breakout71Env()
+        env._query_game_zone()
+        assert env._game_zone_left is None
+        assert env._game_zone_right is None
+
+
 # -- Game State Handling -------------------------------------------------------
 
 
