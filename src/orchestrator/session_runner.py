@@ -204,6 +204,7 @@ class SessionRunner:
         self._browser_instance = None
         self._env = None
         self._collector: FrameCollector | None = None
+        self._loader = None
 
     def run(self) -> SessionReport:
         """Run the full QA session: launch game, run episodes, generate report.
@@ -265,6 +266,7 @@ class SessionRunner:
         # Lazy imports to avoid CI failures
         from scripts._smoke_utils import BrowserInstance
         from src.env.breakout71_env import Breakout71Env
+        from src.game_loader import create_loader
         from src.game_loader.config import load_game_config
 
         # Load game config
@@ -273,8 +275,14 @@ class SessionRunner:
             configs_dir=self.game_config_path.parent,
         )
 
+        # Start dev server via GameLoader
+        self._loader = create_loader(config)
+        self._loader.setup()
+        self._loader.start()
+        logger.info("Dev server ready at %s", self._loader.url or config.url)
+
         # Launch browser
-        url = config.url
+        url = self._loader.url or config.url
         window_size = (config.window_width, config.window_height)
         self._browser_instance = BrowserInstance(
             url=url,
@@ -286,13 +294,14 @@ class SessionRunner:
         # Create oracles
         oracles = _create_oracles()
 
-        # Create environment
+        # Create environment with Selenium driver
         window_title = config.window_title or "Breakout"
         self._env = Breakout71Env(
             window_title=window_title,
             yolo_weights=self.yolo_weights,
             max_steps=self.max_steps_per_episode,
             oracles=oracles,
+            driver=self._browser_instance.driver,
         )
 
         # Create frame collector
@@ -373,7 +382,7 @@ class SessionRunner:
         )
 
     def _cleanup(self) -> None:
-        """Release environment and browser resources."""
+        """Release environment, browser, and loader resources."""
         if self._env is not None:
             try:
                 self._env.close()
@@ -387,3 +396,11 @@ class SessionRunner:
             except Exception:
                 logger.warning("Browser cleanup failed", exc_info=True)
             self._browser_instance = None
+
+        if self._loader is not None:
+            try:
+                self._loader.stop()
+                logger.info("Dev server stopped")
+            except Exception:
+                logger.warning("Loader cleanup failed", exc_info=True)
+            self._loader = None

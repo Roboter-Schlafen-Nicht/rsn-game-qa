@@ -2,7 +2,7 @@
 
 Wraps the Breakout 71 browser game running in a native Windows window.
 Uses ``WindowCapture`` for frame acquisition, ``YoloDetector`` for
-object detection, ``InputController`` for action injection, and a
+object detection, Selenium WebDriver for action injection, and a
 battery of ``Oracle`` instances for bug detection.
 
 Observation vector layout (8 elements)::
@@ -27,6 +27,7 @@ YOLO coin tracking or OCR/JS bridge is available.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -35,20 +36,141 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# JavaScript snippets for game state detection and control
+# ---------------------------------------------------------------------------
+
+_DETECT_STATE_JS = """
+return (function() {
+    var result = {state: "gameplay", details: {}};
+
+    var hasAlert = document.body.classList.contains('has-alert-open');
+    var popup = document.getElementById('popup');
+    var closeBtn = document.getElementById('close-modale');
+
+    if (!hasAlert) {
+        result.state = "gameplay";
+        return result;
+    }
+
+    if (!popup) {
+        result.state = "unknown";
+        return result;
+    }
+
+    var popupText = popup.innerText || "";
+    var buttons = popup.querySelectorAll('button');
+    var buttonTexts = [];
+    for (var i = 0; i < buttons.length; i++) {
+        buttonTexts.push(buttons[i].innerText.trim());
+    }
+    result.details.buttonTexts = buttonTexts;
+
+    var closeBtnVisible = false;
+    if (closeBtn) {
+        var style = window.getComputedStyle(closeBtn);
+        closeBtnVisible = (style.display !== 'none'
+                           && style.visibility !== 'hidden');
+    }
+
+    if (!closeBtnVisible && buttons.length >= 2) {
+        result.state = "perk_picker";
+        result.details.numPerks = buttons.length;
+        return result;
+    }
+
+    if (closeBtnVisible) {
+        var hasRestart = false;
+        for (var j = 0; j < buttonTexts.length; j++) {
+            var t = buttonTexts[j].toLowerCase();
+            if (t.indexOf("new") >= 0 || t.indexOf("restart") >= 0 ||
+                t.indexOf("run") >= 0 || t.indexOf("yes") >= 0 ||
+                t.indexOf("again") >= 0) {
+                hasRestart = true;
+                break;
+            }
+        }
+        if (hasRestart || popupText.toLowerCase().indexOf("game over") >= 0 ||
+            popupText.toLowerCase().indexOf("score") >= 0) {
+            result.state = "game_over";
+        } else {
+            result.state = "menu";
+        }
+        return result;
+    }
+
+    result.state = "unknown";
+    return result;
+})();
+"""
+
+_CLICK_PERK_JS = """
+return (function() {
+    var popup = document.getElementById('popup');
+    if (!popup) return {clicked: -1, text: ""};
+    var buttons = popup.querySelectorAll('button');
+    if (buttons.length === 0) return {clicked: -1, text: ""};
+    var idx = Math.floor(Math.random() * buttons.length);
+    var text = buttons[idx].innerText.trim();
+    buttons[idx].click();
+    return {clicked: idx, text: text};
+})();
+"""
+
+_DISMISS_GAME_OVER_JS = """
+return (function() {
+    var popup = document.getElementById('popup');
+    var closeBtn = document.getElementById('close-modale');
+    if (popup) {
+        var buttons = popup.querySelectorAll('button');
+        for (var i = 0; i < buttons.length; i++) {
+            var t = buttons[i].innerText.trim().toLowerCase();
+            if (t.indexOf("new") >= 0 || t.indexOf("restart") >= 0 ||
+                t.indexOf("run") >= 0 || t.indexOf("yes") >= 0 ||
+                t.indexOf("again") >= 0) {
+                buttons[i].click();
+                return {action: "restart_button",
+                        text: buttons[i].innerText.trim()};
+            }
+        }
+    }
+    if (closeBtn) {
+        closeBtn.click();
+        return {action: "close_button", text: ""};
+    }
+    return {action: "none", text: ""};
+})();
+"""
+
+_DISMISS_MENU_JS = """
+return (function() {
+    var closeBtn = document.getElementById('close-modale');
+    if (closeBtn) {
+        closeBtn.click();
+        return {action: "close_button"};
+    }
+    document.dispatchEvent(
+        new KeyboardEvent('keydown', {key: 'Escape', code: 'Escape'}));
+    return {action: "escape_key"};
+})();
+"""
+
 
 class Breakout71Env(gym.Env):
     """Gymnasium environment wrapping the Breakout 71 browser game.
 
     This environment captures frames from the game window, runs YOLO
     inference to extract game-object positions, converts them to a
-    structured observation vector, and injects actions via
-    ``InputController``.
+    structured observation vector, and injects actions via Selenium
+    WebDriver (mouse movement on the game canvas).
 
     Parameters
     ----------
     window_title : str
         Title of the browser window running Breakout 71.
-        Default is ``"Breakout - 71"``.
+        Default is ``"Breakout"``.
     yolo_weights : str or Path
         Path to the trained YOLOv8 weights file.
     max_steps : int
@@ -58,16 +180,18 @@ class Breakout71Env(gym.Env):
     oracles : list, optional
         List of ``Oracle`` instances to attach.  If None, no oracles
         are used.
+    driver : object, optional
+        Selenium WebDriver instance for game interaction.  If provided,
+        the env uses Selenium ActionChains for mouse-based paddle
+        control and JavaScript execution for game state detection.
+        Required for live training; can be omitted for unit testing.
 
     Attributes
     ----------
     observation_space : gym.spaces.Box
-        8-element continuous observation vector with layout
-        ``[paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm, coins_norm, score_norm]``.
-        Positions in [0, 1], velocities in [-1, 1].
+        8-element continuous observation vector.
     action_space : gym.spaces.Discrete
         Discrete(3): 0=NOOP, 1=LEFT, 2=RIGHT.
-        FIRE/Space is only used in ``reset()`` to start a new game.
     """
 
     metadata = {"render_modes": ["human", "rgb_array"]}
@@ -86,6 +210,7 @@ class Breakout71Env(gym.Env):
         max_steps: int = 10_000,
         render_mode: Optional[str] = None,
         oracles: Optional[list[Any]] = None,
+        driver: Optional[Any] = None,
     ) -> None:
         super().__init__()
 
@@ -104,7 +229,6 @@ class Breakout71Env(gym.Env):
         )
 
         # Actions: 0=NOOP, 1=LEFT, 2=RIGHT
-        # FIRE/Space is only used in reset() to start a new game
         self.action_space = spaces.Discrete(3)
 
         # Internal state
@@ -122,30 +246,56 @@ class Breakout71Env(gym.Env):
         # Sub-components (initialised lazily)
         self._capture = None  # WindowCapture instance
         self._detector = None  # YoloDetector instance
-        self._input = None  # InputController instance
+        self._driver = driver  # Selenium WebDriver
+        self._game_canvas = None  # Selenium WebElement for #game canvas
+        self._canvas_dims: tuple[int, int, int, int] | None = None
         self._initialized: bool = False
 
+        # Absolute paddle target x position (pixels from canvas left
+        # edge).  Initialised to centre when canvas dims are known
+        # (either via _lazy_init or manual setup in tests); updated by
+        # _apply_action().
+        self._paddle_target_x: float | None = None
+
     def _lazy_init(self) -> None:
-        """Lazily initialise capture, detector, and input sub-components.
+        """Lazily initialise capture, detector, and canvas sub-components.
 
         Called on the first ``reset()`` so that the env can be
         constructed without requiring a live game window (e.g. for
         testing or config validation).
 
         All imports are performed inside this method to avoid breaking
-        CI in Docker where pywin32 and pydirectinput are unavailable.
+        CI in Docker where pywin32 is unavailable.
         """
         if self._initialized:
             return
 
-        from src.capture.input_controller import InputController
         from src.capture.window_capture import WindowCapture
         from src.perception.yolo_detector import YoloDetector
 
         self._capture = WindowCapture(window_title=self.window_title)
         self._detector = YoloDetector(weights_path=self.yolo_weights)
         self._detector.load()
-        self._input = InputController()
+
+        # Locate the game canvas element for Selenium actions
+        if self._driver is not None:
+            try:
+                self._game_canvas = self._driver.find_element("css selector", "#game")
+                rect = self._game_canvas.rect  # {x, y, width, height}
+                self._canvas_dims = (
+                    int(rect["x"]),
+                    int(rect["y"]),
+                    int(rect["width"]),
+                    int(rect["height"]),
+                )
+                logger.info("Game canvas: %s", self._canvas_dims)
+            except Exception:
+                logger.warning(
+                    "Could not find #game canvas; falling back to <body> element"
+                )
+                self._game_canvas = self._driver.find_element("css selector", "body")
+                self._canvas_dims = (0, 0, 1280, 1024)
+
         self._initialized = True
 
     def reset(
@@ -155,6 +305,10 @@ class Breakout71Env(gym.Env):
         options: Optional[dict[str, Any]] = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         """Reset the environment for a new episode.
+
+        Handles game-over modals, perk picker screens, and initial
+        game start by using Selenium JavaScript execution and canvas
+        clicks.
 
         Parameters
         ----------
@@ -175,23 +329,33 @@ class Breakout71Env(gym.Env):
         if not self._initialized:
             self._lazy_init()
 
-        # Press Space to start a new game, with retry loop to verify
-        # the ball is actually present (game may take time to restart)
+        # Dismiss any modals and start the game
         detections: dict[str, Any] = {}
         for attempt in range(5):
-            self._input.apply_action(3)  # ACTION_FIRE
+            logger.info("reset() attempt %d/5", attempt + 1)
+            self._handle_game_state()
+            self._click_canvas()
             time.sleep(0.5)
 
             frame = self._capture_frame()
             detections = self._detect_objects(frame)
 
-            if detections.get("ball") is not None:
+            ball = detections.get("ball")
+            brick_count = len(detections.get("bricks", []))
+            logger.info(
+                "reset() attempt %d: ball=%s, bricks=%d",
+                attempt + 1,
+                ball is not None,
+                brick_count,
+            )
+
+            if ball is not None:
                 break
 
         if detections.get("ball") is None:
             raise RuntimeError(
-                "Breakout71Env.reset() failed to detect a ball after 5 attempts; "
-                "the game may not have initialized correctly."
+                "Breakout71Env.reset() failed to detect a ball after "
+                "5 attempts; the game may not have initialized correctly."
             )
 
         # Build observation with reset semantics
@@ -202,6 +366,10 @@ class Breakout71Env(gym.Env):
         self._prev_bricks_norm = 1.0
         self._no_ball_count = 0
         self._no_bricks_count = 0
+
+        # Reset paddle target to canvas centre
+        _left, _top, canvas_w, _h = self._canvas_dims or (0, 0, 1280, 1024)
+        self._paddle_target_x = canvas_w / 2.0
 
         # Build info dict
         info = self._build_info(detections)
@@ -238,6 +406,15 @@ class Breakout71Env(gym.Env):
         # Apply action and wait for next frame
         self._apply_action(action)
         time.sleep(1.0 / 30.0)
+
+        # Handle any modals that appeared mid-episode (perk picker,
+        # game over, menu).  Without this the modal overlay blocks the
+        # game canvas causing YOLO to miss the ball and the episode to
+        # terminate prematurely.
+        mid_state = self._handle_game_state()
+        if mid_state in ("game_over", "perk_picker", "menu"):
+            self._click_canvas()
+            time.sleep(0.3)
 
         # Capture and detect
         frame = self._capture_frame()
@@ -310,12 +487,17 @@ class Breakout71Env(gym.Env):
         return self._step_count
 
     def close(self) -> None:
-        """Release capture and input resources."""
+        """Release capture resources.
+
+        Does **not** close the Selenium driver — that is owned by the
+        caller (e.g. ``train_rl.py``).
+        """
         if self._capture is not None:
             self._capture.release()
         self._capture = None
         self._detector = None
-        self._input = None
+        self._game_canvas = None
+        self._canvas_dims = None
         self._initialized = False
 
     # -- Private helpers -------------------------------------------------------
@@ -478,14 +660,157 @@ class Breakout71Env(gym.Env):
         return reward
 
     def _apply_action(self, action: int) -> None:
-        """Send the chosen action to the game via InputController.
+        """Send the chosen action to the game via Selenium mouse control.
+
+        Uses ActionChains to move the mouse to the target horizontal
+        position on the game canvas.  The game's paddle follows the
+        mouse position directly.
+
+        The env tracks ``_paddle_target_x`` — an absolute pixel
+        coordinate within the canvas — and updates it incrementally
+        with each LEFT/RIGHT action.  ``move_to_element_with_offset``
+        positions the mouse at a specific offset from the element's
+        centre, so we convert ``_paddle_target_x`` to an offset from
+        the centre for each call.
 
         Parameters
         ----------
         action : int
             Discrete action to apply (0=NOOP, 1=LEFT, 2=RIGHT).
         """
-        self._input.apply_action(action)
+        if self._driver is None or self._game_canvas is None:
+            return
+
+        if action == 0:  # NOOP
+            return
+
+        from selenium.webdriver.common.action_chains import ActionChains
+
+        _left, _top, canvas_w, canvas_h = self._canvas_dims or (
+            0,
+            0,
+            1280,
+            1024,
+        )
+
+        # Initialise paddle target to centre on first use.
+        if self._paddle_target_x is None:
+            self._paddle_target_x = canvas_w / 2.0
+
+        # Shift target by ~10% of canvas width per step, clamping to
+        # canvas bounds.
+        step_size = canvas_w * 0.10
+
+        if action == 1:  # LEFT
+            self._paddle_target_x = max(0.0, self._paddle_target_x - step_size)
+        elif action == 2:  # RIGHT
+            self._paddle_target_x = min(
+                float(canvas_w), self._paddle_target_x + step_size
+            )
+        else:
+            return
+
+        # Convert absolute target to offset from element centre.
+        half_w = canvas_w / 2.0
+        x_offset = int(self._paddle_target_x - half_w)
+
+        # The y position should be near the paddle zone (bottom ~85%)
+        y_offset = int(canvas_h * 0.85) - (canvas_h // 2)
+
+        try:
+            ActionChains(self._driver).move_to_element_with_offset(
+                self._game_canvas, x_offset, y_offset
+            ).perform()
+        except Exception as exc:
+            logger.debug("Action failed: %s", exc)
+
+    def _handle_game_state(self) -> str:
+        """Detect and handle game UI state (modals, game over, perks).
+
+        Uses JavaScript execution via Selenium to query the game DOM
+        and dismiss modals as needed.
+
+        Returns
+        -------
+        str
+            The detected game state (``"gameplay"``, ``"game_over"``,
+            ``"perk_picker"``, ``"menu"``, or ``"unknown"``).
+        """
+        if self._driver is None:
+            return "gameplay"
+
+        try:
+            state_info = self._driver.execute_script(_DETECT_STATE_JS)
+        except Exception as exc:
+            logger.debug("State detection failed: %s", exc)
+            return "unknown"
+
+        if state_info is None:
+            logger.warning("State detection returned None")
+            return "unknown"
+
+        state = state_info.get("state", "unknown")
+        details = state_info.get("details", {})
+        logger.info(
+            "Game state: %s (buttons=%s)",
+            state,
+            details.get("buttonTexts", []),
+        )
+
+        if state == "perk_picker":
+            try:
+                result = self._driver.execute_script(_CLICK_PERK_JS)
+                logger.info(
+                    "Perk picker: clicked button %d (%s)",
+                    result.get("clicked", -1),
+                    result.get("text", "?"),
+                )
+            except Exception:
+                pass
+            time.sleep(0.5)
+
+        elif state == "game_over":
+            try:
+                result = self._driver.execute_script(_DISMISS_GAME_OVER_JS)
+                logger.info(
+                    "Game over dismissed: %s (%s)",
+                    result.get("action", "?"),
+                    result.get("text", ""),
+                )
+            except Exception as exc:
+                logger.warning("Game over dismiss failed: %s", exc)
+            time.sleep(1.0)
+
+        elif state == "menu":
+            try:
+                self._driver.execute_script(_DISMISS_MENU_JS)
+                logger.info("Menu dismissed")
+            except Exception:
+                pass
+            time.sleep(0.5)
+
+        elif state == "unknown":
+            logger.warning("Unknown game state: details=%s", details)
+
+        return state
+
+    def _click_canvas(self) -> None:
+        """Click the game canvas centre to start/unpause the game.
+
+        Uses Selenium ActionChains.  This is equivalent to the Space
+        key in terms of toggling play/pause.
+        """
+        if self._driver is None or self._game_canvas is None:
+            return
+
+        try:
+            from selenium.webdriver.common.action_chains import ActionChains
+
+            ActionChains(self._driver).move_to_element(
+                self._game_canvas
+            ).click().perform()
+        except Exception as exc:
+            logger.debug("Canvas click failed: %s", exc)
 
     def _run_oracles(
         self,

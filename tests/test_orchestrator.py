@@ -532,10 +532,11 @@ class TestEnvBugFixes:
         env._initialized = True
         env._capture = mock.MagicMock()
         env._detector = mock.MagicMock()
-        env._input = mock.MagicMock()
+        env._game_canvas = mock.MagicMock()
 
         env.close()
         assert env._initialized is False
+        assert env._game_canvas is None
 
     def test_step_count_property(self):
         """step_count property returns _step_count."""
@@ -563,17 +564,24 @@ class TestEnvBugFixes:
         assert env.window_title == "Breakout"
 
     def test_reset_retries_for_ball(self):
-        """reset() retries up to 5 times to detect ball after Space press."""
+        """reset() retries up to 5 times to detect ball."""
         from src.env.breakout71_env import Breakout71Env
 
-        env = Breakout71Env()
-        env._initialized = True
+        mock_driver = mock.MagicMock()
+        mock_canvas = mock.MagicMock()
+        mock_driver.execute_script.return_value = {
+            "state": "gameplay",
+            "details": {},
+        }
 
-        mock_input = mock.MagicMock()
+        env = Breakout71Env(driver=mock_driver)
+        env._initialized = True
+        env._game_canvas = mock_canvas
+        env._canvas_dims = (0, 0, 1280, 1024)
+
         mock_capture = mock.MagicMock()
         mock_detector = mock.MagicMock()
 
-        env._input = mock_input
         env._capture = mock_capture
         env._detector = mock_detector
 
@@ -601,8 +609,7 @@ class TestEnvBugFixes:
             mock_time.sleep = mock.MagicMock()
             obs, info = env.reset()
 
-        # Should have tried 3 times (2 no-ball + 1 with-ball)
-        assert mock_input.apply_action.call_count == 3
+        # Ball found on third attempt
         assert obs[1] == pytest.approx(0.5)  # ball_x from with_ball
 
     def test_bricks_total_retry_on_zero(self):
