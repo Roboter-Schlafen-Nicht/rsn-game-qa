@@ -961,3 +961,68 @@ class TestOpenvinoModelSelection:
 
             call_kwargs = mock_model.call_args.kwargs
             assert "device" not in call_kwargs
+
+    def test_openvino_warmup_runs_on_target_device(self, tmp_path):
+        """load() runs a warmup inference with device kwarg for OpenVINO."""
+        yd, YD = self._fresh_import()
+        weights, _ov_dir = self._setup_openvino_dir(tmp_path)
+
+        mock_model = mock.MagicMock()
+        mock_model.names = {}
+
+        with mock.patch.object(yd, "YOLO", return_value=mock_model):
+            detector = YD(weights_path=weights, device="cpu")
+            detector.load()
+
+            # model() should have been called once during load() for warmup
+            assert mock_model.call_count == 1
+            warmup_call = mock_model.call_args
+            # Warmup frame is a zero array of img_size x img_size x 3
+            warmup_frame = warmup_call.args[0]
+            assert warmup_frame.shape == (640, 640, 3)
+            assert warmup_frame.dtype == np.uint8
+            # Device kwarg must match the resolved OpenVINO device
+            assert warmup_call.kwargs["device"] == "intel:CPU"
+            assert warmup_call.kwargs["verbose"] is False
+
+    def test_openvino_warmup_uses_gpu_device(self, tmp_path):
+        """load() warmup passes intel:GPU.0 when device is xpu."""
+        yd, YD = self._fresh_import()
+        weights, _ov_dir = self._setup_openvino_dir(tmp_path)
+
+        mock_model = mock.MagicMock()
+        mock_model.names = {}
+
+        mock_core = mock.MagicMock()
+        mock_core.available_devices = ["CPU", "GPU.0", "GPU.1"]
+        mock_ov = mock.MagicMock()
+        mock_ov.Core.return_value = mock_core
+
+        with (
+            mock.patch.object(yd, "YOLO", return_value=mock_model),
+            mock.patch.dict(sys.modules, {"openvino": mock_ov}),
+        ):
+            detector = YD(weights_path=weights, device="xpu")
+            detector.load()
+
+            assert mock_model.call_count == 1
+            warmup_kwargs = mock_model.call_args.kwargs
+            assert warmup_kwargs["device"] == "intel:GPU.0"
+
+    def test_pytorch_load_no_warmup_call(self, tmp_path):
+        """load() does NOT call model() for warmup with PyTorch .pt."""
+        yd, YD = self._fresh_import()
+        weights = tmp_path / "best.pt"
+        weights.touch()
+        # No openvino dir
+
+        mock_model = mock.MagicMock()
+        mock_model.names = {}
+
+        with mock.patch.object(yd, "YOLO", return_value=mock_model):
+            detector = YD(weights_path=weights, device="cpu")
+            detector.load()
+
+            # model() should NOT be called during load for PyTorch
+            mock_model.call_count == 0
+            mock_model.assert_not_called()

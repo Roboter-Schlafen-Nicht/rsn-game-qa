@@ -234,8 +234,10 @@ class YoloDetector:
         When the resolved device is CPU or Intel (XPU), this method
         checks for an OpenVINO-exported model directory alongside the
         ``.pt`` weights (e.g. ``best_openvino_model/``).  If found,
-        it loads the OpenVINO model for faster inference.  Otherwise
-        falls back to the PyTorch ``.pt`` model.
+        it loads the OpenVINO model and runs a warmup inference on the
+        target device so that the OpenVINO graph is compiled once
+        upfront — avoiding a latency spike on the first real frame.
+        Otherwise falls back to the PyTorch ``.pt`` model.
 
         Falls back from XPU to CPU if the XPU backend is not available.
 
@@ -274,14 +276,25 @@ class YoloDetector:
         self.model = YOLO(str(effective_path))
 
         # OpenVINO models handle their own device routing — skip .to().
-        # The actual OpenVINO device is set on the first inference call
-        # via the ``device`` kwarg (see ``detect()``).
+        # Run a warmup inference on the target device so that the
+        # OpenVINO graph is compiled once (for the correct device)
+        # rather than compiled for CPU by ultralytics' default warmup
+        # and then recompiled for GPU.0 on the first real detect().
         if self._using_openvino:
             logger.info(
                 "YOLO model loaded via OpenVINO: %s (target: %s)",
                 effective_path,
                 self._ov_device,
             )
+            # Warmup: compile the OpenVINO graph on the target device
+            _warmup_frame = np.zeros((self.img_size, self.img_size, 3), dtype=np.uint8)
+            self.model(
+                _warmup_frame,
+                imgsz=self.img_size,
+                verbose=False,
+                device=self._ov_device,
+            )
+            logger.info("OpenVINO warmup complete on %s", self._ov_device)
         else:
             # Attempt to move model to the requested device, fall back to CPU
             try:
