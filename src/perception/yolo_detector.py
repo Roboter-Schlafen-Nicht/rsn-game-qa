@@ -1,9 +1,9 @@
 """YOLO-based object detector for game frame analysis.
 
 Loads a trained YOLOv8 model and extracts structured detections
-(bounding boxes, classes, confidences) from game frames.  Designed
-to run on Intel Arc A770 GPUs via the XPU backend, with fallback
-to CPU.
+(bounding boxes, classes, confidences) from game frames.  Uses
+``resolve_device()`` to auto-detect the best available device
+(XPU > CUDA > CPU) by default.
 """
 
 from __future__ import annotations
@@ -62,8 +62,9 @@ class YoloDetector:
     weights_path : str or Path
         Path to the trained ``.pt`` weights file.
     device : str
-        PyTorch device string.  Default is ``"xpu"`` (Intel Arc).
-        Falls back to ``"cpu"`` if XPU is unavailable.
+        ``"auto"`` to auto-detect (xpu > cuda > cpu), or an explicit
+        device string (``"xpu"``, ``"cuda"``, ``"cpu"``).  Default
+        ``"auto"``.
     confidence_threshold : float
         Minimum detection confidence.  Default is 0.5.
     iou_threshold : float
@@ -95,7 +96,7 @@ class YoloDetector:
     def __init__(
         self,
         weights_path: str | Path = "weights/best.pt",
-        device: str = "xpu",
+        device: str = "auto",
         confidence_threshold: float = 0.5,
         iou_threshold: float = 0.45,
         img_size: int = 640,
@@ -108,7 +109,7 @@ class YoloDetector:
             )
 
         self.weights_path = Path(weights_path)
-        self.device = device
+        self.device = resolve_device(device)
         self.confidence_threshold = confidence_threshold
         self.iou_threshold = iou_threshold
         self.img_size = img_size
