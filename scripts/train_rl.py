@@ -788,6 +788,7 @@ def main(argv: list[str] | None = None) -> int:
                 "data_collection": args.data_collection,
                 "log_interval": args.log_interval,
                 "max_time": args.max_time,
+                "max_episodes": args.max_episodes,
             },
             "browser": browser_instance.name,
             "python_version": platform.python_version(),
@@ -819,6 +820,10 @@ def main(argv: list[str] | None = None) -> int:
             )
 
             cnn_env = CnnObservationWrapper(env)
+            # NOTE: lambda captures cnn_env by reference — works with
+            # DummyVecEnv but would NOT work with SubprocVecEnv (not
+            # picklable).  Use a factory function if multi-process
+            # vectorised envs are needed in future.
             vec_env = DummyVecEnv([lambda: cnn_env])
             vec_env = VecFrameStack(vec_env, n_stack=args.frame_stack)
             vec_env = VecTransposeImage(vec_env)
@@ -880,9 +885,26 @@ def main(argv: list[str] | None = None) -> int:
                         logger.info("CnnPolicy device: cpu (XPU unavailable)")
                 except ImportError:
                     sb3_device = "cpu"
+                    logger.warning(
+                        "PyTorch could not be imported; "
+                        "falling back to CPU for CnnPolicy device."
+                    )
             else:
                 # MlpPolicy: CPU is faster than GPU for tiny networks
                 sb3_device = "cpu"
+        else:
+            # Explicit device specified — respect user choice but log
+            # how it interacts with the selected policy.
+            if args.policy == "cnn":
+                logger.info(
+                    "CnnPolicy device: %s (explicit --device override)",
+                    args.device,
+                )
+            else:
+                logger.info(
+                    "MlpPolicy device: %s (explicit --device override)",
+                    args.device,
+                )
 
         model = PPO(
             sb3_policy,
