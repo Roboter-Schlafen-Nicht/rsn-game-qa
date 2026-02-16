@@ -110,8 +110,17 @@
 - [x] RL training scaffold with SB3 PPO (PR #28 — train_rl.py)
 - [x] Env bug fixes and legacy code cleanup (PR #28)
 - [x] Update README and docs (PR #28)
-- [x] Copilot review and merge (PR #28)
-- [x] Post-merge admin (PR #29 — this update)
+  - [x] Copilot review and merge (PR #28)
+  - [x] Post-merge admin (PR #29 — this update)
+- [x] **Selenium-based env control** (PR #30)
+  - [x] Replaced pydirectinput keyboard control with Selenium ActionChains mouse movement
+  - [x] Absolute paddle position tracking (`_paddle_target_x`) — fixes oscillation bug
+  - [x] Mid-step modal handling in `step()` — fixes spurious episode termination from YOLO detection failures
+  - [x] GameLoader integration in `train_rl.py` and `SessionRunner` (starts/stops Parcel dev server)
+  - [x] JS snippets made public API (Copilot review), body fallback exception handling (Copilot review)
+  - [x] `debug_game_state.py` diagnostic script
+  - [x] 489 tests (465 unit + 24 integration), 95% coverage
+  - [x] Post-merge admin (PR #31 — this update)
 
 ### 3. RL training & iteration
 - [ ] Run first real RL training session on Breakout 71 (PPO, ~200k steps)

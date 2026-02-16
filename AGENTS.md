@@ -123,7 +123,7 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **Env refactored from pydirectinput to Selenium** — `Breakout71Env` now accepts a Selenium `WebDriver` via `driver=` parameter. Paddle control uses `ActionChains` mouse movement on the `#game` canvas. Modal handling (game over, perk picker, menu) uses `driver.execute_script()` with JS snippets from `capture_dataset.py`.
 - **`InputController` no longer used by env** — `_input` attribute replaced with `_driver`, `_game_canvas`, `_canvas_dims`. The `src/capture/input_controller.py` module still exists for other use cases but env doesn't import it.
 - **`train_rl.py` needs GameLoader** — Original version only launched `BrowserInstance` (Selenium) without starting the Parcel dev server. Fixed by adding `create_loader(config)` → `loader.setup()` → `loader.start()` before browser launch, and `loader.stop()` in teardown.
-- **JS game state detection snippets** — `_DETECT_STATE_JS` returns `"gameplay"`, `"game_over"`, `"perk_picker"`, or `"menu"` via DOM inspection (`document.body.classList.contains('has-alert-open')`, `#popup` content). `_CLICK_PERK_JS` picks first available perk, `_DISMISS_GAME_OVER_JS` clicks `#close-modale`, `_DISMISS_MENU_JS` clicks `#game`.
+- **JS game state detection snippets** — `DETECT_STATE_JS` returns `"gameplay"`, `"game_over"`, `"perk_picker"`, or `"menu"` via DOM inspection (`document.body.classList.contains('has-alert-open')`, `#popup` content). `CLICK_PERK_JS` picks first available perk, `DISMISS_GAME_OVER_JS` clicks `#close-modale`, `DISMISS_MENU_JS` clicks `#game`.
 - **`close()` does NOT close the WebDriver** — Caller owns the driver lifecycle (typically `BrowserInstance`). Env only nulls its `_game_canvas` and `_canvas_dims` references.
 - **Canvas element lookup** — `_lazy_init()` finds `#game` canvas via `driver.find_element(By.ID, "game")`, falls back to `body` if not found. Canvas dimensions read via `element.size`.
 - **`pydirectinput` still in conda env and `autodoc_mock_imports`** — Not removed since `src/capture/input_controller.py` still uses it. Just no longer imported by env.
@@ -185,7 +185,7 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 11. **Session 11** — Annotation pipeline improvements: ball-in-brick fix, paddle-zone fix, game-zone wall detection, Roboflow annotation upload, 100% ball detection (PR #23)
 12. **Session 12** — XPU YOLO training: 3 ultralytics monkey patches, dataset preparation, 100-epoch training (mAP50=0.679), open-source contribution to ultralytics #16930 (PR #26)
 13. **Session 13** — Integration & E2E + RL scaffold: orchestrator (FrameCollector, SessionRunner), run_session.py, train_rl.py (SB3 PPO), 6 env bug fixes, legacy code cleanup, pytest-cov (96% coverage) (PR #28)
-14. **Session 14** — Selenium-based env control: replaced pydirectinput with Selenium ActionChains for paddle control and JS execution for modal handling, GameLoader integration in train_rl.py (IN PROGRESS)
+14. **Session 14** — Selenium-based env control: replaced pydirectinput with Selenium ActionChains for paddle control and JS execution for modal handling, GameLoader integration in train_rl.py, Copilot review fixes (public JS constants, body fallback handling) (PR #30)
 
 Total: **489 tests** (465 unit + 24 integration), 7 subsystems + training pipeline complete.
 
