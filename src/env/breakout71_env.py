@@ -576,9 +576,6 @@ class Breakout71Env(gym.Env):
         # the ball has been missing for one or more frames.  During
         # normal gameplay (ball visible), we skip the Selenium HTTP
         # round-trip entirely, removing ~100-150ms of overhead per step.
-        # When the ball goes missing, we check for modals on the NEXT
-        # step — one frame of delay is acceptable since we already use
-        # a 5-frame threshold for ball-loss termination.
         mid_state = "gameplay"
         if self._no_ball_count > 0:
             mid_state = self._handle_game_state(dismiss_game_over=False)
@@ -618,6 +615,22 @@ class Breakout71Env(gym.Env):
 
         if not ball_detected:
             self._no_ball_count += 1
+            # On the 0→1 transition (ball just disappeared), check for
+            # game-over modal immediately.  Without this, a game-over
+            # modal that appears in the same frame the ball vanishes
+            # would be missed until the next step, and _compute_reward
+            # would run on modal-occluded detections — potentially
+            # producing spurious positive rewards from brick-delta.
+            if self._no_ball_count == 1:
+                late_state = self._handle_game_state(dismiss_game_over=False)
+                if late_state == "game_over":
+                    self._step_count += 1
+                    truncated = self._step_count >= self.max_steps
+                    reward = -5.0 - 0.01
+                    info = self._build_info(detections)
+                    findings = self._run_oracles(obs, reward, True, truncated, info)
+                    info["oracle_findings"] = findings
+                    return obs, reward, True, truncated, info
         else:
             self._no_ball_count = 0
 

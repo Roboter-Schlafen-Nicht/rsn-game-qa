@@ -108,6 +108,32 @@ def _setup_capture_mock(env, *, width=640, height=480, hwnd=12345):
     return env._capture
 
 
+def _make_env_ready(bricks_count=10):
+    """Create a Breakout71Env in a post-reset state with mocked sub-components.
+
+    Shared helper used by TestStep, TestModalCheckThrottling, and any
+    other test class that needs a fully-wired env for step() testing.
+    """
+    driver = _mock_driver()
+    env = Breakout71Env(driver=driver)
+    env._initialized = True
+    env._bricks_total = bricks_count
+    env._prev_bricks_norm = 1.0
+    env._prev_ball_pos = (0.5, 0.5)
+    env._step_count = 0
+    env._no_ball_count = 0
+    env._no_bricks_count = 0
+    env._last_frame = _frame()
+    env._client_origin = (100, 200)
+
+    _setup_capture_mock(env)
+    env._detector = mock.MagicMock()
+    env._detector.detect_to_game_state.return_value = _detections(
+        bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(bricks_count)]
+    )
+    return env
+
+
 # -- Construction & Spaces -----------------------------------------------------
 
 
@@ -1245,24 +1271,7 @@ class TestStep:
 
     def _make_env_ready(self, bricks_count=10):
         """Create env in a post-reset state with mocked sub-components."""
-        driver = _mock_driver()
-        env = Breakout71Env(driver=driver)
-        env._initialized = True
-        env._bricks_total = bricks_count
-        env._prev_bricks_norm = 1.0
-        env._prev_ball_pos = (0.5, 0.5)
-        env._step_count = 0
-        env._no_ball_count = 0
-        env._no_bricks_count = 0
-        env._last_frame = _frame()
-        env._client_origin = (100, 200)
-
-        _setup_capture_mock(env)
-        env._detector = mock.MagicMock()
-        env._detector.detect_to_game_state.return_value = _detections(
-            bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(bricks_count)]
-        )
-        return env
+        return _make_env_ready(bricks_count=bricks_count)
 
     @mock.patch("src.env.breakout71_env.time")
     def test_step_returns_5_tuple(self, mock_time):
@@ -1843,24 +1852,7 @@ class TestModalCheckThrottling:
 
     def _make_env_ready(self, bricks_count=10):
         """Create env in a post-reset state with mocked sub-components."""
-        driver = _mock_driver()
-        env = Breakout71Env(driver=driver)
-        env._initialized = True
-        env._bricks_total = bricks_count
-        env._prev_bricks_norm = 1.0
-        env._prev_ball_pos = (0.5, 0.5)
-        env._step_count = 0
-        env._no_ball_count = 0
-        env._no_bricks_count = 0
-        env._last_frame = _frame()
-        env._client_origin = (100, 200)
-
-        _setup_capture_mock(env)
-        env._detector = mock.MagicMock()
-        env._detector.detect_to_game_state.return_value = _detections(
-            bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(bricks_count)]
-        )
-        return env
+        return _make_env_ready(bricks_count=bricks_count)
 
     @mock.patch("src.env.breakout71_env.time")
     def test_step_skips_handle_game_state_when_ball_detected(self, mock_time):
@@ -1961,3 +1953,56 @@ class TestModalCheckThrottling:
             for _ in range(5):
                 env.step(_action())
             mock_hgs.assert_not_called()
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_detects_game_over_on_zero_to_one_ball_miss(self, mock_time):
+        """When ball was visible last step (_no_ball_count == 0) and
+        disappears this step (game-over modal appeared), the late
+        modal check on the 0->1 transition should detect game_over
+        and return terminated=True with fixed penalty reward.
+
+        This prevents spurious positive rewards from modal-occluded
+        brick detections — the exact scenario the fixed terminal
+        penalty path is designed to handle.
+        """
+        env = self._make_env_ready()
+        assert env._no_ball_count == 0  # ball was visible last step
+
+        # YOLO detects no ball (modal occludes it) but sees bricks
+        env._detector.detect_to_game_state.return_value = _detections(
+            ball=None, bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(5)]
+        )
+
+        # Late modal check (after detection, on 0->1 transition)
+        # returns game_over
+        with mock.patch.object(env, "_handle_game_state", return_value="game_over"):
+            _, reward, terminated, _, _ = env.step(_action())
+            assert terminated is True
+            assert reward == pytest.approx(-5.01)
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_no_spurious_reward_on_zero_to_one_game_over(self, mock_time):
+        """When game-over is detected on the 0->1 ball-miss transition,
+        _compute_reward should NOT be called — the fixed terminal
+        penalty is used directly to avoid modal-occluded brick-delta
+        producing a spurious positive reward.
+        """
+        env = self._make_env_ready()
+        assert env._no_ball_count == 0
+
+        # Set up YOLO to return fewer bricks (simulating modal occlusion
+        # that would normally produce a large positive brick-delta reward)
+        env._detector.detect_to_game_state.return_value = _detections(
+            ball=None, bricks=[(0.5, 0.1, 0.05, 0.03)]
+        )
+
+        with (
+            mock.patch.object(env, "_handle_game_state", return_value="game_over"),
+            mock.patch.object(env, "_compute_reward") as mock_cr,
+        ):
+            _, reward, terminated, _, _ = env.step(_action())
+            assert terminated is True
+            # _compute_reward should NOT have been called
+            mock_cr.assert_not_called()
+            # Fixed penalty used instead
+            assert reward == pytest.approx(-5.01)
