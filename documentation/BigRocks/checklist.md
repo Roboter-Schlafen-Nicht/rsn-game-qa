@@ -138,6 +138,9 @@
 - [x] Coverage improvements: session_runner.py 79% → 98%, 8 new tests (PR #32 — session 16)
 - [x] Robust `_query_game_zone` with defensive parsing + 7 new tests (PR #32 — session 16)
 - [x] Post-merge admin (PR #33 — session 16)
+- [x] TypeDoc generation for Breakout 71 testbed source (PR #34 — session 17)
+- [x] Comprehensive game technical specification: all ~80 GameState fields, 63 perks, physics, scoring, combo, level progression, Selenium integration points (PR #35 — session 17)
+- [x] Post-merge admin (PR #36 — session 17)
 - [ ] Run first real RL training session on Breakout 71 (PPO, ~10k steps validation then 200k)
 - [ ] Evaluate trained policy vs random baseline
 - [ ] Iterate on reward shaping based on observed behavior
