@@ -21,6 +21,125 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - Delete feature branches after merging
 - Update README test count after adding tests
 
+## Test-Driven Development (TDD)
+
+**Applies to:** `src/env/`, `src/orchestrator/`, and any module where the
+behavioral contract matters more than the implementation details.
+
+**Motivation:** Session 23 — the episode boundary bug (PR #51) was a
+fundamental behavioral flaw where `step()` silently dismissed game-over
+modals instead of terminating the episode. It survived 6+ sessions
+undetected because tests were written *after* the implementation, confirming
+what the code *does* rather than specifying what it *should do*. TDD would
+have forced the question "what should `step()` return when the game is
+over?" before a single line of implementation was written.
+
+### When TDD is required
+
+| Change type | TDD required? | Rationale |
+|---|---|---|
+| New public method or behavioral change to `step()`, `reset()`, `close()` | **Yes** | These define the env contract with SB3/Gymnasium |
+| New game state transition (e.g., perk picker handling, level clear) | **Yes** | State machine edges are exactly where bugs hide |
+| Reward function changes | **Yes** | Reward is the RL training signal — wrong rewards silently corrupt training |
+| New observation fields or changes to observation semantics | **Yes** | SB3 learns from observations — silent changes break training |
+| New orchestrator lifecycle behavior (SessionRunner, FrameCollector) | **Yes** | Multi-component coordination is fragile |
+| Internal refactoring (same behavior, new structure) | No — but existing tests must pass | Tests protect the contract during refactoring |
+| Scripts (`scripts/*.py`) | No | CLI scripts are integration-level; test after |
+| Pure utility functions (math helpers, config parsing) | No — test-after is fine | Low risk, obvious contracts |
+| Exploratory/research work (new libraries, game mechanics) | No | Spec not yet known |
+
+### How to do TDD in this project
+
+**Step 1: Write the behavioral spec as test names (no bodies yet)**
+
+Before touching the implementation, create test functions with descriptive
+names that specify what the system *should do*. Use `pytest.skip("TDD: not
+yet implemented")` as the body. This is the design phase — the test names
+are the spec.
+
+```python
+# tests/test_env.py — added BEFORE implementation
+
+class TestStepEpisodeBoundaries:
+    """Specify episode termination and continuation contracts."""
+
+    def test_step_returns_terminated_true_when_game_over_modal_detected(self, env):
+        pytest.skip("TDD: not yet implemented")
+
+    def test_step_does_not_dismiss_game_over_modal(self, env):
+        pytest.skip("TDD: not yet implemented")
+
+    def test_step_still_increments_step_count_on_game_over(self, env):
+        pytest.skip("TDD: not yet implemented")
+
+    def test_step_handles_perk_picker_without_terminating(self, env):
+        pytest.skip("TDD: not yet implemented")
+
+    def test_reset_dismisses_game_over_modal_before_new_episode(self, env):
+        pytest.skip("TDD: not yet implemented")
+```
+
+**Step 2: Fill in test bodies — make them fail**
+
+Write the assertions. Run them. They must fail (red). If they pass, either
+the test is wrong or the feature already exists — investigate before
+continuing.
+
+```python
+def test_step_returns_terminated_true_when_game_over_modal_detected(self, env):
+    env._driver.execute_script.return_value = {"state": "game_over", "details": {}}
+    _, _, terminated, _, _ = env.step(np.array([0.0]))
+    assert terminated is True
+```
+
+**Step 3: Implement the minimum code to pass**
+
+Write the simplest implementation that makes the failing test(s) pass. Do
+not add behavior that isn't covered by a test.
+
+**Step 4: Refactor with confidence**
+
+The tests are the safety net. Clean up the implementation without changing
+behavior — tests must stay green.
+
+### Review checklist
+
+When reviewing a PR that touches TDD-scoped modules, verify:
+
+- [ ] Test names were written before the implementation (check commit order
+      or commit message mentions "TDD: add specs for ...")
+- [ ] Tests cover the behavioral contract, not implementation details
+      (e.g., "returns terminated=True" not "calls execute_script twice")
+- [ ] No test was written to retroactively justify existing behavior without
+      the author first confirming the behavior is correct
+- [ ] Edge cases have tests (missing detections, modal during step, rapid
+      state transitions)
+
+### Naming convention
+
+TDD spec tests use the pattern:
+
+```
+test_{method}_{expected_behavior}_when_{condition}
+```
+
+Examples:
+- `test_step_returns_terminated_true_when_game_over_detected`
+- `test_reset_dismisses_game_over_modal_before_starting`
+- `test_compute_reward_gives_negative_five_when_game_over`
+- `test_build_observation_defaults_ball_to_center_when_not_detected`
+
+### What TDD does NOT replace
+
+- **Live validation with the real game** — TDD tests use mocks. They verify
+  behavioral contracts, not integration. Always validate live before merging
+  env changes (see "CRITICAL" note in Workflow).
+- **Copilot code review** — TDD catches contract violations; review catches
+  design issues, naming, performance, security.
+- **Integration tests** — `tests/test_integration.py` runs against real
+  browsers. TDD unit tests are faster and more focused but don't replace
+  end-to-end validation.
+
 ## Key Discoveries
 
 - **Sphinx `-W` builds**: dataclass entries in RST need `:no-index:` to avoid duplicate warnings
