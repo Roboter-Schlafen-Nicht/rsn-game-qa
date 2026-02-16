@@ -225,7 +225,20 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-21)
+### RL Training Features (session 22)
+
+- **`--no-mute` flag** — Game audio muted by default via `localStorage.setItem("breakout-settings-enable-sound", "false")` + browser refresh. `--no-mute` disables.
+- **`--headless` mode** — Captures frames via `driver.get_screenshot_as_png()` instead of `PrintWindow`/wincam. Actions via Selenium `ActionChains` instead of `pydirectinput`. ~2.3 FPS due to Selenium screenshot overhead (~400ms/call).
+- **`--orientation portrait|landscape` + `--window-size WxH`** — Portrait 768x1024 is the new default (game is inherently portrait). `resolve_window_size()` parses `WxH` strings with validation.
+- **Rich structured logging (`TrainingLogger`)** — JSONL event log + human-readable console log + `training_summary.json`. Events: `training_start`, `episode_end`, `frame_captured`, `training_stop`, `training_summary`. Includes `training_stop_reason` attribute.
+- **`--max-time SECONDS`** — Clean shutdown via SB3 `BaseCallback`. Sets `stop_reason` to `"max_time_reached"` or `"completed"`.
+- **`--landscape` shorthand** — Equivalent to `--orientation landscape`.
+- **Lazy import mocking pattern** — `pydirectinput` and `win32gui` imported lazily inside functions; `mock.patch.dict(sys.modules, {...})` intercepts the lazy import.
+- **Headless `_capture_frame_headless` defensive checks** — Driver None check, cv2 ImportError handling, PNG decode failure handling.
+- **BrowserInstance `_SUPPORTED_BROWSERS`** — Uses `"edge"` not `"msedge"`.
+- **Validation runs** — Non-headless: 990 steps, 3 episodes, 32 frames, ~5.5 FPS. Headless: 316 steps, 10 frames, ~2.3 FPS.
+
+## What's Done (sessions 1-22)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -248,8 +261,9 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 19. **Session 19** — Pixel-based debug loop: 4-phase validation script (capture→YOLO→pydirectinput→modal handling), validated live — Phase 1 (static detection), Phase 2 (paddle tracking, max error 0.119), Phase 3 (100% ball detection), Phase 4 (gameplay loop, FPS=4 on CPU YOLO). Copilot review: 7 fixes (inverted modal logic, pixel clamping, retry resilience, double inference, docstrings) (PR #39)
 20. **Session 20** — XPU auto-detection: `resolve_device()` function (xpu>cuda>cpu priority), all scripts/configs default to `"auto"`, OpenVINO & DXGI Desktop Duplication research (PR #43)
 21. **Session 21** — OpenVINO inference acceleration + wincam fast capture: `.pt` → OpenVINO IR export script, auto device routing (`intel:GPU.0`), warmup fix, `WinCamCapture` via Direct3D11 (<1ms async reads), `pydirectinput.PAUSE=0` (46ms→0.3ms), removed `step()` throttle, 52 FPS end-to-end. 2 Copilot review rounds (10 comments addressed). 45 new tests (PR #45)
+22. **Session 22** — RL training features: mute control, headless mode, portrait/landscape orientation, rich structured logging (TrainingLogger), max-time clean shutdown, continuous action space validated end-to-end. Copilot review: 7 fixes. 7 new tests (PR #47)
 
-Total: **531 tests** (507 unit + 24 integration), 7 subsystems + training pipeline complete.
+Total: **594 tests** (570 unit + 24 integration), 7 subsystems + training pipeline complete.
 
 ## What's Next
 
