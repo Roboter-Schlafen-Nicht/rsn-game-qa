@@ -21,10 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts._smoke_utils import BrowserInstance
 from src.env.breakout71_env import (
-    _CLICK_PERK_JS,
-    _DETECT_STATE_JS,
-    _DISMISS_GAME_OVER_JS,
-    _DISMISS_MENU_JS,
+    CLICK_PERK_JS,
+    DETECT_STATE_JS,
+    DISMISS_GAME_OVER_JS,
+    DISMISS_MENU_JS,
 )
 from src.game_loader import create_loader
 from src.game_loader.config import load_game_config
@@ -68,7 +68,7 @@ def main() -> None:
     try:
         while True:
             try:
-                result = driver.execute_script(_DETECT_STATE_JS)
+                result = driver.execute_script(DETECT_STATE_JS)
                 print(
                     f"[{time.strftime('%H:%M:%S')}] State: {json.dumps(result, indent=2)}"
                 )
@@ -77,15 +77,15 @@ def main() -> None:
                     state = result.get("state", "unknown")
                     if state == "game_over":
                         print("  -> Attempting dismiss...")
-                        dismiss_result = driver.execute_script(_DISMISS_GAME_OVER_JS)
+                        dismiss_result = driver.execute_script(DISMISS_GAME_OVER_JS)
                         print(f"  -> Dismiss result: {json.dumps(dismiss_result)}")
                     elif state == "perk_picker":
                         print("  -> Clicking perk...")
-                        perk_result = driver.execute_script(_CLICK_PERK_JS)
+                        perk_result = driver.execute_script(CLICK_PERK_JS)
                         print(f"  -> Perk result: {json.dumps(perk_result)}")
                     elif state == "menu":
                         print("  -> Dismissing menu...")
-                        menu_result = driver.execute_script(_DISMISS_MENU_JS)
+                        menu_result = driver.execute_script(DISMISS_MENU_JS)
                         print(f"  -> Menu result: {json.dumps(menu_result)}")
 
             except Exception as exc:

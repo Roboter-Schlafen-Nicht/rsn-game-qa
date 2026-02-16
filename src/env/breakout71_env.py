@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 # JavaScript snippets for game state detection and control
 # ---------------------------------------------------------------------------
 
-_DETECT_STATE_JS = """
+DETECT_STATE_JS = """
 return (function() {
     var result = {state: "gameplay", details: {}};
 
@@ -106,7 +106,7 @@ return (function() {
 })();
 """
 
-_CLICK_PERK_JS = """
+CLICK_PERK_JS = """
 return (function() {
     var popup = document.getElementById('popup');
     if (!popup) return {clicked: -1, text: ""};
@@ -119,7 +119,7 @@ return (function() {
 })();
 """
 
-_DISMISS_GAME_OVER_JS = """
+DISMISS_GAME_OVER_JS = """
 return (function() {
     var popup = document.getElementById('popup');
     var closeBtn = document.getElementById('close-modale');
@@ -144,7 +144,7 @@ return (function() {
 })();
 """
 
-_DISMISS_MENU_JS = """
+DISMISS_MENU_JS = """
 return (function() {
     var closeBtn = document.getElementById('close-modale');
     if (closeBtn) {
@@ -293,7 +293,17 @@ class Breakout71Env(gym.Env):
                 logger.warning(
                     "Could not find #game canvas; falling back to <body> element"
                 )
-                self._game_canvas = self._driver.find_element("css selector", "body")
+                try:
+                    self._game_canvas = self._driver.find_element(
+                        "css selector", "body"
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Could not find #game canvas or <body> element; "
+                        "disabling canvas-based actions: %s",
+                        exc,
+                    )
+                    self._game_canvas = None
                 self._canvas_dims = (0, 0, 1280, 1024)
 
         self._initialized = True
@@ -740,7 +750,7 @@ class Breakout71Env(gym.Env):
             return "gameplay"
 
         try:
-            state_info = self._driver.execute_script(_DETECT_STATE_JS)
+            state_info = self._driver.execute_script(DETECT_STATE_JS)
         except Exception as exc:
             logger.debug("State detection failed: %s", exc)
             return "unknown"
@@ -759,7 +769,7 @@ class Breakout71Env(gym.Env):
 
         if state == "perk_picker":
             try:
-                result = self._driver.execute_script(_CLICK_PERK_JS)
+                result = self._driver.execute_script(CLICK_PERK_JS)
                 logger.info(
                     "Perk picker: clicked button %d (%s)",
                     result.get("clicked", -1),
@@ -771,7 +781,7 @@ class Breakout71Env(gym.Env):
 
         elif state == "game_over":
             try:
-                result = self._driver.execute_script(_DISMISS_GAME_OVER_JS)
+                result = self._driver.execute_script(DISMISS_GAME_OVER_JS)
                 logger.info(
                     "Game over dismissed: %s (%s)",
                     result.get("action", "?"),
@@ -783,7 +793,7 @@ class Breakout71Env(gym.Env):
 
         elif state == "menu":
             try:
-                self._driver.execute_script(_DISMISS_MENU_JS)
+                self._driver.execute_script(DISMISS_MENU_JS)
                 logger.info("Menu dismissed")
             except Exception:
                 pass
