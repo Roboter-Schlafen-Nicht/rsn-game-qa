@@ -189,7 +189,7 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-17)
+## What's Done (sessions 1-18)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -208,6 +208,7 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 15. **Session 15** — First RL training attempt: pipeline validated end-to-end, diagnosed Discrete(3) action space as wrong for continuous paddle control, decided to switch to Box(-1,1) continuous action with JS puckPosition injection (no PR — interrupted before implementation)
 16. **Session 16** — Continuous action space & coverage: Box(-1,1) with JS puckPosition injection, robust _query_game_zone, DashboardRenderer fix, coverage enforcement (fail_under=80), 21 new tests (PR #32)
 17. **Session 17** — Deep source code analysis & game spec: read all 11 critical testbed source files, TypeDoc generation (PR #34), comprehensive game technical specification covering ~80 GameState fields, 63 perks, physics, scoring, combo, level progression, Selenium integration points (PR #35)
+18. **Session 18** — Player behavior specification: abstracted technical spec into player-perspective behavioral contracts (80+ B-IDs), covering observable states, actions, cause-effect behaviors, and RL training implications (PR #37)
 
 Total: **510 tests** (486 unit + 24 integration), 7 subsystems + training pipeline complete.
 
