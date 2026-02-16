@@ -572,13 +572,13 @@ class Breakout71Env(gym.Env):
         # fast as capture + inference allow.
         self._apply_action(action)
 
-        # Check for game-over modal — if detected, terminate the
-        # episode immediately WITHOUT dismissing the modal.  The modal
-        # will be dismissed in reset() when the next episode starts.
-        # This fixes the critical bug where game-over modals were
-        # silently dismissed mid-episode, merging multiple games into
-        # one never-ending episode.
-        mid_state = self._handle_game_state(dismiss_game_over=False)
+        # Modal check throttling: only call _handle_game_state() when
+        # the ball has been missing for one or more frames.  During
+        # normal gameplay (ball visible), we skip the Selenium HTTP
+        # round-trip entirely, removing ~100-150ms of overhead per step.
+        mid_state = "gameplay"
+        if self._no_ball_count > 0:
+            mid_state = self._handle_game_state(dismiss_game_over=False)
         if mid_state == "game_over":
             # Return last observation with terminated=True.
             # Use a fixed terminal penalty instead of computing reward
@@ -615,6 +615,22 @@ class Breakout71Env(gym.Env):
 
         if not ball_detected:
             self._no_ball_count += 1
+            # On the 0→1 transition (ball just disappeared), check for
+            # game-over modal immediately.  Without this, a game-over
+            # modal that appears in the same frame the ball vanishes
+            # would be missed until the next step, and _compute_reward
+            # would run on modal-occluded detections — potentially
+            # producing spurious positive rewards from brick-delta.
+            if self._no_ball_count == 1:
+                late_state = self._handle_game_state(dismiss_game_over=False)
+                if late_state == "game_over":
+                    self._step_count += 1
+                    truncated = self._step_count >= self.max_steps
+                    reward = -5.0 - 0.01
+                    info = self._build_info(detections)
+                    findings = self._run_oracles(obs, reward, True, truncated, info)
+                    info["oracle_findings"] = findings
+                    return obs, reward, True, truncated, info
         else:
             self._no_ball_count = 0
 
