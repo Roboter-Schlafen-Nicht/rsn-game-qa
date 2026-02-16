@@ -54,6 +54,7 @@ autodoc_mock_imports = [
     "win32con",
     "win32api",
     "pydirectinput",
+    "wincam",
     "ctypes",
     "PIL",
     "imagehash",

@@ -453,9 +453,9 @@ class Breakout71Env(gym.Env):
             Auxiliary information including ``"frame"``, ``"score"``,
             ``"oracle_findings"``.
         """
-        # Apply action and wait for next frame
+        # Apply action — no artificial throttle; the pipeline runs as
+        # fast as capture + inference allow.
         self._apply_action(action)
-        time.sleep(1.0 / 30.0)
 
         # Handle any modals that appeared mid-episode (perk picker,
         # game over, menu).  Without this the modal overlay blocks the

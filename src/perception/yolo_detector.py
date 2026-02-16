@@ -4,6 +4,16 @@ Loads a trained YOLOv8 model and extracts structured detections
 (bounding boxes, classes, confidences) from game frames.  Uses
 ``resolve_device()`` to auto-detect the best available device
 (XPU > CUDA > CPU) by default.
+
+When an OpenVINO-exported model directory exists alongside the
+``.pt`` weights (e.g. ``best_openvino_model/``), the detector
+automatically uses it for inference on CPU or Intel devices,
+providing a significant speed-up without requiring code changes.
+
+Ultralytics requires ``device="intel:<OV_DEVICE>"`` for OpenVINO
+device routing (e.g. ``"intel:GPU"`` for Intel Arc GPUs).  The
+detector translates ``resolve_device()`` outputs (``"xpu"`` →
+``"intel:GPU"``, ``"cpu"`` → ``"intel:CPU"``) automatically.
 """
 
 from __future__ import annotations
@@ -23,6 +33,76 @@ except ImportError:
     _ULTRALYTICS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+# Devices where OpenVINO IR models are preferred over PyTorch .pt
+_OPENVINO_PREFERRED_DEVICES = frozenset({"cpu"})
+
+# Mapping from resolve_device() output to OpenVINO device names.
+# ultralytics requires "intel:<OV_DEVICE>" for OpenVINO device routing
+# (see ultralytics/nn/autobackend.py lines 315-351).
+# NOTE: The "intel:" prefix is an ultralytics routing convention, NOT a
+# hardware vendor constraint.  OpenVINO's "CPU" plugin is vendor-agnostic
+# and works on AMD, Intel, and ARM CPUs alike.  "intel:" simply tells
+# ultralytics to use the OpenVINO backend instead of PyTorch.
+# NOTE: ultralytics validates device_name against core.available_devices
+# using exact string match.  OpenVINO lists GPUs as "GPU.0", "GPU.1",
+# not "GPU", so we must query for the actual device name at runtime.
+_OPENVINO_DEVICE_MAP: dict[str, str] = {
+    "xpu": "GPU",  # mapped to "intel:GPU.N" at runtime
+    "cpu": "CPU",  # works on any CPU vendor (AMD, Intel, ARM)
+    "auto": "AUTO",
+}
+
+
+def _resolve_openvino_device(requested_device: str) -> str:
+    """Map a ``resolve_device()`` output to an ``"intel:<OV_DEVICE>"`` string.
+
+    ultralytics validates the OpenVINO device name against
+    ``ov.Core().available_devices`` using an exact string match.
+    Since OpenVINO lists discrete GPUs as ``"GPU.0"``, ``"GPU.1"``
+    (not plain ``"GPU"``), we query the runtime for the first
+    matching device.
+
+    Parameters
+    ----------
+    requested_device : str
+        Device string from ``resolve_device()`` (e.g. ``"xpu"``,
+        ``"cpu"``, ``"auto"``).
+
+    Returns
+    -------
+    str
+        ``"intel:<OV_DEVICE>"`` string for ultralytics.
+    """
+    ov_hint = _OPENVINO_DEVICE_MAP.get(requested_device, "AUTO")
+
+    if ov_hint in ("CPU", "AUTO"):
+        return f"intel:{ov_hint}"
+
+    # For GPU, find the exact device name from OpenVINO runtime
+    try:
+        import openvino as ov
+
+        core = ov.Core()
+        available = core.available_devices
+        # Check exact match first (e.g. "GPU")
+        if ov_hint in available:
+            return f"intel:{ov_hint}"
+        # Find first device starting with the hint (e.g. "GPU.0")
+        for dev in available:
+            if dev.startswith(ov_hint):
+                logger.info(
+                    "OpenVINO device '%s' not in available_devices, using '%s' instead",
+                    ov_hint,
+                    dev,
+                )
+                return f"intel:{dev}"
+    except ImportError:
+        logger.debug("openvino not installed, falling back to intel:%s", ov_hint)
+    except Exception as exc:
+        logger.debug("OpenVINO device query failed: %s", exc)
+
+    return f"intel:{ov_hint}"
 
 
 def resolve_device(requested: str = "auto") -> str:
@@ -52,6 +132,34 @@ def resolve_device(requested: str = "auto") -> str:
     except ImportError:
         pass
     return "cpu"
+
+
+def _find_openvino_model(weights_path: Path) -> Path | None:
+    """Locate an OpenVINO model directory next to the ``.pt`` weights.
+
+    Ultralytics exports produce a directory named
+    ``<stem>_openvino_model/`` containing the IR files.
+
+    Parameters
+    ----------
+    weights_path : Path
+        Path to the ``.pt`` weights file.
+
+    Returns
+    -------
+    Path or None
+        Path to the OpenVINO model directory if it exists and contains
+        the expected ``.xml`` model file, otherwise ``None``.
+    """
+    ov_dir = weights_path.parent / f"{weights_path.stem}_openvino_model"
+    if not ov_dir.is_dir():
+        return None
+    # Verify the directory actually contains an OpenVINO model
+    xml_files = list(ov_dir.glob("*.xml"))
+    if not xml_files:
+        logger.debug("OpenVINO dir %s exists but contains no .xml files", ov_dir)
+        return None
+    return ov_dir
 
 
 class YoloDetector:
@@ -117,9 +225,19 @@ class YoloDetector:
         self.class_names = classes or self.BREAKOUT71_CLASSES
 
         self.model: Any = None  # Loaded lazily
+        self._using_openvino: bool = False
+        self._ov_device: str | None = None
 
     def load(self) -> None:
         """Load the YOLO model and move it to the target device.
+
+        When the resolved device is CPU or Intel (XPU), this method
+        checks for an OpenVINO-exported model directory alongside the
+        ``.pt`` weights (e.g. ``best_openvino_model/``).  If found,
+        it loads the OpenVINO model and runs a warmup inference on the
+        target device so that the OpenVINO graph is compiled once
+        upfront — avoiding a latency spike on the first real frame.
+        Otherwise falls back to the PyTorch ``.pt`` model.
 
         Falls back from XPU to CPU if the XPU backend is not available.
 
@@ -131,23 +249,70 @@ class YoloDetector:
         if not self.weights_path.exists():
             raise FileNotFoundError(f"YOLO weights file not found: {self.weights_path}")
 
-        self.model = YOLO(str(self.weights_path))
+        # Check if an OpenVINO model should be used
+        effective_path = self.weights_path
+        self._using_openvino = False
+        self._ov_device: str | None = None  # ultralytics device for OpenVINO
 
-        # Attempt to move model to the requested device, fall back to CPU
-        try:
-            self.model.to(self.device)
-            logger.info("YOLO model loaded on device: %s", self.device)
-        except Exception:
-            logger.warning("Device '%s' unavailable, falling back to CPU", self.device)
-            self.device = "cpu"
+        if self.device in _OPENVINO_PREFERRED_DEVICES or self.device == "xpu":
+            ov_dir = _find_openvino_model(self.weights_path)
+            if ov_dir is not None:
+                effective_path = ov_dir
+                self._using_openvino = True
+                # Map resolved device to ultralytics OpenVINO device string
+                self._ov_device = _resolve_openvino_device(self.device)
+                logger.info(
+                    "OpenVINO model found — using %s (device: %s → %s)",
+                    ov_dir,
+                    self.device,
+                    self._ov_device,
+                )
+            else:
+                logger.debug(
+                    "No OpenVINO model found alongside %s — using PyTorch",
+                    self.weights_path,
+                )
+
+        self.model = YOLO(str(effective_path))
+
+        # OpenVINO models handle their own device routing — skip .to().
+        # Run a warmup inference on the target device so that the
+        # OpenVINO graph is compiled once (for the correct device)
+        # rather than compiled for CPU by ultralytics' default warmup
+        # and then recompiled for GPU.0 on the first real detect().
+        if self._using_openvino:
+            logger.info(
+                "YOLO model loaded via OpenVINO: %s (target: %s)",
+                effective_path,
+                self._ov_device,
+            )
+            # Warmup: compile the OpenVINO graph on the target device
+            _warmup_frame = np.zeros((self.img_size, self.img_size, 3), dtype=np.uint8)
+            self.model(
+                _warmup_frame,
+                imgsz=self.img_size,
+                verbose=False,
+                device=self._ov_device,
+            )
+            logger.info("OpenVINO warmup complete on %s", self._ov_device)
+        else:
+            # Attempt to move model to the requested device, fall back to CPU
             try:
-                self.model.to("cpu")
-                logger.info("YOLO model loaded on device: cpu (fallback)")
-            except Exception as cpu_exc:
-                self.model = None
-                raise RuntimeError(
-                    "Failed to move YOLO model to any device (requested and CPU)."
-                ) from cpu_exc
+                self.model.to(self.device)
+                logger.info("YOLO model loaded on device: %s", self.device)
+            except Exception:
+                logger.warning(
+                    "Device '%s' unavailable, falling back to CPU", self.device
+                )
+                self.device = "cpu"
+                try:
+                    self.model.to("cpu")
+                    logger.info("YOLO model loaded on device: cpu (fallback)")
+                except Exception as cpu_exc:
+                    self.model = None
+                    raise RuntimeError(
+                        "Failed to move YOLO model to any device (requested and CPU)."
+                    ) from cpu_exc
 
         # Read class names from the model if the user didn't override
         if self._user_classes is None and hasattr(self.model, "names"):
@@ -191,6 +356,7 @@ class YoloDetector:
             conf=self.confidence_threshold,
             iou=self.iou_threshold,
             verbose=False,
+            **({"device": self._ov_device} if self._using_openvino else {}),
         )
 
         detections: list[dict[str, Any]] = []

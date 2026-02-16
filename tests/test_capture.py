@@ -1,4 +1,4 @@
-"""Tests for the capture module (WindowCapture + InputController).
+"""Tests for the capture module (WindowCapture + InputController + WinCamCapture).
 
 Tests cover:
 
@@ -13,6 +13,10 @@ Tests cover:
 - Invalid action rejection
 - Normalised-to-screen coordinate conversion
 - Mouse movement, click, key press, hold/release (mocked pydirectinput)
+- WinCamCapture construction and wincam availability guard
+- WinCamCapture frame capture via mocked DXCamera
+- WinCamCapture camera lifecycle (create, resize, stop)
+- WinCamCapture window visibility and release
 """
 
 from __future__ import annotations
@@ -515,3 +519,357 @@ class TestMouseAndKeyboard:
         ic.release_key("left")
         mocks["pydirectinput"].keyUp.assert_called_once_with("left")
         mocks["pydirectinput"].keyDown.assert_not_called()
+
+
+# ── WinCamCapture ───────────────────────────────────────────────────
+
+
+def _make_mock_wincam():
+    """Create mock wincam and win32gui modules for WinCamCapture tests.
+
+    Returns a dict suitable for patching ``sys.modules``, plus the
+    mock objects for assertions.
+    """
+    win32gui = mock.MagicMock(name="win32gui")
+    win32gui.FindWindow.return_value = 12345
+    win32gui.GetClientRect.return_value = (0, 0, 1264, 1016)
+    win32gui.ClientToScreen.return_value = (8, 130)
+    win32gui.IsWindowVisible.return_value = True
+
+    # Build mock wincam package.
+    mock_dxcamera_cls = mock.MagicMock(name="DXCamera")
+    mock_desktop_cls = mock.MagicMock(name="DesktopWindow")
+
+    wincam_mod = types.ModuleType("wincam")
+    wincam_mod.DXCamera = mock_dxcamera_cls  # type: ignore[attr-defined]
+
+    wincam_desktop = types.ModuleType("wincam.desktop")
+    wincam_desktop.DesktopWindow = mock_desktop_cls  # type: ignore[attr-defined]
+
+    modules = {
+        "win32gui": win32gui,
+        "win32ui": mock.MagicMock(name="win32ui"),
+        "win32con": mock.MagicMock(name="win32con"),
+        "wincam": wincam_mod,
+        "wincam.desktop": wincam_desktop,
+    }
+    return modules, win32gui, mock_dxcamera_cls, mock_desktop_cls
+
+
+def _import_wincam_capture(modules_patch: dict):
+    """Import WinCamCapture with mocked wincam/win32gui modules."""
+    sys.modules.pop("src.capture.wincam_capture", None)
+    with mock.patch.dict(sys.modules, modules_patch):
+        from src.capture.wincam_capture import WinCamCapture
+
+        return WinCamCapture
+
+
+class TestWinCamCaptureInit:
+    """Construction and availability guard tests for WinCamCapture."""
+
+    def test_raises_without_wincam(self):
+        """WinCamCapture raises RuntimeError when wincam is missing."""
+        sys.modules.pop("src.capture.wincam_capture", None)
+        with mock.patch.dict(
+            sys.modules,
+            {"wincam": None, "wincam.desktop": None},
+        ):
+            import importlib
+            import src.capture.wincam_capture as wc_mod
+
+            importlib.reload(wc_mod)
+            assert wc_mod._WINCAM_AVAILABLE is False
+            with pytest.raises(RuntimeError, match="wincam is required"):
+                wc_mod.WinCamCapture(window_title="Test")
+
+    def test_raises_without_pywin32(self):
+        """WinCamCapture raises RuntimeError when pywin32 is missing."""
+        sys.modules.pop("src.capture.wincam_capture", None)
+        # wincam available but win32gui not.
+        mock_wincam = types.ModuleType("wincam")
+        mock_wincam.DXCamera = mock.MagicMock()  # type: ignore[attr-defined]
+        mock_wincam_desktop = types.ModuleType("wincam.desktop")
+        mock_wincam_desktop.DesktopWindow = mock.MagicMock()  # type: ignore[attr-defined]
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "wincam": mock_wincam,
+                "wincam.desktop": mock_wincam_desktop,
+                "win32gui": None,
+            },
+        ):
+            import importlib
+            import src.capture.wincam_capture as wc_mod
+
+            importlib.reload(wc_mod)
+            assert wc_mod._WINCAM_AVAILABLE is True
+            assert wc_mod._PYWIN32_AVAILABLE is False
+            with pytest.raises(RuntimeError, match="pywin32 is required"):
+                wc_mod.WinCamCapture(window_title="Test")
+
+    def test_init_with_hwnd(self):
+        """WinCamCapture accepts a direct HWND, skipping window search."""
+        modules, win32gui, _, _ = _make_mock_wincam()
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=99999)
+        assert wc.hwnd == 99999
+        assert wc.window_title == ""
+
+    def test_init_with_title(self):
+        """WinCamCapture resolves HWND from window title."""
+        modules, win32gui, _, _ = _make_mock_wincam()
+        win32gui.FindWindow.return_value = 42
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(window_title="My Game")
+        assert wc.hwnd == 42
+
+    def test_init_empty(self):
+        """WinCamCapture with no title or HWND leaves hwnd as 0."""
+        modules, _, _, _ = _make_mock_wincam()
+        WCC = _import_wincam_capture(modules)
+        wc = WCC()
+        assert wc.hwnd == 0
+
+    def test_init_dimensions(self):
+        """WinCamCapture reads width/height from GetClientRect."""
+        modules, win32gui, _, _ = _make_mock_wincam()
+        win32gui.GetClientRect.return_value = (0, 0, 1024, 768)
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=1)
+        assert wc.width == 1024
+        assert wc.height == 768
+
+
+class TestWinCamCaptureWindowDiscovery:
+    """Tests for WinCamCapture._find_window."""
+
+    def test_find_window_exact_match(self):
+        """_find_window uses FindWindow for exact title match."""
+        modules, win32gui, _, _ = _make_mock_wincam()
+        win32gui.FindWindow.return_value = 111
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(window_title="Exact Title")
+        assert wc.hwnd == 111
+        win32gui.FindWindow.assert_called_with(None, "Exact Title")
+
+    def test_find_window_substring_fallback(self):
+        """_find_window falls back to EnumWindows substring match."""
+        modules, win32gui, _, _ = _make_mock_wincam()
+        win32gui.FindWindow.return_value = 0
+
+        def fake_enum(callback, _extra):
+            callback(222, None)
+
+        win32gui.EnumWindows.side_effect = fake_enum
+        win32gui.GetWindowText.return_value = "My Cool Game - v1.0"
+
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(window_title="Cool Game")
+        assert wc.hwnd == 222
+
+    def test_find_window_not_found_raises(self):
+        """_find_window raises RuntimeError when no window matches."""
+        modules, win32gui, _, _ = _make_mock_wincam()
+        win32gui.FindWindow.return_value = 0
+        win32gui.EnumWindows.side_effect = lambda cb, _: None
+
+        WCC = _import_wincam_capture(modules)
+        with pytest.raises(RuntimeError, match="not found"):
+            WCC(window_title="Nonexistent Window")
+
+
+class TestWinCamCaptureFrame:
+    """Tests for WinCamCapture.capture_frame."""
+
+    def test_capture_returns_bgr_array(self):
+        """capture_frame returns BGR (H, W, 3) uint8 array from DXCamera."""
+        modules, win32gui, mock_dxcamera_cls, _ = _make_mock_wincam()
+        win32gui.GetClientRect.return_value = (0, 0, 640, 480)
+        win32gui.ClientToScreen.return_value = (100, 200)
+
+        # Mock the DXCamera instance returned by DXCamera(x, y, w, h, fps=...).
+        mock_camera = mock.MagicMock(name="camera_instance")
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        fake_frame[:, :, 0] = 10  # B
+        fake_frame[:, :, 1] = 20  # G
+        fake_frame[:, :, 2] = 30  # R
+        mock_camera.get_bgr_frame.return_value = (fake_frame, 0.0)
+        mock_dxcamera_cls.return_value = mock_camera
+
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=1)
+        frame = wc.capture_frame()
+
+        assert isinstance(frame, np.ndarray)
+        assert frame.shape == (480, 640, 3)
+        assert frame.dtype == np.uint8
+        np.testing.assert_array_equal(frame[0, 0], [10, 20, 30])
+
+        # DXCamera was constructed with screen coords of client area.
+        mock_dxcamera_cls.assert_called_once_with(100, 200, 640, 480, fps=60)
+        mock_camera.__enter__.assert_called_once()
+
+    def test_capture_no_hwnd_raises(self):
+        """capture_frame raises RuntimeError if no HWND is set."""
+        modules, _, _, _ = _make_mock_wincam()
+        WCC = _import_wincam_capture(modules)
+        wc = WCC()
+        with pytest.raises(RuntimeError, match="No window handle"):
+            wc.capture_frame()
+
+    def test_capture_zero_size_raises(self):
+        """capture_frame raises RuntimeError for zero-size client area."""
+        modules, win32gui, _, _ = _make_mock_wincam()
+        win32gui.GetClientRect.return_value = (0, 0, 0, 0)
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=1)
+        with pytest.raises(RuntimeError, match="zero size"):
+            wc.capture_frame()
+
+    def test_camera_reused_on_same_dimensions(self):
+        """DXCamera is reused when window hasn't moved or resized."""
+        modules, win32gui, mock_dxcamera_cls, _ = _make_mock_wincam()
+        win32gui.GetClientRect.return_value = (0, 0, 640, 480)
+        win32gui.ClientToScreen.return_value = (100, 200)
+
+        mock_camera = mock.MagicMock(name="camera_instance")
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        mock_camera.get_bgr_frame.return_value = (fake_frame, 0.0)
+        mock_dxcamera_cls.return_value = mock_camera
+
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=1)
+
+        wc.capture_frame()
+        wc.capture_frame()
+
+        # DXCamera should only be created once.
+        assert mock_dxcamera_cls.call_count == 1
+
+    def test_camera_recreated_on_resize(self):
+        """DXCamera is recreated when window dimensions change."""
+        modules, win32gui, mock_dxcamera_cls, _ = _make_mock_wincam()
+
+        # First capture: 640x480 at (100, 200).
+        win32gui.GetClientRect.return_value = (0, 0, 640, 480)
+        win32gui.ClientToScreen.return_value = (100, 200)
+
+        camera1 = mock.MagicMock(name="camera1")
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        camera1.get_bgr_frame.return_value = (fake_frame, 0.0)
+
+        camera2 = mock.MagicMock(name="camera2")
+        fake_frame2 = np.zeros((600, 800, 3), dtype=np.uint8)
+        camera2.get_bgr_frame.return_value = (fake_frame2, 0.0)
+
+        mock_dxcamera_cls.side_effect = [camera1, camera2]
+
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=1)
+        wc.capture_frame()
+
+        # Simulate resize.
+        win32gui.GetClientRect.return_value = (0, 0, 800, 600)
+        wc.capture_frame()
+
+        assert mock_dxcamera_cls.call_count == 2
+        camera1.__exit__.assert_called_once()
+
+
+class TestWinCamCaptureVisible:
+    """Tests for WinCamCapture.is_window_visible."""
+
+    def test_visible_returns_true(self):
+        """is_window_visible returns True for a visible window."""
+        modules, win32gui, _, _ = _make_mock_wincam()
+        win32gui.IsWindowVisible.return_value = True
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=1)
+        assert wc.is_window_visible() is True
+
+    def test_not_visible_returns_false(self):
+        """is_window_visible returns False for a hidden window."""
+        modules, win32gui, _, _ = _make_mock_wincam()
+        win32gui.IsWindowVisible.return_value = False
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=1)
+        assert wc.is_window_visible() is False
+
+    def test_no_hwnd_returns_false(self):
+        """is_window_visible returns False when no HWND is set."""
+        modules, _, _, _ = _make_mock_wincam()
+        WCC = _import_wincam_capture(modules)
+        wc = WCC()
+        assert wc.is_window_visible() is False
+
+    def test_exception_returns_false(self):
+        """is_window_visible returns False on win32gui exception."""
+        modules, win32gui, _, _ = _make_mock_wincam()
+        win32gui.IsWindowVisible.side_effect = Exception("dead")
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=1)
+        assert wc.is_window_visible() is False
+
+
+class TestWinCamCaptureRelease:
+    """Tests for WinCamCapture.release lifecycle."""
+
+    def test_release_resets_state(self):
+        """release() zeroes out HWND and dimensions."""
+        modules, _, _, _ = _make_mock_wincam()
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=1)
+        assert wc.hwnd != 0
+
+        wc.release()
+        assert wc.hwnd == 0
+        assert wc.width == 0
+        assert wc.height == 0
+
+    def test_release_stops_camera(self):
+        """release() calls __exit__ on the active DXCamera."""
+        modules, win32gui, mock_dxcamera_cls, _ = _make_mock_wincam()
+        win32gui.GetClientRect.return_value = (0, 0, 640, 480)
+        win32gui.ClientToScreen.return_value = (100, 200)
+
+        mock_camera = mock.MagicMock(name="camera_instance")
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        mock_camera.get_bgr_frame.return_value = (fake_frame, 0.0)
+        mock_dxcamera_cls.return_value = mock_camera
+
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=1)
+        wc.capture_frame()  # Creates the camera.
+        wc.release()
+
+        mock_camera.__exit__.assert_called_once()
+
+    def test_release_idempotent(self):
+        """Calling release() twice does not raise."""
+        modules, _, _, _ = _make_mock_wincam()
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=1)
+        wc.release()
+        wc.release()  # Should not raise.
+
+
+class TestWinCamCaptureCustomFps:
+    """Tests for WinCamCapture custom FPS parameter."""
+
+    def test_custom_fps_passed_to_dxcamera(self):
+        """Custom fps is forwarded to DXCamera constructor."""
+        modules, win32gui, mock_dxcamera_cls, _ = _make_mock_wincam()
+        win32gui.GetClientRect.return_value = (0, 0, 640, 480)
+        win32gui.ClientToScreen.return_value = (100, 200)
+
+        mock_camera = mock.MagicMock(name="camera_instance")
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        mock_camera.get_bgr_frame.return_value = (fake_frame, 0.0)
+        mock_dxcamera_cls.return_value = mock_camera
+
+        WCC = _import_wincam_capture(modules)
+        wc = WCC(hwnd=1, fps=30)
+        wc.capture_frame()
+
+        mock_dxcamera_cls.assert_called_once_with(100, 200, 640, 480, fps=30)
