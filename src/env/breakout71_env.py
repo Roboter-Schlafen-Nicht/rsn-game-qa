@@ -5,6 +5,12 @@ Uses ``WindowCapture`` for frame acquisition, ``YoloDetector`` for
 object detection, Selenium WebDriver for action injection, and a
 battery of ``Oracle`` instances for bug detection.
 
+The action space is a continuous ``Box(-1, 1, shape=(1,))`` value that
+maps directly to the absolute paddle position via JavaScript
+``puckPosition`` injection.  A value of ``-1`` moves the paddle to
+the left edge of the game zone, ``+1`` to the right edge, and ``0``
+to the centre.
+
 Observation vector layout (8 elements)::
 
     [paddle_x, ball_x, ball_y, ball_vx, ball_vy, bricks_norm,
@@ -157,6 +163,26 @@ return (function() {
 })();
 """
 
+SET_PUCK_POSITION_JS = """
+puckPosition = Math.round(arguments[0]);
+"""
+
+QUERY_GAME_ZONE_JS = """
+return (function() {
+    if (typeof offsetX !== 'undefined' && typeof gameZoneWidth !== 'undefined'
+        && typeof puckWidth !== 'undefined') {
+        return {
+            left: offsetX + puckWidth / 2,
+            right: offsetX + gameZoneWidth - puckWidth / 2,
+            offsetX: offsetX,
+            gameZoneWidth: gameZoneWidth,
+            puckWidth: puckWidth
+        };
+    }
+    return null;
+})();
+"""
+
 
 class Breakout71Env(gym.Env):
     """Gymnasium environment wrapping the Breakout 71 browser game.
@@ -164,7 +190,7 @@ class Breakout71Env(gym.Env):
     This environment captures frames from the game window, runs YOLO
     inference to extract game-object positions, converts them to a
     structured observation vector, and injects actions via Selenium
-    WebDriver (mouse movement on the game canvas).
+    WebDriver (JavaScript ``puckPosition`` injection).
 
     Parameters
     ----------
@@ -182,16 +208,18 @@ class Breakout71Env(gym.Env):
         are used.
     driver : object, optional
         Selenium WebDriver instance for game interaction.  If provided,
-        the env uses Selenium ActionChains for mouse-based paddle
-        control and JavaScript execution for game state detection.
+        the env uses JavaScript execution for paddle control (setting
+        ``puckPosition`` directly) and game state detection.
         Required for live training; can be omitted for unit testing.
 
     Attributes
     ----------
     observation_space : gym.spaces.Box
         8-element continuous observation vector.
-    action_space : gym.spaces.Discrete
-        Discrete(3): 0=NOOP, 1=LEFT, 2=RIGHT.
+    action_space : gym.spaces.Box
+        Continuous Box(-1, 1, shape=(1,)).  The value maps to the
+        absolute paddle position: -1 = left edge, 0 = centre,
+        +1 = right edge of the game zone.
     """
 
     metadata = {"render_modes": ["human", "rgb_array"]}
@@ -228,8 +256,14 @@ class Breakout71Env(gym.Env):
             dtype=np.float32,
         )
 
-        # Actions: 0=NOOP, 1=LEFT, 2=RIGHT
-        self.action_space = spaces.Discrete(3)
+        # Actions: continuous paddle position [-1, 1]
+        # -1 = left edge, 0 = centre, +1 = right edge
+        self.action_space = spaces.Box(
+            low=np.float32(-1.0),
+            high=np.float32(1.0),
+            shape=(1,),
+            dtype=np.float32,
+        )
 
         # Internal state
         self._step_count: int = 0
@@ -251,11 +285,10 @@ class Breakout71Env(gym.Env):
         self._canvas_dims: tuple[int, int, int, int] | None = None
         self._initialized: bool = False
 
-        # Absolute paddle target x position (pixels from canvas left
-        # edge).  Initialised to centre when canvas dims are known
-        # (either via _lazy_init or manual setup in tests); updated by
-        # _apply_action().
-        self._paddle_target_x: float | None = None
+        # Game zone boundaries (set by _lazy_init or from config).
+        # Used to map continuous action [-1, 1] to pixel position.
+        self._game_zone_left: float | None = None
+        self._game_zone_right: float | None = None
 
     def _lazy_init(self) -> None:
         """Lazily initialise capture, detector, and canvas sub-components.
@@ -305,6 +338,9 @@ class Breakout71Env(gym.Env):
                     )
                     self._game_canvas = None
                 self._canvas_dims = (0, 0, 1280, 1024)
+
+            # Query game zone boundaries from JavaScript globals
+            self._query_game_zone()
 
         self._initialized = True
 
@@ -377,9 +413,9 @@ class Breakout71Env(gym.Env):
         self._no_ball_count = 0
         self._no_bricks_count = 0
 
-        # Reset paddle target to canvas centre
-        _left, _top, canvas_w, _h = self._canvas_dims or (0, 0, 1280, 1024)
-        self._paddle_target_x = canvas_w / 2.0
+        # Re-query game zone boundaries (may have changed on resize)
+        if self._driver is not None:
+            self._query_game_zone()
 
         # Build info dict
         info = self._build_info(detections)
@@ -391,13 +427,17 @@ class Breakout71Env(gym.Env):
 
         return obs, info
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+    def step(
+        self, action: np.ndarray
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Execute one action and return the resulting transition.
 
         Parameters
         ----------
-        action : int
-            Discrete action (0=NOOP, 1=LEFT, 2=RIGHT).
+        action : np.ndarray
+            Continuous action array of shape ``(1,)`` with value in
+            ``[-1, 1]``.  Maps to absolute paddle position: -1 = left
+            edge, 0 = centre, +1 = right edge of the game zone.
 
         Returns
         -------
@@ -669,70 +709,82 @@ class Breakout71Env(gym.Env):
 
         return reward
 
-    def _apply_action(self, action: int) -> None:
-        """Send the chosen action to the game via Selenium mouse control.
+    def _apply_action(self, action: np.ndarray) -> None:
+        """Send the chosen action to the game via JavaScript puckPosition.
 
-        Uses ActionChains to move the mouse to the target horizontal
-        position on the game canvas.  The game's paddle follows the
-        mouse position directly.
-
-        The env tracks ``_paddle_target_x`` — an absolute pixel
-        coordinate within the canvas — and updates it incrementally
-        with each LEFT/RIGHT action.  ``move_to_element_with_offset``
-        positions the mouse at a specific offset from the element's
-        centre, so we convert ``_paddle_target_x`` to an offset from
-        the centre for each call.
+        Maps the continuous action value ``[-1, 1]`` to a pixel
+        position within the game zone and sets ``puckPosition``
+        directly via ``driver.execute_script()``.  This bypasses
+        Selenium ActionChains entirely — the game reads
+        ``puckPosition`` each frame to place the paddle.
 
         Parameters
         ----------
-        action : int
-            Discrete action to apply (0=NOOP, 1=LEFT, 2=RIGHT).
+        action : np.ndarray
+            Continuous action array of shape ``(1,)`` with value in
+            ``[-1, 1]``.  Maps to absolute paddle position: -1 = left
+            edge, 0 = centre, +1 = right edge of the game zone.
         """
-        if self._driver is None or self._game_canvas is None:
+        if self._driver is None:
             return
 
-        if action == 0:  # NOOP
-            return
+        # Extract scalar from the action array
+        value = float(np.clip(action[0], -1.0, 1.0))
 
-        from selenium.webdriver.common.action_chains import ActionChains
+        # Map [-1, 1] to pixel position within game zone
+        zone_left = self._game_zone_left
+        zone_right = self._game_zone_right
 
-        _left, _top, canvas_w, canvas_h = self._canvas_dims or (
-            0,
-            0,
-            1280,
-            1024,
-        )
-
-        # Initialise paddle target to centre on first use.
-        if self._paddle_target_x is None:
-            self._paddle_target_x = canvas_w / 2.0
-
-        # Shift target by ~10% of canvas width per step, clamping to
-        # canvas bounds.
-        step_size = canvas_w * 0.10
-
-        if action == 1:  # LEFT
-            self._paddle_target_x = max(0.0, self._paddle_target_x - step_size)
-        elif action == 2:  # RIGHT
-            self._paddle_target_x = min(
-                float(canvas_w), self._paddle_target_x + step_size
+        if zone_left is None or zone_right is None:
+            # Fallback: use canvas dims with a rough estimate
+            _left, _top, canvas_w, _h = self._canvas_dims or (
+                0,
+                0,
+                1280,
+                1024,
             )
-        else:
-            return
+            zone_left = canvas_w * 0.25
+            zone_right = canvas_w * 0.75
 
-        # Convert absolute target to offset from element centre.
-        half_w = canvas_w / 2.0
-        x_offset = int(self._paddle_target_x - half_w)
-
-        # The y position should be near the paddle zone (bottom ~85%)
-        y_offset = int(canvas_h * 0.85) - (canvas_h // 2)
+        # Linear map: -1 -> zone_left, +1 -> zone_right
+        pixel_x = zone_left + (value + 1.0) / 2.0 * (zone_right - zone_left)
 
         try:
-            ActionChains(self._driver).move_to_element_with_offset(
-                self._game_canvas, x_offset, y_offset
-            ).perform()
+            self._driver.execute_script(SET_PUCK_POSITION_JS, pixel_x)
         except Exception as exc:
             logger.debug("Action failed: %s", exc)
+
+    def _query_game_zone(self) -> None:
+        """Query game zone boundaries from JavaScript globals.
+
+        Sets ``_game_zone_left`` and ``_game_zone_right`` from the
+        game's ``offsetX``, ``gameZoneWidth``, and ``puckWidth``
+        variables.  Falls back to canvas-based estimates if the
+        globals are not yet available (e.g. before first frame).
+        """
+        if self._driver is None:
+            return
+
+        try:
+            result = self._driver.execute_script(QUERY_GAME_ZONE_JS)
+            if result is not None:
+                self._game_zone_left = float(result["left"])
+                self._game_zone_right = float(result["right"])
+                logger.info(
+                    "Game zone: left=%.1f, right=%.1f (offsetX=%.1f, "
+                    "gameZoneWidth=%.1f, puckWidth=%.1f)",
+                    self._game_zone_left,
+                    self._game_zone_right,
+                    result["offsetX"],
+                    result["gameZoneWidth"],
+                    result["puckWidth"],
+                )
+            else:
+                logger.warning(
+                    "Game zone query returned null; using canvas-based fallback"
+                )
+        except Exception as exc:
+            logger.debug("Game zone query failed: %s", exc)
 
     def _handle_game_state(self) -> str:
         """Detect and handle game UI state (modals, game over, perks).

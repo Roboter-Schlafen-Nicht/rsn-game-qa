@@ -102,21 +102,25 @@ There is no lives counter. Instead:
 
 ## Action Space
 
-**Type:** `gymnasium.spaces.Discrete(3)`
+**Type:** `gymnasium.spaces.Box(low=-1, high=1, shape=(1,), dtype=float32)`
 
-| Value | Action     | Implementation                                    |
-|-------|------------|---------------------------------------------------|
-| 0     | No-op      | Do nothing                                        |
-| 1     | Move left  | `InputController.apply_action(1)` — left key ~30ms |
-| 2     | Move right | `InputController.apply_action(2)` — right key ~30ms |
+The action is a single continuous value in ``[-1, 1]`` that maps directly to
+the absolute paddle position via JavaScript ``puckPosition`` injection:
 
-There is no FIRE action in the action space. `Space` is only used during
-`reset()` to start a new game.
+| Value | Paddle position                              |
+|-------|----------------------------------------------|
+| -1.0  | Left edge of the game zone                   |
+|  0.0  | Centre of the game zone                      |
+| +1.0  | Right edge of the game zone                  |
 
-**Paddle movement per action:** The game moves the paddle by
-`gameZoneWidth / 50` per tick when an arrow key is held. With the ~30ms key
-hold in `InputController.apply_action`, this produces approximately 1-2 frames
-of input.
+There is no FIRE action in the action space. Canvas clicks via Selenium
+ActionChains are only used during ``reset()`` to start a new game.
+
+**Implementation:** The env queries the game's ``offsetX``,
+``gameZoneWidth``, and ``puckWidth`` JavaScript globals to determine the
+valid paddle range, then sets ``puckPosition = Math.round(pixel_x)``
+directly.  This bypasses Selenium mouse events entirely for paddle
+control, giving frame-accurate positioning.
 
 ## Reward Function
 
@@ -173,10 +177,14 @@ Breakout71Env(
 )
 ```
 
-Sub-components (`WindowCapture`, `YoloDetector`, `InputController`) are NOT
-created in the constructor — they are lazily initialised on first `reset()`.
+Sub-components (`WindowCapture`, `YoloDetector`) are NOT created in the
+constructor — they are lazily initialised on first `reset()`.
 This allows the env to be constructed and inspected (spaces, metadata) without
 requiring a live game window (useful for testing, config validation, and CI).
+
+The Selenium ``WebDriver`` is passed via the ``driver`` parameter and is
+used for JavaScript-based paddle control (``puckPosition`` injection) and
+game state detection/modal dismissal.
 
 ### `_lazy_init()`
 
@@ -184,33 +192,37 @@ Called once on first `reset()`. Imports and creates:
 
 1. `WindowCapture(window_title=self.window_title)` — frame capture
 2. `YoloDetector(weights_path=self.yolo_weights)` + `.load()` — object detection
-3. `InputController()` — action injection
+3. Canvas element lookup via Selenium (`#game` or `<body>` fallback)
+4. Game zone boundary query from JavaScript globals
 
-All three imports are performed inside the method body (not at module level)
-so that the env module loads cleanly in Docker CI where `pywin32` and
-`pydirectinput` are unavailable.
+All imports are performed inside the method body (not at module level)
+so that the env module loads cleanly in Docker CI where `pywin32` is
+unavailable.
 
 ### `reset(seed, options)`
 
 1. Call `super().reset(seed=seed)` (Gymnasium API)
 2. If not initialised: call `_lazy_init()`
-3. Press Space to start a new game (`InputController.ACTION_FIRE`)
-4. Brief sleep for game to start
-5. Capture first frame via `_capture_frame()`
-6. Detect objects via `_detect_objects(frame)`
-7. Build observation with `reset=True` (sets `_bricks_total`, zeroes velocity)
-8. Reset counters: `_step_count`, `_prev_bricks_norm`, `_no_ball_count`, `_no_bricks_count`
-9. Clear and notify oracles: `oracle.clear()` + `oracle.on_reset(obs, info)`
-10. Return `(obs, info)`
+3. Handle game state modals (game over, perk picker, menu) via JS execution
+4. Click canvas via Selenium ActionChains to start/unpause
+5. Brief sleep for game to start
+6. Capture first frame via `_capture_frame()`
+7. Detect objects via `_detect_objects(frame)`
+8. Build observation with `reset=True` (sets `_bricks_total`, zeroes velocity)
+9. Reset counters: `_step_count`, `_prev_bricks_norm`, `_no_ball_count`, `_no_bricks_count`
+10. Re-query game zone boundaries from JavaScript globals
+11. Clear and notify oracles: `oracle.clear()` + `oracle.on_reset(obs, info)`
+12. Return `(obs, info)`
 
 ### `step(action)`
 
-1. Apply action via `_apply_action(action)`
+1. Apply action via `_apply_action(action)` — sets `puckPosition` via JS
 2. Wait fixed interval: `time.sleep(1.0 / 30.0)` (~30 FPS)
-3. Capture new frame
-4. Detect objects
-5. Build observation (velocity from frame delta)
-6. Update termination counters:
+3. Handle any modals that appeared mid-episode (perk picker, game over, menu)
+4. Capture new frame
+5. Detect objects
+6. Build observation (velocity from frame delta)
+7. Update termination counters:
    - Ball not detected → `_no_ball_count += 1`; else reset to 0
    - No bricks remaining → `_no_bricks_count += 1`; else reset to 0
 7. Determine termination:

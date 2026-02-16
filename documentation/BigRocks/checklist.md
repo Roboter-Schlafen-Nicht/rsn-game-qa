@@ -123,7 +123,11 @@
   - [x] Post-merge admin (PR #31 — this update)
 
 ### 3. RL training & iteration
-- [ ] Run first real RL training session on Breakout 71 (PPO, ~200k steps)
+- [x] Switch action space from Discrete(3) to continuous Box(-1,1) with JS puckPosition injection (PR #33 — session 16)
+- [x] Enforce ≥80% test coverage on all source files (`fail_under = 80` in pyproject.toml) (PR #33 — session 16)
+- [x] Fix DashboardRenderer bug in session_runner.py (wrong constructor args + wrong method call) (PR #33 — session 16)
+- [x] Coverage improvements: session_runner.py 79% → 98%, 8 new tests (PR #33 — session 16)
+- [ ] Run first real RL training session on Breakout 71 (PPO, ~10k steps validation then 200k)
 - [ ] Evaluate trained policy vs random baseline
 - [ ] Iterate on reward shaping based on observed behavior
 - [ ] Generate QA reports from trained agent episodes
