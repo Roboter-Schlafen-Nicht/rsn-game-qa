@@ -832,6 +832,25 @@ class TestFrameCollectionCallback:
         )
         assert ckpt_dir.exists()
 
+    def test_max_episodes_stored(self, tmp_path):
+        """max_episodes parameter is stored on the factory."""
+        from scripts.train_rl import FrameCollectionCallback
+
+        cb = FrameCollectionCallback(
+            checkpoint_dir=tmp_path / "checkpoints",
+            max_episodes=10,
+        )
+        assert cb._max_episodes == 10
+
+    def test_max_episodes_default_none(self, tmp_path):
+        """max_episodes defaults to None."""
+        from scripts.train_rl import FrameCollectionCallback
+
+        cb = FrameCollectionCallback(
+            checkpoint_dir=tmp_path / "checkpoints",
+        )
+        assert cb._max_episodes is None
+
 
 # ===========================================================================
 # Integration: SessionRunner.run() with mocked subsystems
