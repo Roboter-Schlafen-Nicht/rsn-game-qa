@@ -15,7 +15,7 @@ Four sequential phases
 ----------------------
 1. **Frame capture + YOLO overlay** (~5s) — capture frames with the ball
    still stuck to the paddle (pre-start), run YOLO, draw annotated
-   bounding boxes, save to ``output/debug_pixel/``.
+    bounding boxes, save to ``output/debug_pixel_<timestamp>/``.
 2. **Paddle tracking** (~10s) — ball is still stuck to the paddle.
    Move mouse to 5 predefined X positions, capture + YOLO after each,
    compare intended vs detected paddle position.  No risk of game over
@@ -172,8 +172,10 @@ def _norm_to_screen(
     tuple[int, int]
         ``(screen_x, screen_y)`` absolute pixel coordinates.
     """
-    x_client = int(x_norm * client_w)
-    y_client = int(y_norm * client_h)
+    x_norm_clamped = max(0.0, min(1.0, x_norm))
+    y_norm_clamped = max(0.0, min(1.0, y_norm))
+    x_client = min(int(x_norm_clamped * client_w), max(client_w - 1, 0))
+    y_client = min(int(y_norm_clamped * client_h), max(client_h - 1, 0))
     return client_origin[0] + x_client, client_origin[1] + y_client
 
 
@@ -291,7 +293,8 @@ def _ensure_gameplay(
             state_info = driver.execute_script(_DETECT_STATE_JS)
         except Exception as exc:
             logger.debug("State detection failed (%s): %s", label, exc)
-            return False
+            time.sleep(0.5)
+            continue
 
         if state_info is None:
             state_info = {"state": "unknown"}
@@ -427,8 +430,8 @@ def phase2_paddle_tracking(
 
         # Capture and detect
         frame = cap.capture_frame()
-        detections = detector.detect(frame)
         game_state = detector.detect_to_game_state(frame, cap.width, cap.height)
+        detections = game_state["raw_detections"]
 
         paddle = game_state["paddle"]
         if paddle is not None:
@@ -501,8 +504,12 @@ def phase3_ball_tracking(
         if driver is not None and client_origin is not None:
             if loop_start - last_modal_check >= modal_check_interval:
                 last_modal_check = loop_start
-                if not _ensure_gameplay(driver, cap, client_origin, label="phase3"):
+                if _ensure_gameplay(driver, cap, client_origin, label="phase3"):
                     modal_recoveries += 1
+                else:
+                    logger.warning(
+                        "Phase 3: _ensure_gameplay failed to restore gameplay."
+                    )
 
         frame = cap.capture_frame()
         game_state = detector.detect_to_game_state(frame, cap.width, cap.height)
@@ -604,7 +611,7 @@ def phase4_gameplay_loop(
     driver : selenium.webdriver.Remote, optional
         Selenium WebDriver for modal handling.
 
-    Returns True if the loop ran without crashing and achieved >10 FPS.
+    Returns True if the loop ran without crashing and achieved average FPS > 3.
     """
     import pydirectinput
 
@@ -635,8 +642,17 @@ def phase4_gameplay_loop(
         if driver is not None:
             if loop_start - last_modal_check >= modal_check_interval:
                 last_modal_check = loop_start
-                if not _ensure_gameplay(driver, cap, client_origin, label="phase4"):
+                gameplay_ok = _ensure_gameplay(
+                    driver, cap, client_origin, label="phase4"
+                )
+                if gameplay_ok:
                     modal_recoveries += 1
+                else:
+                    logger.error(
+                        "Phase 4: unable to restore gameplay via modal "
+                        "handling; aborting gameplay loop."
+                    )
+                    break
 
         # Capture + detect
         frame = cap.capture_frame()
