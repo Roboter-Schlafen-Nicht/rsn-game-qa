@@ -149,6 +149,7 @@
 - [x] Alpha release prep (v0.1.0a1): `[project]` section in pyproject.toml, CHANGELOG.md, release workflow (tag-triggered CI + GitHub release), CI badge + version badge in README (PR #49 — session 22)
 - [x] Episode boundary bug fix: game-over modals no longer silently dismissed mid-episode, fixed terminal penalty (-5.01) for modal-occluded frames, TDD convention formalized, robust test assertions (PR #51 — session 23)
 - [x] Modal check throttling: skip Selenium HTTP round-trip when ball visible, immediate late check on 0→1 ball-miss transition, deduplicated test helper, 55 FPS pipeline (PR #53 — session 24)
+- [x] CNN policy pipeline for A/B comparison with MLP: `CnnObservationWrapper` (84x84 grayscale), `--policy cnn|mlp` / `--frame-stack` / `--max-episodes` CLI args, removed oracles from training loop, data collection opt-in, live validation, Copilot review (4 fixes), 673 tests (PR #55 — session 25)
 - [ ] Run first real RL training session on Breakout 71 (PPO, ~10k steps validation then 200k)
 - [ ] Evaluate trained policy vs random baseline
 - [ ] Iterate on reward shaping based on observed behavior

@@ -366,7 +366,7 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 - **Pipeline timing breakdown** — Capture 3.3ms (wincam) + YOLO 13.9ms (OpenVINO GPU.0) + Input 0.4ms (pydirectinput) = ~18ms/frame = 55.5 FPS raw pipeline. SB3 PPO overhead reduces to ~8-10 FPS.
 - **TDD convention** — Required for `src/env/`, `src/orchestrator/`, and behavioral contract modules. Write test names as specs first, fill bodies (red), implement (green), refactor.
 
-## What's Done (sessions 1-24)
+## What's Done (sessions 1-25)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -392,8 +392,9 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 22. **Session 22** — RL training features: mute control, headless mode, portrait/landscape orientation, rich structured logging (TrainingLogger), max-time clean shutdown, continuous action space validated end-to-end. Copilot review: 7 fixes. 7 new tests (PR #47)
 23. **Session 23** — Episode boundary bug fix + TDD convention: game-over modals no longer silently dismissed mid-episode (merged multiple games into one infinite episode), fixed terminal penalty for modal-occluded frames, TDD convention formalized in AGENTS.md. Copilot review: 4 fixes (PR #51)
 24. **Session 24** — Modal check throttling: skip Selenium HTTP round-trip when ball visible (~100-150ms saved per step), immediate late check on 0→1 ball-miss transition to prevent spurious rewards, deduplicated `_make_env_ready()` test helper, live validation (55 FPS pipeline, ~8 FPS with SB3 overhead), alpha release v0.1.0a1, post-merge admin (PR #49, #51, #52, #53)
+25. **Session 25** — CNN policy pipeline for A/B comparison with MLP: `CnnObservationWrapper` (84x84 grayscale), `--policy cnn|mlp` / `--frame-stack` / `--max-episodes` CLI args, VecFrameStack(4)+VecTransposeImage pipeline, XPU device routing for CNN policy (`xpu:1`), removed oracles from training loop, flipped data collection to opt-in, live validation (MLP 9.6 FPS / CNN 8.4 FPS on xpu:1), Copilot review (4 fixes). 40 new tests (PR #55)
 
-Total: **609 tests** (585 unit + 24 integration), 7 subsystems + training pipeline complete.
+Total: **673 tests** (649 unit + 24 integration), 7 subsystems + training pipeline complete.
 
 ## What's Next
 
