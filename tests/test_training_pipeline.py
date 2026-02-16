@@ -688,6 +688,56 @@ class TestTrainRlParseArgs:
         args = self._parse([])
         assert args.max_time is None
 
+    def test_policy_default_mlp(self):
+        """--policy should default to 'mlp'."""
+        args = self._parse([])
+        assert args.policy == "mlp"
+
+    def test_policy_cnn(self):
+        """--policy cnn should be accepted."""
+        args = self._parse(["--policy", "cnn"])
+        assert args.policy == "cnn"
+
+    def test_policy_mlp_explicit(self):
+        """--policy mlp should be accepted."""
+        args = self._parse(["--policy", "mlp"])
+        assert args.policy == "mlp"
+
+    def test_policy_invalid_rejected(self):
+        """Invalid policy type should raise SystemExit."""
+        with pytest.raises(SystemExit):
+            self._parse(["--policy", "rnn"])
+
+    def test_frame_stack_default(self):
+        """--frame-stack should default to 4."""
+        args = self._parse([])
+        assert args.frame_stack == 4
+
+    def test_frame_stack_custom(self):
+        """--frame-stack should accept custom values."""
+        args = self._parse(["--frame-stack", "8"])
+        assert args.frame_stack == 8
+
+    def test_max_episodes_default_none(self):
+        """--max-episodes should default to None."""
+        args = self._parse([])
+        assert args.max_episodes is None
+
+    def test_max_episodes_custom(self):
+        """--max-episodes should accept a positive integer."""
+        args = self._parse(["--max-episodes", "10"])
+        assert args.max_episodes == 10
+
+    def test_data_collection_default_off(self):
+        """Data collection should be off by default during training."""
+        args = self._parse([])
+        assert args.data_collection is False
+
+    def test_data_collection_flag(self):
+        """--data-collection should enable frame collection."""
+        args = self._parse(["--data-collection"])
+        assert args.data_collection is True
+
 
 class TestResolveWindowSize:
     """Tests for resolve_window_size in train_rl.py."""

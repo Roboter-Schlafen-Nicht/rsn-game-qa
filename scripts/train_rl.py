@@ -6,11 +6,23 @@ Usage::
     python scripts/train_rl.py --config configs/games/breakout-71.yaml \\
         --timesteps 200000 --browser chrome
 
+    # CNN policy (pixel-based, uses GPU for policy network):
+    python scripts/train_rl.py --policy cnn --timesteps 200000
+
     # Headless mode (no mouse capture, uses Selenium for I/O):
     python scripts/train_rl.py --headless --timesteps 200000
 
     # Portrait mode (768x1024, mobile-style layout):
     python scripts/train_rl.py --orientation portrait --headless
+
+Supports two policy types for A/B comparison:
+
+- **mlp** (default): 8-element YOLO feature vector → MlpPolicy (CPU)
+- **cnn**: 84x84 grayscale pixels → NatureCNN → CnnPolicy (GPU)
+
+The CNN pipeline stacks 4 consecutive frames (``VecFrameStack``) so the
+policy can infer velocity from motion.  Both pipelines use the same
+reward signal and episode boundaries from YOLO detection.
 
 Launches the dev server automatically via GameLoader.  Training runs in
 real-time; at ~52 FPS native or ~2-3 FPS headless.
@@ -164,9 +176,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Capture every Nth frame for data collection (default: 30)",
     )
     parser.add_argument(
-        "--no-data-collection",
+        "--data-collection",
         action="store_true",
-        help="Disable frame collection for YOLO retraining",
+        help="Enable frame collection for YOLO retraining (default: off)",
     )
 
     # -- New flags: headless / mute / orientation --------------------------
@@ -209,6 +221,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Override window size, e.g. 768x1024 (overrides --orientation)",
     )
 
+    # -- Policy type -------------------------------------------------------
+    parser.add_argument(
+        "--policy",
+        type=str,
+        default="mlp",
+        choices=["mlp", "cnn"],
+        help=(
+            "Policy type: 'mlp' uses 8-element YOLO feature vector, "
+            "'cnn' uses 84x84 grayscale pixel observations with "
+            "4-frame stacking (default: mlp)"
+        ),
+    )
+    parser.add_argument(
+        "--frame-stack",
+        type=int,
+        default=4,
+        help="Number of frames to stack for CNN policy (default: 4)",
+    )
+
     # -- PPO hyperparameters -----------------------------------------------
     parser.add_argument("--n-steps", type=int, default=2048, help="PPO n_steps")
     parser.add_argument("--batch-size", type=int, default=64, help="PPO batch_size")
@@ -239,6 +270,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Stop training after N seconds (wall-clock).  Useful for "
             "time-boxed debug runs, e.g. --max-time 180 for 3 minutes."
+        ),
+    )
+    parser.add_argument(
+        "--max-episodes",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Stop training after N completed episodes.  Useful for quick "
+            "performance checks, e.g. --max-episodes 10."
         ),
     )
     parser.add_argument(
@@ -320,6 +361,9 @@ class FrameCollectionCallback:
     max_time : int or None
         Maximum training wall-clock time in seconds.  When exceeded,
         ``_on_step`` returns ``False`` to cleanly stop ``model.learn()``.
+    max_episodes : int or None
+        Maximum number of completed episodes.  When reached,
+        ``_on_step`` returns ``False`` to cleanly stop ``model.learn()``.
     """
 
     def __init__(
@@ -330,6 +374,7 @@ class FrameCollectionCallback:
         training_logger: TrainingLogger | None = None,
         log_interval: int = 100,
         max_time: int | None = None,
+        max_episodes: int | None = None,
     ) -> None:
         # Import at call site to avoid top-level SB3 import in CI
         from stable_baselines3.common.callbacks import BaseCallback
@@ -342,6 +387,7 @@ class FrameCollectionCallback:
         self._training_logger = training_logger
         self._log_interval = max(1, log_interval)
         self._max_time = max_time
+        self._max_episodes = max_episodes
         self._episode_count = 0
         self._episode_rewards: list[float] = []
         self._episode_lengths: list[int] = []
@@ -364,6 +410,7 @@ class FrameCollectionCallback:
         tlog = self._training_logger
         log_interval = self._log_interval
         max_time = self._max_time
+        max_episodes = self._max_episodes
 
         # We need a reference back so the outer class can read episode_count
         outer = self
@@ -499,19 +546,6 @@ class FrameCollectionCallback:
                         else:
                             termination = "game_over"
 
-                        # Oracle findings
-                        raw_findings = info.get("oracle_findings", [])
-                        finding_dicts = []
-                        for f in raw_findings:
-                            if hasattr(f, "oracle_name"):
-                                finding_dicts.append(
-                                    {
-                                        "oracle": f.oracle_name,
-                                        "severity": getattr(f, "severity", "info"),
-                                        "message": getattr(f, "message", ""),
-                                    }
-                                )
-
                         ep_event = {
                             "event": "episode_end",
                             "episode": self._episode_count,
@@ -520,8 +554,6 @@ class FrameCollectionCallback:
                             "mean_step_reward": (ep_reward / max(ep_length, 1)),
                             "termination": termination,
                             "brick_count": info.get("brick_count", -1),
-                            "oracle_findings_count": len(raw_findings),
-                            "oracle_findings": finding_dicts,
                             "duration_seconds": round(ep_duration, 2),
                             "mean_fps": round(mean_fps, 1),
                         }
@@ -542,6 +574,30 @@ class FrameCollectionCallback:
                         self._episode_step_count = 0
                         self._episode_cumulative_reward = 0.0
                         self._episode_fps_samples = []
+
+                        # -- Episode limit check --------------------------
+                        if (
+                            max_episodes is not None
+                            and self._episode_count >= max_episodes
+                        ):
+                            logger.info(
+                                "Max episodes reached (%d >= %d) at step %d "
+                                "— stopping training",
+                                self._episode_count,
+                                max_episodes,
+                                self.num_timesteps,
+                            )
+                            if tlog:
+                                tlog.log(
+                                    {
+                                        "event": "max_episodes_reached",
+                                        "step": self.num_timesteps,
+                                        "episodes": self._episode_count,
+                                        "max_episodes": max_episodes,
+                                    }
+                                )
+                            self.training_stop_reason = "max_episodes_reached"
+                            return False
 
                 # -- Periodic checkpointing -------------------------------
                 if self.num_timesteps - self._last_checkpoint >= checkpoint_interval:
@@ -653,10 +709,10 @@ def main(argv: list[str] | None = None) -> int:
 
     from scripts._smoke_utils import BrowserInstance
     from src.env.breakout71_env import Breakout71Env
+    from src.env.cnn_wrapper import CnnObservationWrapper
     from src.game_loader import create_loader
     from src.game_loader.config import load_game_config
     from src.orchestrator.data_collector import FrameCollector
-    from src.orchestrator.session_runner import _create_oracles
 
     # -- Load game config --------------------------------------------------
     config_path = Path(args.config)
@@ -717,6 +773,8 @@ def main(argv: list[str] | None = None) -> int:
                 "orientation": args.orientation,
                 "window_size": [win_w, win_h],
                 "device": args.device,
+                "policy": args.policy,
+                "frame_stack": args.frame_stack,
                 "yolo_weights": args.yolo_weights,
                 "max_steps": args.max_steps,
                 "n_steps": args.n_steps,
@@ -727,7 +785,7 @@ def main(argv: list[str] | None = None) -> int:
                 "clip_range": args.clip_range,
                 "ent_coef": args.ent_coef,
                 "frame_interval": args.frame_interval,
-                "data_collection": not args.no_data_collection,
+                "data_collection": args.data_collection,
                 "log_interval": args.log_interval,
                 "max_time": args.max_time,
             },
@@ -738,24 +796,47 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     callback = None
+    vec_env = None  # track for cleanup
     try:
         # -- Create environment --------------------------------------------
-        oracles = _create_oracles()
         window_title = config.window_title or "Breakout"
 
         env = Breakout71Env(
             window_title=window_title,
             yolo_weights=args.yolo_weights,
             max_steps=args.max_steps,
-            oracles=oracles,
             driver=browser_instance.driver,
             device=args.device,
             headless=args.headless,
         )
 
+        # -- Wrap for CNN policy (if requested) ----------------------------
+        if args.policy == "cnn":
+            from stable_baselines3.common.vec_env import (
+                DummyVecEnv,
+                VecFrameStack,
+                VecTransposeImage,
+            )
+
+            cnn_env = CnnObservationWrapper(env)
+            vec_env = DummyVecEnv([lambda: cnn_env])
+            vec_env = VecFrameStack(vec_env, n_stack=args.frame_stack)
+            vec_env = VecTransposeImage(vec_env)
+            logger.info(
+                "CNN pipeline: CnnObservationWrapper → DummyVecEnv → "
+                "VecFrameStack(%d) → VecTransposeImage",
+                args.frame_stack,
+            )
+            logger.info("CNN observation space: %s", vec_env.observation_space.shape)
+            train_env = vec_env
+            sb3_policy = "CnnPolicy"
+        else:
+            train_env = env
+            sb3_policy = "MlpPolicy"
+
         # -- Frame collector -----------------------------------------------
         collector = None
-        if not args.no_data_collection:
+        if args.data_collection:
             collector = FrameCollector(
                 output_dir=output_dir,
                 capture_interval=args.frame_interval,
@@ -770,15 +851,42 @@ def main(argv: list[str] | None = None) -> int:
             training_logger=tlog,
             log_interval=args.log_interval,
             max_time=args.max_time,
+            max_episodes=args.max_episodes,
         )
         callback = cb_factory.create()
 
         # -- PPO model -----------------------------------------------------
-        # SB3 supports "auto", "cpu", "cuda" but not "xpu".
-        sb3_device = args.device if args.device != "xpu" else "cpu"
+        # Device routing:
+        # - MlpPolicy: CPU is fastest (tiny network, GPU overhead hurts)
+        # - CnnPolicy: GPU benefits from NatureCNN's ~1.7M params
+        #
+        # SB3 supports "auto", "cpu", "cuda" but not "xpu" natively.
+        # For XPU, we pass a torch.device object directly.
+        sb3_device: Any = args.device
+        if args.device in ("xpu", "auto"):
+            if args.policy == "cnn":
+                # CNN benefits from GPU — use XPU:1 (GPU.0 is for YOLO)
+                try:
+                    import torch
+
+                    if torch.xpu.is_available() and torch.xpu.device_count() > 1:
+                        sb3_device = torch.device("xpu:1")
+                        logger.info("CnnPolicy device: xpu:1 (dedicated GPU)")
+                    elif torch.xpu.is_available():
+                        sb3_device = torch.device("xpu:0")
+                        logger.info("CnnPolicy device: xpu:0 (single GPU)")
+                    else:
+                        sb3_device = "cpu"
+                        logger.info("CnnPolicy device: cpu (XPU unavailable)")
+                except ImportError:
+                    sb3_device = "cpu"
+            else:
+                # MlpPolicy: CPU is faster than GPU for tiny networks
+                sb3_device = "cpu"
+
         model = PPO(
-            "MlpPolicy",
-            env,
+            sb3_policy,
+            train_env,
             n_steps=args.n_steps,
             batch_size=args.batch_size,
             n_epochs=args.n_epochs,
@@ -791,8 +899,9 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         logger.info(
-            "Starting PPO training: %d timesteps, device=%s (sb3=%s)",
+            "Starting PPO training: %d timesteps, policy=%s, device=%s (sb3=%s)",
             args.timesteps,
+            sb3_policy,
             args.device,
             sb3_device,
         )
@@ -917,7 +1026,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Status:          {status.upper()}")
 
     finally:
-        if "env" in locals():
+        if vec_env is not None:
+            vec_env.close()
+        elif "env" in locals():
             env.close()
         browser_instance.close()
         logger.info("Stopping dev server ...")
