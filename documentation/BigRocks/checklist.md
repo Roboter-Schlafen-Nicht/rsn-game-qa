@@ -147,6 +147,7 @@
 - [x] OpenVINO inference acceleration + wincam fast capture: `.pt` → OpenVINO IR export, auto device routing (`intel:GPU.0`), warmup fix, `WinCamCapture` via Direct3D11, `pydirectinput.PAUSE=0`, removed `step()` throttle — 52 FPS (PR #45 — session 21)
 - [x] RL training features: mute, headless, orientation, logging, max-time, portrait default, continuous action space validated end-to-end, Copilot review (7 fixes), 594 tests (PR #47 — session 22)
 - [x] Alpha release prep (v0.1.0a1): `[project]` section in pyproject.toml, CHANGELOG.md, release workflow (tag-triggered CI + GitHub release), CI badge + version badge in README (PR #49 — session 22)
+- [x] Episode boundary bug fix: game-over modals no longer silently dismissed mid-episode, fixed terminal penalty (-5.01) for modal-occluded frames, TDD convention formalized, robust test assertions (PR #51 — session 23)
 - [ ] Run first real RL training session on Breakout 71 (PPO, ~10k steps validation then 200k)
 - [ ] Evaluate trained policy vs random baseline
 - [ ] Iterate on reward shaping based on observed behavior
