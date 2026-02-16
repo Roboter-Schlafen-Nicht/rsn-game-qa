@@ -1,5 +1,8 @@
 # rsn-game-qa
 
+[![CI](https://github.com/Roboter-Schlafen-Nicht/rsn-game-qa/actions/workflows/ci.yml/badge.svg)](https://github.com/Roboter-Schlafen-Nicht/rsn-game-qa/actions/workflows/ci.yml)
+![Version](https://img.shields.io/badge/version-0.1.0a1-blue)
+
 RL-driven autonomous game testing platform. YOLO object detection + reinforcement learning agents play games from pixels, explore bugs and balance issues, and generate human-readable test reports.
 
 **RSN** = *Roboter Schlafen Nicht* ("Robots Don't Sleep")
