@@ -99,6 +99,13 @@ class WinCamCapture:
         self._camera: Optional[DXCamera] = None
         self._desktop = DesktopWindow()
 
+        # Track the region the camera was created with so we can detect
+        # when the window moves/resizes without accessing DXCamera privates.
+        self._camera_x: int = 0
+        self._camera_y: int = 0
+        self._camera_w: int = 0
+        self._camera_h: int = 0
+
         if self.hwnd == 0 and self.window_title:
             self._find_window()
 
@@ -188,10 +195,10 @@ class WinCamCapture:
         # If camera already exists with matching dimensions, keep it.
         if self._camera is not None:
             if (
-                self._camera._left == x
-                and self._camera._top == y
-                and self._camera._width == w
-                and self._camera._height == h
+                self._camera_x == x
+                and self._camera_y == y
+                and self._camera_w == w
+                and self._camera_h == h
             ):
                 return
             # Dimensions changed — tear down and recreate.
@@ -199,6 +206,10 @@ class WinCamCapture:
 
         self._camera = DXCamera(x, y, w, h, fps=self._fps)
         self._camera.__enter__()
+        self._camera_x = x
+        self._camera_y = y
+        self._camera_w = w
+        self._camera_h = h
 
     def _stop_camera(self) -> None:
         """Stop and release the DXCamera."""

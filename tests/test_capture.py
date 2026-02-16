@@ -734,10 +734,6 @@ class TestWinCamCaptureFrame:
         win32gui.ClientToScreen.return_value = (100, 200)
 
         mock_camera = mock.MagicMock(name="camera_instance")
-        mock_camera._left = 100
-        mock_camera._top = 200
-        mock_camera._width = 640
-        mock_camera._height = 480
         fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
         mock_camera.get_bgr_frame.return_value = (fake_frame, 0.0)
         mock_dxcamera_cls.return_value = mock_camera
@@ -760,18 +756,10 @@ class TestWinCamCaptureFrame:
         win32gui.ClientToScreen.return_value = (100, 200)
 
         camera1 = mock.MagicMock(name="camera1")
-        camera1._left = 100
-        camera1._top = 200
-        camera1._width = 640
-        camera1._height = 480
         fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
         camera1.get_bgr_frame.return_value = (fake_frame, 0.0)
 
         camera2 = mock.MagicMock(name="camera2")
-        camera2._left = 100
-        camera2._top = 200
-        camera2._width = 800
-        camera2._height = 600
         fake_frame2 = np.zeros((600, 800, 3), dtype=np.uint8)
         camera2.get_bgr_frame.return_value = (fake_frame2, 0.0)
 
@@ -846,10 +834,6 @@ class TestWinCamCaptureRelease:
         win32gui.ClientToScreen.return_value = (100, 200)
 
         mock_camera = mock.MagicMock(name="camera_instance")
-        mock_camera._left = 100
-        mock_camera._top = 200
-        mock_camera._width = 640
-        mock_camera._height = 480
         fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
         mock_camera.get_bgr_frame.return_value = (fake_frame, 0.0)
         mock_dxcamera_cls.return_value = mock_camera
@@ -880,10 +864,6 @@ class TestWinCamCaptureCustomFps:
         win32gui.ClientToScreen.return_value = (100, 200)
 
         mock_camera = mock.MagicMock(name="camera_instance")
-        mock_camera._left = 100
-        mock_camera._top = 200
-        mock_camera._width = 640
-        mock_camera._height = 480
         fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
         mock_camera.get_bgr_frame.return_value = (fake_frame, 0.0)
         mock_dxcamera_cls.return_value = mock_camera

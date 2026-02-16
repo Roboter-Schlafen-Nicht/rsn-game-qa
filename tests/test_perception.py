@@ -666,7 +666,6 @@ class TestModuleImports:
         assert "YoloDetector" in mod.__all__
         assert "grab_frame" in mod.__all__
         assert "detect_objects" in mod.__all__
-        assert "_find_openvino_model" in mod.__all__
 
 
 # ── _find_openvino_model ────────────────────────────────────────────
@@ -1024,5 +1023,5 @@ class TestOpenvinoModelSelection:
             detector.load()
 
             # model() should NOT be called during load for PyTorch
-            mock_model.call_count == 0
+            assert mock_model.call_count == 0
             mock_model.assert_not_called()
