@@ -572,13 +572,16 @@ class Breakout71Env(gym.Env):
         # fast as capture + inference allow.
         self._apply_action(action)
 
-        # Check for game-over modal — if detected, terminate the
-        # episode immediately WITHOUT dismissing the modal.  The modal
-        # will be dismissed in reset() when the next episode starts.
-        # This fixes the critical bug where game-over modals were
-        # silently dismissed mid-episode, merging multiple games into
-        # one never-ending episode.
-        mid_state = self._handle_game_state(dismiss_game_over=False)
+        # Modal check throttling: only call _handle_game_state() when
+        # the ball has been missing for one or more frames.  During
+        # normal gameplay (ball visible), we skip the Selenium HTTP
+        # round-trip entirely, removing ~100-150ms of overhead per step.
+        # When the ball goes missing, we check for modals on the NEXT
+        # step — one frame of delay is acceptable since we already use
+        # a 5-frame threshold for ball-loss termination.
+        mid_state = "gameplay"
+        if self._no_ball_count > 0:
+            mid_state = self._handle_game_state(dismiss_game_over=False)
         if mid_state == "game_over":
             # Return last observation with terminated=True.
             # Use a fixed terminal penalty instead of computing reward

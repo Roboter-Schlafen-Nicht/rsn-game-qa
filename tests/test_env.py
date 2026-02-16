@@ -1403,6 +1403,7 @@ class TestStep:
     def test_step_handles_mid_episode_modal(self, mock_time):
         """step() should handle perk_picker modals that appear mid-episode."""
         env = self._make_env_ready()
+        env._no_ball_count = 1  # ball missing → triggers modal check
         # Make game state return perk_picker on first call, gameplay after
         env._driver.execute_script.side_effect = [
             {"state": "perk_picker", "details": {"numPerks": 3}},
@@ -1416,6 +1417,7 @@ class TestStep:
     def test_step_terminates_on_game_over_modal(self, mock_time):
         """step() should return terminated=True when game_over modal detected."""
         env = self._make_env_ready()
+        env._no_ball_count = 1  # ball missing → triggers modal check
         env._driver.execute_script.return_value = {
             "state": "game_over",
             "details": {},
@@ -1429,6 +1431,7 @@ class TestStep:
     def test_step_game_over_does_not_dismiss_modal(self, mock_time):
         """step() should NOT dismiss game_over modal (only reset() does)."""
         env = self._make_env_ready()
+        env._no_ball_count = 1  # ball missing → triggers modal check
         env._driver.execute_script.return_value = {
             "state": "game_over",
             "details": {},
@@ -1444,6 +1447,7 @@ class TestStep:
     def test_step_game_over_still_increments_step_count(self, mock_time):
         """step() should still increment _step_count when game_over detected."""
         env = self._make_env_ready()
+        env._no_ball_count = 1  # ball missing → triggers modal check
         env._driver.execute_script.return_value = {
             "state": "game_over",
             "details": {},
@@ -1463,6 +1467,7 @@ class TestStep:
         be the fixed terminal penalty (-5.01) regardless of detections.
         """
         env = self._make_env_ready()
+        env._no_ball_count = 1  # ball missing → triggers modal check
         env._driver.execute_script.return_value = {
             "state": "game_over",
             "details": {},
@@ -1477,6 +1482,7 @@ class TestStep:
     def test_step_perk_picker_does_not_terminate(self, mock_time):
         """step() should NOT terminate on perk_picker — it's part of gameplay."""
         env = self._make_env_ready()
+        env._no_ball_count = 1  # ball missing → triggers modal check
         env._driver.execute_script.side_effect = [
             {"state": "perk_picker", "details": {"numPerks": 3}},
             {"clicked": 0, "text": "Speed"},
@@ -1824,3 +1830,134 @@ class TestBuildInfoNoBallCount:
         info = env._build_info(det)
 
         assert info["no_ball_count"] == 0
+
+
+class TestModalCheckThrottling:
+    """TDD specs for modal check throttling (option 3).
+
+    The behavioral contract: ``_handle_game_state()`` should only be
+    called when ``_no_ball_count > 0`` (ball is missing).  During normal
+    gameplay (ball visible), we skip the Selenium round-trip entirely,
+    removing the ~100-150ms overhead per step.
+    """
+
+    def _make_env_ready(self, bricks_count=10):
+        """Create env in a post-reset state with mocked sub-components."""
+        driver = _mock_driver()
+        env = Breakout71Env(driver=driver)
+        env._initialized = True
+        env._bricks_total = bricks_count
+        env._prev_bricks_norm = 1.0
+        env._prev_ball_pos = (0.5, 0.5)
+        env._step_count = 0
+        env._no_ball_count = 0
+        env._no_bricks_count = 0
+        env._last_frame = _frame()
+        env._client_origin = (100, 200)
+
+        _setup_capture_mock(env)
+        env._detector = mock.MagicMock()
+        env._detector.detect_to_game_state.return_value = _detections(
+            bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(bricks_count)]
+        )
+        return env
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_skips_handle_game_state_when_ball_detected(self, mock_time):
+        """step() should NOT call _handle_game_state when _no_ball_count == 0.
+
+        This is the key optimization: during normal gameplay with the ball
+        visible, we skip the Selenium round-trip entirely.
+        """
+        env = self._make_env_ready()
+        assert env._no_ball_count == 0  # ball was detected last step
+
+        with mock.patch.object(env, "_handle_game_state") as mock_hgs:
+            env.step(_action())
+            mock_hgs.assert_not_called()
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_calls_handle_game_state_when_ball_missing(self, mock_time):
+        """step() should call _handle_game_state when _no_ball_count > 0.
+
+        When the ball has been missing for one or more frames, we check
+        for modals since the missing ball might be caused by a modal overlay.
+        """
+        env = self._make_env_ready()
+        env._no_ball_count = 3  # ball has been missing for 3 frames
+
+        with mock.patch.object(
+            env, "_handle_game_state", return_value="gameplay"
+        ) as mock_hgs:
+            env.step(_action())
+            mock_hgs.assert_called_once()
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_detects_game_over_modal_when_ball_missing(self, mock_time):
+        """step() should still detect game_over modals and terminate
+        the episode when _no_ball_count > 0 triggers the check.
+        """
+        env = self._make_env_ready()
+        env._no_ball_count = 2  # ball missing → triggers modal check
+
+        with mock.patch.object(env, "_handle_game_state", return_value="game_over"):
+            _, _, terminated, _, _ = env.step(_action())
+            assert terminated is True
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_handles_perk_picker_when_ball_missing(self, mock_time):
+        """step() should still handle perk_picker modals when triggered
+        by _no_ball_count > 0.
+        """
+        env = self._make_env_ready()
+        env._no_ball_count = 1  # ball missing → triggers modal check
+
+        with mock.patch.object(
+            env, "_handle_game_state", return_value="perk_picker"
+        ) as mock_hgs:
+            _, _, terminated, _, _ = env.step(_action())
+            # Perk picker is part of normal gameplay — not terminated
+            assert terminated is False
+            mock_hgs.assert_called_once()
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_skips_handle_game_state_on_first_step_after_reset(self, mock_time):
+        """The first step after reset (ball visible) should NOT call
+        _handle_game_state — no unnecessary Selenium overhead.
+        """
+        env = self._make_env_ready()
+        # Fresh after reset: _no_ball_count == 0, _step_count == 0
+        assert env._no_ball_count == 0
+        assert env._step_count == 0
+
+        with mock.patch.object(env, "_handle_game_state") as mock_hgs:
+            env.step(_action())
+            mock_hgs.assert_not_called()
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_calls_handle_game_state_at_threshold_boundary(self, mock_time):
+        """step() should call _handle_game_state when _no_ball_count
+        is exactly 1 (just crossed from 0).
+        """
+        env = self._make_env_ready()
+        env._no_ball_count = 1  # exactly at boundary
+
+        with mock.patch.object(
+            env, "_handle_game_state", return_value="gameplay"
+        ) as mock_hgs:
+            env.step(_action())
+            mock_hgs.assert_called_once()
+
+    @mock.patch("src.env.breakout71_env.time")
+    def test_step_consecutive_ball_visible_frames_never_check_modals(self, mock_time):
+        """Multiple consecutive steps with ball visible should never
+        call _handle_game_state.
+        """
+        env = self._make_env_ready()
+        # Detector always returns ball detected
+        assert env._no_ball_count == 0
+
+        with mock.patch.object(env, "_handle_game_state") as mock_hgs:
+            for _ in range(5):
+                env.step(_action())
+            mock_hgs.assert_not_called()
