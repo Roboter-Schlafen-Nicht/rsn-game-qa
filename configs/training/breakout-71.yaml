@@ -33,8 +33,9 @@ imgsz: 640
 batch: 16
 amp: false   # disabled for Intel XPU compatibility
 
-# Device selection: "cpu" is fastest for this model on current hardware
-device: cpu
+# Device selection: "auto" tries xpu > cuda > cpu.
+# Override with "cpu", "cuda", or "xpu" to force a specific device.
+device: auto
 
 # Output directory for trained weights (relative to project root)
 output_dir: weights/breakout71

@@ -55,7 +55,7 @@ class TestLoadTrainingConfig:
         """Config includes a device field."""
         cfg = load_training_config("breakout-71")
         assert "device" in cfg
-        assert cfg["device"] == "cpu"
+        assert cfg["device"] == "auto"
 
     def test_config_has_validation_thresholds(self):
         """Config includes mAP validation thresholds."""

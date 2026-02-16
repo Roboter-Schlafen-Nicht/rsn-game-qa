@@ -71,6 +71,8 @@ def load_training_config(config_name: str) -> dict:
 def resolve_device(requested: str = "auto") -> str:
     """Resolve the best available compute device.
 
+    Delegates to :func:`src.perception.yolo_detector.resolve_device`.
+
     Parameters
     ----------
     requested : str
@@ -82,16 +84,9 @@ def resolve_device(requested: str = "auto") -> str:
     str
         Device string suitable for Ultralytics ``model.train(device=...)``.
     """
-    if requested != "auto":
-        return requested
+    from src.perception.yolo_detector import resolve_device as _resolve
 
-    import torch
-
-    if hasattr(torch, "xpu") and torch.xpu.is_available():
-        return "xpu"
-    if torch.cuda.is_available():
-        return "cuda"
-    return "cpu"
+    return _resolve(requested)
 
 
 def _patch_ultralytics_xpu() -> None:

@@ -25,6 +25,35 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def resolve_device(requested: str = "auto") -> str:
+    """Resolve the best available compute device for inference.
+
+    Parameters
+    ----------
+    requested : str
+        ``"auto"`` (try xpu > cuda > cpu), ``"xpu"``, ``"cuda"``,
+        or ``"cpu"``.
+
+    Returns
+    -------
+    str
+        Device string suitable for ``YoloDetector(device=...)``.
+    """
+    if requested != "auto":
+        return requested
+
+    try:
+        import torch
+
+        if hasattr(torch, "xpu") and torch.xpu.is_available():
+            return "xpu"
+        if torch.cuda.is_available():
+            return "cuda"
+    except ImportError:
+        pass
+    return "cpu"
+
+
 class YoloDetector:
     """Runs YOLOv8 inference on game frames and returns structured detections.
 

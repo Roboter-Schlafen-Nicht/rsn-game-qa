@@ -758,7 +758,7 @@ class TestTrainRLCLI:
         assert args.lr == 3e-4
         assert args.clip_range == 0.2
         assert args.ent_coef == 0.01
-        assert args.device == "cpu"
+        assert args.device == "auto"
 
     def test_custom_ppo_args(self):
         """Custom PPO hyperparameters are parsed."""
