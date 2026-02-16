@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "es2017",
+    "rootDir": "../breakout71-testbed/src",
+    "strict": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "jsx": "react",
+    "moduleResolution": "node",
+    "noEmit": true,
+    "allowJs": true
+  },
+  "include": ["../breakout71-testbed/src/**/*.ts", "../breakout71-testbed/src/**/*.tsx"],
+  "exclude": ["../breakout71-testbed/src/**/*.test.ts", "../breakout71-testbed/node_modules"]
+}

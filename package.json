@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "description": "TypeDoc tooling for Breakout 71 testbed documentation",
+  "scripts": {
+    "docs:testbed": "typedoc"
+  },
+  "devDependencies": {
+    "typedoc": "^0.28.0",
+    "typescript": "~5.8.0"
+  }
+}

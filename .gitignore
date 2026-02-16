@@ -17,3 +17,5 @@ output/
 .coverage
 nul
 weights/
+node_modules/
+package-lock.json
