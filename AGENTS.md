@@ -312,7 +312,7 @@ src/
   capture/        # DONE — BitBlt window capture, wincam fast capture, pydirectinput input (37 tests)
   perception/     # DONE — YoloDetector, breakout_capture (41 tests)
   oracles/        # DONE — 12 oracles with on_step detection (132 tests)
-  env/            # DONE — Breakout71Env gymnasium wrapper (137 tests)
+  env/            # DONE — Breakout71Env gymnasium wrapper (146 tests)
   orchestrator/   # DONE — FrameCollector, SessionRunner (55 tests)
 configs/
   games/                  # Per-game loader configs (breakout-71.yaml)
@@ -357,7 +357,16 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 - **BrowserInstance `_SUPPORTED_BROWSERS`** — Uses `"edge"` not `"msedge"`.
 - **Validation runs** — Non-headless: 990 steps, 3 episodes, 32 frames, ~5.5 FPS. Headless: 316 steps, 10 frames, ~2.3 FPS.
 
-## What's Done (sessions 1-22)
+### Modal Check Throttling & Episode Boundary Fix (sessions 23-24)
+
+- **Episode boundary bug** — `step()` called `_handle_game_state()` which dismissed game-over modals before frame capture. Multiple game lives merged into one infinite episode. Fixed: `step()` passes `dismiss_game_over=False`, `reset()` passes `True`.
+- **Terminal penalty for modal-occluded frames** — Game-over early-return uses fixed `-5.01` instead of computing reward from YOLO detections (which see modal overlay, not game state).
+- **Modal check throttling** — Only check for modals when `_no_ball_count > 0` (ball already missing). Saves ~100-150ms Selenium HTTP round-trip per step during normal gameplay.
+- **Late check on 0→1 ball-miss transition** — On the frame the ball first disappears, do an immediate modal check. Catches game-over modals appearing in the same frame the ball vanishes, preventing spurious positive rewards from modal-occluded brick-delta.
+- **Pipeline timing breakdown** — Capture 3.3ms (wincam) + YOLO 13.9ms (OpenVINO GPU.0) + Input 0.4ms (pydirectinput) = ~18ms/frame = 55.5 FPS raw pipeline. SB3 PPO overhead reduces to ~8-10 FPS.
+- **TDD convention** — Required for `src/env/`, `src/orchestrator/`, and behavioral contract modules. Write test names as specs first, fill bodies (red), implement (green), refactor.
+
+## What's Done (sessions 1-24)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -382,8 +391,9 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 21. **Session 21** — OpenVINO inference acceleration + wincam fast capture: `.pt` → OpenVINO IR export script, auto device routing (`intel:GPU.0`), warmup fix, `WinCamCapture` via Direct3D11 (<1ms async reads), `pydirectinput.PAUSE=0` (46ms→0.3ms), removed `step()` throttle, 52 FPS end-to-end. 2 Copilot review rounds (10 comments addressed). 45 new tests (PR #45)
 22. **Session 22** — RL training features: mute control, headless mode, portrait/landscape orientation, rich structured logging (TrainingLogger), max-time clean shutdown, continuous action space validated end-to-end. Copilot review: 7 fixes. 7 new tests (PR #47)
 23. **Session 23** — Episode boundary bug fix + TDD convention: game-over modals no longer silently dismissed mid-episode (merged multiple games into one infinite episode), fixed terminal penalty for modal-occluded frames, TDD convention formalized in AGENTS.md. Copilot review: 4 fixes (PR #51)
+24. **Session 24** — Modal check throttling: skip Selenium HTTP round-trip when ball visible (~100-150ms saved per step), immediate late check on 0→1 ball-miss transition to prevent spurious rewards, deduplicated `_make_env_ready()` test helper, live validation (55 FPS pipeline, ~8 FPS with SB3 overhead), alpha release v0.1.0a1, post-merge admin (PR #49, #51, #52, #53)
 
-Total: **600 tests** (576 unit + 24 integration), 7 subsystems + training pipeline complete.
+Total: **609 tests** (585 unit + 24 integration), 7 subsystems + training pipeline complete.
 
 ## What's Next
 
