@@ -159,6 +159,17 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **Phase 2 paddle tracking accuracy** — Edge positions (0.20, 0.80) have ~0.11 error due to game zone clamping; center positions (0.35, 0.50, 0.65) have near-perfect accuracy (~0.006 error).
 - **Copilot review: 7 fixes** — Inverted `modal_recoveries` logic (phases 3 & 4), pixel clamping in `_norm_to_screen`, retry resilience in `_ensure_gameplay`, double YOLO inference in phase 2, docstring accuracy (FPS threshold, output path).
 
+### XPU Auto-Detection & OpenVINO Research (session 20)
+
+- **`resolve_device()` canonical implementation** — Module-level function in `src/perception/yolo_detector.py` (lines 28-54). Priority: xpu > cuda > cpu. `"auto"` triggers detection; explicit strings pass through unchanged.
+- **`YoloDetector` default changed to `"auto"`** — Copilot review caught `device="xpu"` hard-coded default; changed to `device="auto"` with `resolve_device()` called inside `__init__`.
+- **All scripts/configs updated** — `debug_pixel_loop.py`, `train_rl.py`, `train_model.py`, `configs/training/breakout-71.yaml` all default to `"auto"` instead of `"cpu"`.
+- **SB3 PPO doesn't support XPU** — `train_rl.py` maps `"xpu"` → `"cpu"` for the policy network.
+- **OpenVINO research** — Intel toolkit converting PyTorch/ONNX to optimized IR. Ultralytics benchmarks on Arc A770: YOLO11n 16.29ms (PyTorch) → 4.84ms (OpenVINO FP32) → 3.34ms (INT8). ~5x speedup. Inference-only (no training). `model.export(format="openvino")` then `YOLO("model_openvino_model/")`. No XPU monkey patches needed for inference.
+- **DXGI Desktop Duplication research** — DXcam library: 238 FPS at 2560x1440 vs PrintWindow ~30 FPS. Captures entire monitor (not window-specific). Returns numpy arrays directly. Requires real GPU/display for CI.
+- **Combined projection** — OpenVINO + DXcam together: ~10-15ms/frame (60-100 FPS) vs current ~140ms/frame (6-8 FPS).
+- **XPU vs CPU benchmark** — Intel Arc A770: XPU 6-8 FPS vs CPU 5 FPS (+30-60% improvement, but OpenVINO will be much better).
+
 ## Project Structure
 
 ```
@@ -200,7 +211,7 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-19)
+## What's Done (sessions 1-20)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -221,6 +232,7 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 17. **Session 17** — Deep source code analysis & game spec: read all 11 critical testbed source files, TypeDoc generation (PR #34), comprehensive game technical specification covering ~80 GameState fields, 63 perks, physics, scoring, combo, level progression, Selenium integration points (PR #35)
 18. **Session 18** — Player behavior specification: abstracted technical spec into player-perspective behavioral contracts (80+ B-IDs), covering observable states, actions, cause-effect behaviors, and RL training implications (PR #37)
 19. **Session 19** — Pixel-based debug loop: 4-phase validation script (capture→YOLO→pydirectinput→modal handling), validated live — Phase 1 (static detection), Phase 2 (paddle tracking, max error 0.119), Phase 3 (100% ball detection), Phase 4 (gameplay loop, FPS=4 on CPU YOLO). Copilot review: 7 fixes (inverted modal logic, pixel clamping, retry resilience, double inference, docstrings) (PR #39)
+20. **Session 20** — XPU auto-detection: `resolve_device()` function (xpu>cuda>cpu priority), all scripts/configs default to `"auto"`, OpenVINO & DXGI Desktop Duplication research (PR #43)
 
 Total: **510 tests** (486 unit + 24 integration), 7 subsystems + training pipeline complete.
 
