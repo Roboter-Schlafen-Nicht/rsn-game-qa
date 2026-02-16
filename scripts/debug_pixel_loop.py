@@ -615,6 +615,10 @@ def phase4_gameplay_loop(
     """
     import pydirectinput
 
+    # Disable pydirectinput's built-in 100ms sleep after each call.
+    # Default PAUSE=0.1 is a safety feature but kills FPS in tight loops.
+    pydirectinput.PAUSE = 0
+
     logger.info("=== Phase 4: Gameplay Loop (%.0fs) ===", duration)
 
     target_fps = 60
@@ -628,6 +632,13 @@ def phase4_gameplay_loop(
     modal_recoveries = 0
     last_frame: np.ndarray | None = None
 
+    # Per-stage timing accumulators
+    t_capture_total = 0.0
+    t_infer_total = 0.0
+    t_modal_total = 0.0
+    t_input_total = 0.0
+    t_save_total = 0.0
+
     start = time.perf_counter()
     last_report = start
     last_frame_time = start
@@ -639,6 +650,7 @@ def phase4_gameplay_loop(
         loop_start = time.perf_counter()
 
         # Handle modals periodically (Selenium HTTP round-trip is ~100ms)
+        t_modal_start = time.perf_counter()
         if driver is not None:
             if loop_start - last_modal_check >= modal_check_interval:
                 last_modal_check = loop_start
@@ -653,11 +665,20 @@ def phase4_gameplay_loop(
                         "handling; aborting gameplay loop."
                     )
                     break
+        t_modal_total += time.perf_counter() - t_modal_start
 
-        # Capture + detect
+        # Capture
+        t_cap_start = time.perf_counter()
         frame = cap.capture_frame()
+        t_capture_total += time.perf_counter() - t_cap_start
+
         last_frame = frame
+
+        # YOLO inference
+        t_inf_start = time.perf_counter()
         game_state = detector.detect_to_game_state(frame, cap.width, cap.height)
+        t_infer_total += time.perf_counter() - t_inf_start
+
         frame_count += 1
 
         # Track FPS
@@ -679,6 +700,7 @@ def phase4_gameplay_loop(
             paddle_detected += 1
 
         # -- Control: move paddle toward ball X -------------------------
+        t_input_start = time.perf_counter()
         if ball is not None:
             ball_cx = ball[0]  # normalised X of ball centre
             # Move mouse to ball's X, paddle's Y (near bottom)
@@ -694,6 +716,7 @@ def phase4_gameplay_loop(
         elif paddle is not None:
             # No ball detected — hold paddle position (do nothing)
             pass
+        t_input_total += time.perf_counter() - t_input_start
 
         # -- Report every 5 seconds ------------------------------------
         if now - last_report >= 5.0:
@@ -714,12 +737,14 @@ def phase4_gameplay_loop(
             last_report = now
 
         # -- Save periodic annotated frames ----------------------------
+        t_save_start = time.perf_counter()
         if frame_count % (target_fps * 5) == 0:
             raw_detections = detector.detect(frame)
             annotated = _draw_detections(frame, raw_detections)
             save_idx = frame_count // (target_fps * 5)
             ann_path = out_dir / f"phase4_gameplay_{save_idx:03d}.png"
             cv2.imwrite(str(ann_path), annotated)
+        t_save_total += time.perf_counter() - t_save_start
 
         # Rate limit
         elapsed_frame = time.perf_counter() - loop_start
@@ -747,6 +772,48 @@ def phase4_gameplay_loop(
         paddle_rate * 100,
     )
     logger.info("  Modal recoveries: %d", modal_recoveries)
+
+    # Per-stage timing breakdown
+    if frame_count > 0:
+        logger.info("--- Timing Breakdown (avg per frame) ---")
+        logger.info(
+            "  Capture        : %6.1fms  (%4.1f%%)",
+            t_capture_total / frame_count * 1000,
+            t_capture_total / total_elapsed * 100,
+        )
+        logger.info(
+            "  YOLO inference : %6.1fms  (%4.1f%%)",
+            t_infer_total / frame_count * 1000,
+            t_infer_total / total_elapsed * 100,
+        )
+        logger.info(
+            "  Modal handling : %6.1fms  (%4.1f%%)",
+            t_modal_total / frame_count * 1000,
+            t_modal_total / total_elapsed * 100,
+        )
+        logger.info(
+            "  Input control  : %6.1fms  (%4.1f%%)",
+            t_input_total / frame_count * 1000,
+            t_input_total / total_elapsed * 100,
+        )
+        logger.info(
+            "  Frame save     : %6.1fms  (%4.1f%%)",
+            t_save_total / frame_count * 1000,
+            t_save_total / total_elapsed * 100,
+        )
+        t_other = total_elapsed - (
+            t_capture_total
+            + t_infer_total
+            + t_modal_total
+            + t_input_total
+            + t_save_total
+        )
+        logger.info(
+            "  Other/overhead : %6.1fms  (%4.1f%%)",
+            t_other / frame_count * 1000,
+            t_other / total_elapsed * 100,
+        )
+
     if brick_counts:
         logger.info(
             "  Bricks         : start=%d  end=%d  delta=%d",
@@ -874,12 +941,32 @@ def main() -> int:
         browser=args.browser,
     )
 
-    # ── Set up Win32 capture ─────────────────────────────────────────
-    from src.capture import WindowCapture
-
+    # ── Set up screen capture ──────────────────────────────────────────
+    # Prefer wincam (Direct3D11, <1ms per frame) over PrintWindow (~25ms).
     window_title = config.window_title or "Breakout"
-    cap = WindowCapture(window_title=window_title)
-    logger.info("Window: HWND=%s, %dx%d", cap.hwnd, cap.width, cap.height)
+    try:
+        from src.capture.wincam_capture import WinCamCapture
+
+        cap = WinCamCapture(window_title=window_title, fps=60)
+        logger.info(
+            "Capture: WinCamCapture (Direct3D11)  HWND=%s, %dx%d",
+            cap.hwnd,
+            cap.width,
+            cap.height,
+        )
+    except (ImportError, RuntimeError, OSError) as exc:
+        logger.warning(
+            "WinCamCapture unavailable (%s), falling back to PrintWindow", exc
+        )
+        from src.capture import WindowCapture
+
+        cap = WindowCapture(window_title=window_title)
+        logger.info(
+            "Capture: WindowCapture (PrintWindow)  HWND=%s, %dx%d",
+            cap.hwnd,
+            cap.width,
+            cap.height,
+        )
 
     # Get client area origin in screen coordinates
     client_origin = _get_client_origin(cap.hwnd)
@@ -900,6 +987,10 @@ def main() -> int:
     # NOTE: We do NOT click yet — phases 1-2 run with ball stuck to
     # paddle (pre-start).  Click happens before phase 3.
     import pydirectinput
+
+    # Disable the built-in 100ms sleep after every pydirectinput call.
+    # The default PAUSE=0.1 caps the control loop to ~10 FPS.
+    pydirectinput.PAUSE = 0
 
     # ── Run phases ───────────────────────────────────────────────────
     results: dict[str, bool] = {}

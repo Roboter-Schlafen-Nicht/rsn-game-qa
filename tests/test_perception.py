@@ -31,7 +31,12 @@ from unittest import mock
 import numpy as np
 import pytest
 
-from src.perception.yolo_detector import YoloDetector, _ULTRALYTICS_AVAILABLE
+from src.perception.yolo_detector import (
+    YoloDetector,
+    _ULTRALYTICS_AVAILABLE,
+    _find_openvino_model,
+    _resolve_openvino_device,
+)
 
 pytestmark = pytest.mark.skipif(
     not _ULTRALYTICS_AVAILABLE,
@@ -661,3 +666,298 @@ class TestModuleImports:
         assert "YoloDetector" in mod.__all__
         assert "grab_frame" in mod.__all__
         assert "detect_objects" in mod.__all__
+        assert "_find_openvino_model" in mod.__all__
+
+
+# ── _find_openvino_model ────────────────────────────────────────────
+
+
+class TestFindOpenvinoModel:
+    """Tests for _find_openvino_model helper."""
+
+    def test_returns_none_when_dir_missing(self, tmp_path):
+        """Returns None when no *_openvino_model/ directory exists."""
+        weights = tmp_path / "best.pt"
+        weights.touch()
+        assert _find_openvino_model(weights) is None
+
+    def test_returns_none_when_dir_empty(self, tmp_path):
+        """Returns None when openvino dir exists but has no .xml files."""
+        weights = tmp_path / "best.pt"
+        weights.touch()
+        ov_dir = tmp_path / "best_openvino_model"
+        ov_dir.mkdir()
+        assert _find_openvino_model(weights) is None
+
+    def test_returns_dir_when_xml_exists(self, tmp_path):
+        """Returns the openvino dir path when it contains .xml files."""
+        weights = tmp_path / "best.pt"
+        weights.touch()
+        ov_dir = tmp_path / "best_openvino_model"
+        ov_dir.mkdir()
+        (ov_dir / "best.xml").touch()
+        (ov_dir / "best.bin").touch()
+        result = _find_openvino_model(weights)
+        assert result == ov_dir
+
+    def test_stem_based_naming(self, tmp_path):
+        """Uses the weights file stem to find the openvino directory."""
+        weights = tmp_path / "mymodel.pt"
+        weights.touch()
+        ov_dir = tmp_path / "mymodel_openvino_model"
+        ov_dir.mkdir()
+        (ov_dir / "mymodel.xml").touch()
+        assert _find_openvino_model(weights) == ov_dir
+
+
+# ── _resolve_openvino_device ────────────────────────────────────────
+
+
+class TestResolveOpenvinoDevice:
+    """Tests for _resolve_openvino_device helper."""
+
+    def test_cpu_returns_intel_cpu(self):
+        """CPU device maps to 'intel:CPU'."""
+        assert _resolve_openvino_device("cpu") == "intel:CPU"
+
+    def test_auto_returns_intel_auto(self):
+        """Auto device maps to 'intel:AUTO'."""
+        assert _resolve_openvino_device("auto") == "intel:AUTO"
+
+    def test_unknown_device_returns_intel_auto(self):
+        """Unknown device falls back to 'intel:AUTO'."""
+        assert _resolve_openvino_device("cuda") == "intel:AUTO"
+
+    def test_xpu_with_gpu0_available(self):
+        """XPU maps to 'intel:GPU.0' when GPU.0 is in available_devices."""
+        mock_core = mock.MagicMock()
+        mock_core.available_devices = ["CPU", "GPU.0", "GPU.1"]
+
+        mock_ov = mock.MagicMock()
+        mock_ov.Core.return_value = mock_core
+
+        with mock.patch.dict(sys.modules, {"openvino": mock_ov}):
+            result = _resolve_openvino_device("xpu")
+
+        assert result == "intel:GPU.0"
+
+    def test_xpu_with_plain_gpu_available(self):
+        """XPU maps to 'intel:GPU' when plain 'GPU' is in available_devices."""
+        mock_core = mock.MagicMock()
+        mock_core.available_devices = ["CPU", "GPU"]
+
+        mock_ov = mock.MagicMock()
+        mock_ov.Core.return_value = mock_core
+
+        with mock.patch.dict(sys.modules, {"openvino": mock_ov}):
+            result = _resolve_openvino_device("xpu")
+
+        assert result == "intel:GPU"
+
+    def test_xpu_without_openvino_installed(self):
+        """XPU falls back to 'intel:GPU' when openvino is not installed."""
+        with mock.patch.dict(sys.modules, {"openvino": None}):
+            # Importing None from sys.modules raises ImportError
+            result = _resolve_openvino_device("xpu")
+
+        assert result == "intel:GPU"
+
+    def test_xpu_openvino_query_fails(self):
+        """XPU falls back to 'intel:GPU' when ov.Core() raises."""
+        mock_ov = mock.MagicMock()
+        mock_ov.Core.side_effect = RuntimeError("OpenVINO init failed")
+
+        with mock.patch.dict(sys.modules, {"openvino": mock_ov}):
+            result = _resolve_openvino_device("xpu")
+
+        assert result == "intel:GPU"
+
+    def test_xpu_no_gpu_in_available_devices(self):
+        """XPU falls back to 'intel:GPU' when no GPU device is available."""
+        mock_core = mock.MagicMock()
+        mock_core.available_devices = ["CPU"]
+
+        mock_ov = mock.MagicMock()
+        mock_ov.Core.return_value = mock_core
+
+        with mock.patch.dict(sys.modules, {"openvino": mock_ov}):
+            result = _resolve_openvino_device("xpu")
+
+        assert result == "intel:GPU"
+
+
+# ── OpenVINO model selection in load() ──────────────────────────────
+
+
+class TestOpenvinoModelSelection:
+    """Tests for automatic OpenVINO model selection in load()."""
+
+    @staticmethod
+    def _fresh_import():
+        """Return (module, YoloDetector) from the live sys.modules entry."""
+        import src.perception.yolo_detector as yd
+
+        return yd, yd.YoloDetector
+
+    def _setup_openvino_dir(self, tmp_path):
+        """Create a weights file and an openvino model dir with .xml."""
+        weights = tmp_path / "best.pt"
+        weights.touch()
+        ov_dir = tmp_path / "best_openvino_model"
+        ov_dir.mkdir()
+        (ov_dir / "best.xml").touch()
+        (ov_dir / "best.bin").touch()
+        return weights, ov_dir
+
+    def test_cpu_device_prefers_openvino(self, tmp_path):
+        """On CPU, load() uses OpenVINO model when available."""
+        yd, YD = self._fresh_import()
+        weights, ov_dir = self._setup_openvino_dir(tmp_path)
+
+        mock_model = mock.MagicMock()
+        mock_model.names = {0: "paddle", 1: "ball"}
+
+        with mock.patch.object(yd, "YOLO", return_value=mock_model) as mock_cls:
+            detector = YD(weights_path=weights, device="cpu")
+            detector.load()
+
+            # Should load the OpenVINO directory, not the .pt file
+            mock_cls.assert_called_once_with(str(ov_dir))
+            assert detector.is_loaded()
+            assert detector._using_openvino is True
+            assert detector._ov_device == "intel:CPU"
+            # Should NOT call model.to() for OpenVINO models
+            mock_model.to.assert_not_called()
+
+    def test_auto_device_prefers_openvino(self, tmp_path):
+        """With auto device resolving to cpu, load() uses OpenVINO."""
+        yd, YD = self._fresh_import()
+        weights, ov_dir = self._setup_openvino_dir(tmp_path)
+
+        mock_model = mock.MagicMock()
+        mock_model.names = {}
+
+        with (
+            mock.patch.object(yd, "YOLO", return_value=mock_model) as mock_cls,
+            mock.patch.object(yd, "resolve_device", return_value="cpu"),
+        ):
+            detector = YD(weights_path=weights, device="auto")
+            detector.load()
+
+            mock_cls.assert_called_once_with(str(ov_dir))
+            assert detector._using_openvino is True
+            assert detector._ov_device == "intel:CPU"
+
+    def test_cuda_device_uses_pytorch(self, tmp_path):
+        """On CUDA, load() uses PyTorch .pt even when OpenVINO exists."""
+        yd, YD = self._fresh_import()
+        weights, _ov_dir = self._setup_openvino_dir(tmp_path)
+
+        mock_model = mock.MagicMock()
+        mock_model.names = {}
+
+        with mock.patch.object(yd, "YOLO", return_value=mock_model) as mock_cls:
+            detector = YD(weights_path=weights, device="cuda")
+            detector.load()
+
+            # Should load the .pt file directly
+            mock_cls.assert_called_once_with(str(weights))
+            assert detector._using_openvino is False
+            mock_model.to.assert_called_with("cuda")
+
+    def test_cpu_no_openvino_dir_uses_pytorch(self, tmp_path):
+        """On CPU without OpenVINO dir, load() falls back to PyTorch."""
+        yd, YD = self._fresh_import()
+        weights = tmp_path / "best.pt"
+        weights.touch()
+        # No openvino dir created
+
+        mock_model = mock.MagicMock()
+        mock_model.names = {}
+
+        with mock.patch.object(yd, "YOLO", return_value=mock_model) as mock_cls:
+            detector = YD(weights_path=weights, device="cpu")
+            detector.load()
+
+            mock_cls.assert_called_once_with(str(weights))
+            assert detector._using_openvino is False
+            mock_model.to.assert_called_with("cpu")
+
+    def test_xpu_device_prefers_openvino(self, tmp_path):
+        """On XPU, load() uses OpenVINO model when available."""
+        yd, YD = self._fresh_import()
+        weights, ov_dir = self._setup_openvino_dir(tmp_path)
+
+        mock_model = mock.MagicMock()
+        mock_model.names = {}
+
+        # Mock openvino to report GPU.0 as available
+        mock_core = mock.MagicMock()
+        mock_core.available_devices = ["CPU", "GPU.0", "GPU.1"]
+        mock_ov = mock.MagicMock()
+        mock_ov.Core.return_value = mock_core
+
+        with (
+            mock.patch.object(yd, "YOLO", return_value=mock_model) as mock_cls,
+            mock.patch.dict(sys.modules, {"openvino": mock_ov}),
+        ):
+            detector = YD(weights_path=weights, device="xpu")
+            detector.load()
+
+            mock_cls.assert_called_once_with(str(ov_dir))
+            assert detector._using_openvino is True
+            assert detector._ov_device == "intel:GPU.0"
+
+    def test_openvino_model_reads_class_names(self, tmp_path):
+        """OpenVINO model still reads class names from model metadata."""
+        yd, YD = self._fresh_import()
+        weights, _ov_dir = self._setup_openvino_dir(tmp_path)
+
+        mock_model = mock.MagicMock()
+        mock_model.names = {0: "paddle", 1: "ball", 2: "brick"}
+
+        with mock.patch.object(yd, "YOLO", return_value=mock_model):
+            detector = YD(weights_path=weights, device="cpu")
+            detector.load()
+
+            assert detector.class_names == ["paddle", "ball", "brick"]
+
+    def test_detect_passes_ov_device_kwarg(self, tmp_path):
+        """detect() passes device kwarg when using OpenVINO model."""
+        yd, YD = self._fresh_import()
+        weights, _ov_dir = self._setup_openvino_dir(tmp_path)
+
+        mock_model = mock.MagicMock()
+        mock_model.names = {}
+        mock_model.return_value = _make_mock_results([])
+
+        with mock.patch.object(yd, "YOLO", return_value=mock_model):
+            detector = YD(weights_path=weights, device="cpu")
+            detector.load()
+
+            frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            detector.detect(frame)
+
+            call_kwargs = mock_model.call_args.kwargs
+            assert call_kwargs["device"] == "intel:CPU"
+
+    def test_detect_no_device_kwarg_for_pytorch(self, tmp_path):
+        """detect() does NOT pass device kwarg for PyTorch model."""
+        yd, YD = self._fresh_import()
+        weights = tmp_path / "best.pt"
+        weights.touch()
+        # No openvino dir
+
+        mock_model = mock.MagicMock()
+        mock_model.names = {}
+        mock_model.return_value = _make_mock_results([])
+
+        with mock.patch.object(yd, "YOLO", return_value=mock_model):
+            detector = YD(weights_path=weights, device="cpu")
+            detector.load()
+
+            frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            detector.detect(frame)
+
+            call_kwargs = mock_model.call_args.kwargs
+            assert "device" not in call_kwargs

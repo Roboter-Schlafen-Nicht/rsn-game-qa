@@ -13,6 +13,11 @@ from typing import Optional
 try:
     import pydirectinput
 
+    # Disable the built-in 100ms sleep after every pydirectinput call.
+    # The default PAUSE=0.1 is a safety feature to prevent runaway input,
+    # but it caps the control loop to ~10 FPS — unacceptable for RL.
+    pydirectinput.PAUSE = 0
+
     _PYDIRECTINPUT_AVAILABLE = True
 except ImportError:
     _PYDIRECTINPUT_AVAILABLE = False
