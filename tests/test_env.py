@@ -9,7 +9,7 @@ Covers:
   velocity computation, clipping
 - Reward computation (_compute_reward) with brick delta, time penalty,
   terminal rewards, score_delta placeholder
-- Action application (_apply_action) via Selenium
+- Action application (_apply_action) via JS puckPosition injection
 - Game state handling (_handle_game_state, _click_canvas)
 - Oracle execution (_run_oracles)
 - Full reset() lifecycle
@@ -75,6 +75,11 @@ def _frame(h=480, w=640, color=(128, 128, 128)):
     return frame
 
 
+def _action(value=0.0):
+    """Create a continuous action array for the env."""
+    return np.array([value], dtype=np.float32)
+
+
 def _mock_driver():
     """Create a mock Selenium WebDriver with canvas element."""
     driver = mock.MagicMock()
@@ -95,7 +100,7 @@ class TestConstruction:
     def test_env_construction(self):
         """Breakout71Env can be constructed with default args."""
         env = Breakout71Env()
-        assert env.action_space.n == 3
+        assert env.action_space.shape == (1,)
         assert env.observation_space.shape == (8,)
 
     def test_observation_space_shape(self):
@@ -113,10 +118,12 @@ class TestConstruction:
         assert env.observation_space.low[6] == 0.0  # coins_norm low
         assert env.observation_space.high[7] == 1.0  # score_norm high
 
-    def test_action_space_discrete_3(self):
-        """Action space should be Discrete(3) with no FIRE action."""
+    def test_action_space_continuous_box(self):
+        """Action space should be continuous Box(-1, 1, shape=(1,))."""
         env = Breakout71Env()
-        assert env.action_space.n == 3  # NOOP, LEFT, RIGHT only
+        assert env.action_space.shape == (1,)
+        assert float(env.action_space.low[0]) == -1.0
+        assert float(env.action_space.high[0]) == 1.0
 
     def test_custom_parameters(self):
         """Constructor should accept and store custom parameters."""
@@ -550,76 +557,219 @@ class TestComputeReward:
 
 
 class TestApplyAction:
-    """Tests for _apply_action via Selenium mouse control."""
+    """Tests for _apply_action via JS puckPosition injection."""
 
-    def test_noop_action_no_movement(self):
-        """NOOP action should not trigger any ActionChains call."""
+    def test_centre_action_sets_puck_position(self):
+        """Action 0.0 (centre) should set puckPosition to zone midpoint."""
         driver, canvas = _mock_driver()
         env = Breakout71Env(driver=driver)
         env._game_canvas = canvas
         env._canvas_dims = (0, 0, 1280, 1024)
+        env._game_zone_left = 320.0
+        env._game_zone_right = 960.0
 
-        with mock.patch(
-            "selenium.webdriver.common.action_chains.ActionChains"
-        ) as mock_ac_cls:
-            env._apply_action(0)
-            mock_ac_cls.assert_not_called()
+        env._apply_action(np.array([0.0], dtype=np.float32))
 
-    def test_left_action_moves_mouse(self):
-        """LEFT action should move mouse to the left via ActionChains."""
+        driver.execute_script.assert_called_once()
+        call_args = driver.execute_script.call_args
+        pixel_x = call_args[0][1]
+        assert abs(pixel_x - 640.0) < 1e-6  # midpoint
+
+    def test_left_edge_action(self):
+        """Action -1.0 should set puckPosition to game zone left edge."""
         driver, canvas = _mock_driver()
         env = Breakout71Env(driver=driver)
         env._game_canvas = canvas
         env._canvas_dims = (0, 0, 1280, 1024)
+        env._game_zone_left = 320.0
+        env._game_zone_right = 960.0
 
-        with mock.patch(
-            "selenium.webdriver.common.action_chains.ActionChains"
-        ) as mock_ac_cls:
-            mock_chain = mock.MagicMock()
-            mock_ac_cls.return_value = mock_chain
-            mock_chain.move_to_element_with_offset.return_value = mock_chain
+        env._apply_action(np.array([-1.0], dtype=np.float32))
 
-            env._apply_action(1)  # LEFT
+        call_args = driver.execute_script.call_args
+        pixel_x = call_args[0][1]
+        assert abs(pixel_x - 320.0) < 1e-6
 
-            mock_ac_cls.assert_called_once_with(driver)
-            mock_chain.move_to_element_with_offset.assert_called_once()
-            # Verify x_offset is negative (moving left)
-            call_args = mock_chain.move_to_element_with_offset.call_args
-            x_offset = call_args[0][1]
-            assert x_offset < 0
-            mock_chain.perform.assert_called_once()
-
-    def test_right_action_moves_mouse(self):
-        """RIGHT action should move mouse to the right via ActionChains."""
+    def test_right_edge_action(self):
+        """Action +1.0 should set puckPosition to game zone right edge."""
         driver, canvas = _mock_driver()
         env = Breakout71Env(driver=driver)
         env._game_canvas = canvas
         env._canvas_dims = (0, 0, 1280, 1024)
+        env._game_zone_left = 320.0
+        env._game_zone_right = 960.0
 
-        with mock.patch(
-            "selenium.webdriver.common.action_chains.ActionChains"
-        ) as mock_ac_cls:
-            mock_chain = mock.MagicMock()
-            mock_ac_cls.return_value = mock_chain
-            mock_chain.move_to_element_with_offset.return_value = mock_chain
+        env._apply_action(np.array([1.0], dtype=np.float32))
 
-            env._apply_action(2)  # RIGHT
+        call_args = driver.execute_script.call_args
+        pixel_x = call_args[0][1]
+        assert abs(pixel_x - 960.0) < 1e-6
 
-            mock_ac_cls.assert_called_once_with(driver)
-            mock_chain.move_to_element_with_offset.assert_called_once()
-            # Verify x_offset is positive (moving right)
-            call_args = mock_chain.move_to_element_with_offset.call_args
-            x_offset = call_args[0][1]
-            assert x_offset > 0
-            mock_chain.perform.assert_called_once()
+    def test_action_clamped_to_bounds(self):
+        """Action values outside [-1, 1] should be clipped."""
+        driver, canvas = _mock_driver()
+        env = Breakout71Env(driver=driver)
+        env._game_canvas = canvas
+        env._canvas_dims = (0, 0, 1280, 1024)
+        env._game_zone_left = 320.0
+        env._game_zone_right = 960.0
+
+        env._apply_action(np.array([2.0], dtype=np.float32))
+
+        call_args = driver.execute_script.call_args
+        pixel_x = call_args[0][1]
+        # Clipped to +1.0 -> right edge
+        assert abs(pixel_x - 960.0) < 1e-6
+
+    def test_fallback_without_game_zone(self):
+        """Without game zone boundaries, should use canvas-based fallback."""
+        driver, canvas = _mock_driver()
+        env = Breakout71Env(driver=driver)
+        env._game_canvas = canvas
+        env._canvas_dims = (0, 0, 1280, 1024)
+        # _game_zone_left/right are None (not queried)
+
+        env._apply_action(np.array([0.0], dtype=np.float32))
+
+        # Fallback: 25%-75% of canvas = 320-960, centre = 640
+        call_args = driver.execute_script.call_args
+        pixel_x = call_args[0][1]
+        assert abs(pixel_x - 640.0) < 1e-6
 
     def test_no_driver_is_noop(self):
         """Without a driver, _apply_action should be a no-op."""
         env = Breakout71Env()  # no driver
 
         # Should not raise
-        env._apply_action(1)
-        env._apply_action(2)
+        env._apply_action(np.array([0.5], dtype=np.float32))
+        env._apply_action(np.array([-0.5], dtype=np.float32))
+
+    def test_quarter_position(self):
+        """Action -0.5 should map to 25% between left and right edges."""
+        driver, canvas = _mock_driver()
+        env = Breakout71Env(driver=driver)
+        env._game_canvas = canvas
+        env._canvas_dims = (0, 0, 1280, 1024)
+        env._game_zone_left = 320.0
+        env._game_zone_right = 960.0
+
+        env._apply_action(np.array([-0.5], dtype=np.float32))
+
+        call_args = driver.execute_script.call_args
+        pixel_x = call_args[0][1]
+        # -0.5 -> (−0.5 + 1) / 2 = 0.25 -> 320 + 0.25 * 640 = 480
+        assert abs(pixel_x - 480.0) < 1e-6
+
+    def test_action_scalar_input(self):
+        """Scalar action (0-d array or float) is normalised to (1,)."""
+        driver, canvas = _mock_driver()
+        env = Breakout71Env(driver=driver)
+        env._game_zone_left = 320.0
+        env._game_zone_right = 960.0
+
+        # 0-d numpy array
+        env._apply_action(np.float32(0.0))
+        pixel_x = driver.execute_script.call_args[0][1]
+        assert abs(pixel_x - 640.0) < 1e-6
+
+        # Plain Python float
+        driver.execute_script.reset_mock()
+        env._apply_action(0.0)
+        pixel_x = driver.execute_script.call_args[0][1]
+        assert abs(pixel_x - 640.0) < 1e-6
+
+    def test_action_wrong_size_raises(self):
+        """Action with size != 1 should raise ValueError."""
+        driver, canvas = _mock_driver()
+        env = Breakout71Env(driver=driver)
+        env._game_zone_left = 320.0
+        env._game_zone_right = 960.0
+
+        with pytest.raises(ValueError, match="size 1"):
+            env._apply_action(np.array([0.1, 0.2], dtype=np.float32))
+
+
+# -- Game Zone Query -----------------------------------------------------------
+
+
+class TestQueryGameZone:
+    """Tests for _query_game_zone with mocked driver."""
+
+    def test_successful_query_sets_zone(self):
+        """Valid JS result sets _game_zone_left and _game_zone_right."""
+        driver, canvas = _mock_driver()
+        driver.execute_script.return_value = {
+            "left": 350.0,
+            "right": 930.0,
+            "offsetX": 324.0,
+            "gameZoneWidth": 632.0,
+            "puckWidth": 52.0,
+        }
+        env = Breakout71Env(driver=driver)
+
+        env._query_game_zone()
+
+        assert env._game_zone_left == 350.0
+        assert env._game_zone_right == 930.0
+
+    def test_null_result_keeps_existing_values(self):
+        """Null JS result should not overwrite existing zone values."""
+        driver, canvas = _mock_driver()
+        driver.execute_script.return_value = None
+        env = Breakout71Env(driver=driver)
+        env._game_zone_left = 100.0
+        env._game_zone_right = 900.0
+
+        env._query_game_zone()
+
+        assert env._game_zone_left == 100.0
+        assert env._game_zone_right == 900.0
+
+    def test_non_dict_result_keeps_existing_values(self):
+        """Non-dict JS result should not overwrite existing zone values."""
+        driver, canvas = _mock_driver()
+        driver.execute_script.return_value = "unexpected"
+        env = Breakout71Env(driver=driver)
+        env._game_zone_left = 100.0
+        env._game_zone_right = 900.0
+
+        env._query_game_zone()
+
+        assert env._game_zone_left == 100.0
+        assert env._game_zone_right == 900.0
+
+    def test_missing_keys_keeps_existing_values(self):
+        """Dict missing 'left'/'right' should not overwrite zone values."""
+        driver, canvas = _mock_driver()
+        driver.execute_script.return_value = {"offsetX": 324.0}
+        env = Breakout71Env(driver=driver)
+        env._game_zone_left = 100.0
+        env._game_zone_right = 900.0
+
+        env._query_game_zone()
+
+        assert env._game_zone_left == 100.0
+        assert env._game_zone_right == 900.0
+
+    def test_exception_keeps_existing_values(self):
+        """JS exception should not overwrite zone values."""
+        driver, canvas = _mock_driver()
+        driver.execute_script.side_effect = RuntimeError("JS error")
+        env = Breakout71Env(driver=driver)
+        env._game_zone_left = 100.0
+        env._game_zone_right = 900.0
+
+        env._query_game_zone()
+
+        assert env._game_zone_left == 100.0
+        assert env._game_zone_right == 900.0
+
+    def test_no_driver_is_noop(self):
+        """Without a driver, _query_game_zone should be a no-op."""
+        env = Breakout71Env()
+        env._query_game_zone()
+        assert env._game_zone_left is None
+        assert env._game_zone_right is None
 
 
 # -- Game State Handling -------------------------------------------------------
@@ -974,7 +1124,7 @@ class TestStep:
         """step() should return (obs, reward, terminated, truncated, info)."""
         env = self._make_env_ready()
 
-        result = env.step(0)
+        result = env.step(_action())
 
         assert len(result) == 5
         obs, reward, terminated, truncated, info = result
@@ -990,33 +1140,28 @@ class TestStep:
         env = self._make_env_ready()
         assert env._step_count == 0
 
-        env.step(0)
+        env.step(_action())
 
         assert env._step_count == 1
 
     @mock.patch("src.env.breakout71_env.time")
     def test_step_applies_action(self, mock_time):
-        """step() should trigger Selenium mouse action for non-NOOP."""
+        """step() should set puckPosition via JS execution."""
         env = self._make_env_ready()
+        env._game_zone_left = 320.0
+        env._game_zone_right = 960.0
 
-        with mock.patch(
-            "selenium.webdriver.common.action_chains.ActionChains"
-        ) as mock_ac_cls:
-            mock_chain = mock.MagicMock()
-            mock_ac_cls.return_value = mock_chain
-            mock_chain.move_to_element_with_offset.return_value = mock_chain
+        env.step(_action(0.5))  # Move right of centre
 
-            env.step(1)  # LEFT
-
-            mock_ac_cls.assert_called_once()
-            mock_chain.perform.assert_called_once()
+        # execute_script called for puckPosition (and game state)
+        assert env._driver.execute_script.call_count >= 1
 
     @mock.patch("src.env.breakout71_env.time")
     def test_step_normal_not_terminated(self, mock_time):
         """Normal step with ball and bricks should not terminate."""
         env = self._make_env_ready()
 
-        _, _, terminated, truncated, _ = env.step(0)
+        _, _, terminated, truncated, _ = env.step(_action())
 
         assert terminated is False
         assert truncated is False
@@ -1028,7 +1173,7 @@ class TestStep:
         env.max_steps = 5
         env._step_count = 4  # will become 5 after increment -> equals max_steps
 
-        _, _, terminated, truncated, _ = env.step(0)
+        _, _, terminated, truncated, _ = env.step(_action())
 
         assert truncated is True
 
@@ -1045,7 +1190,7 @@ class TestStep:
             bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)],
         )
 
-        _, _, terminated, _, _ = env.step(0)
+        _, _, terminated, _, _ = env.step(_action())
 
         assert terminated is True
 
@@ -1055,7 +1200,7 @@ class TestStep:
         env = self._make_env_ready()
         env._no_ball_count = 3
 
-        env.step(0)  # default detections have ball
+        env.step(_action())  # default detections have ball
 
         assert env._no_ball_count == 0
 
@@ -1068,7 +1213,7 @@ class TestStep:
         # Return detections with no bricks
         env._detector.detect_to_game_state.return_value = _detections(bricks=[])
 
-        _, _, terminated, _, _ = env.step(0)
+        _, _, terminated, _, _ = env.step(_action())
 
         assert terminated is True
 
@@ -1078,7 +1223,7 @@ class TestStep:
         env = self._make_env_ready()
         env._no_bricks_count = 2
 
-        env.step(0)  # default detections have bricks
+        env.step(_action())  # default detections have bricks
 
         assert env._no_bricks_count == 0
 
@@ -1087,7 +1232,7 @@ class TestStep:
         """step() info dict should include oracle_findings."""
         env = self._make_env_ready()
 
-        _, _, _, _, info = env.step(0)
+        _, _, _, _, info = env.step(_action())
 
         assert "oracle_findings" in info
 
@@ -1099,7 +1244,7 @@ class TestStep:
         oracle.get_findings.return_value = []
         env._oracles = [oracle]
 
-        env.step(0)
+        env.step(_action())
 
         oracle.on_step.assert_called_once()
 
@@ -1108,7 +1253,7 @@ class TestStep:
         """step() observation should be within observation_space."""
         env = self._make_env_ready()
 
-        obs, _, _, _, _ = env.step(0)
+        obs, _, _, _, _ = env.step(_action())
 
         assert env.observation_space.contains(obs)
 

@@ -130,6 +130,25 @@ RL-driven autonomous game testing platform. First target: **Breakout 71** (brows
 - **`_apply_action()` must track absolute paddle position** — Selenium `move_to_element_with_offset` positions the mouse at an offset from the element's *centre*, not from current position. Using a fixed ±step_size causes the paddle to oscillate between two positions instead of moving incrementally. Fix: track `_paddle_target_x` (pixels from canvas left edge) and convert to centre-relative offset for each call.
 - **`step()` must handle modals mid-episode** — Without modal handling in `step()`, the game-over/perk-picker modal overlay blocks YOLO detection, causing `_no_ball_count` to reach threshold and the episode to terminate incorrectly. Fix: call `_handle_game_state()` in `step()` before frame capture.
 
+### First RL Training Attempt & Action Space Redesign (session 15)
+
+- **Pipeline validated** — GameLoader → Selenium → YOLO → Env → PPO loop runs end-to-end. Game-over modals are dismissed correctly.
+- **Discrete(3) action space is wrong for this game** — The game uses mouse position (continuous) to control the paddle directly. `Discrete(3)` with fixed increments produces jerky, rarely-moving paddle because: (a) ~33% NOOP, (b) LEFT/RIGHT cancel out with random policy, (c) step_size=10% canvas width = ~128px discrete jumps.
+- **Decision: switch to continuous action space** — `Box(low=-1, high=1, shape=(1,))` where the action value maps to absolute paddle position. SB3 PPO with `MlpPolicy` auto-detects continuous vs discrete from the action space.
+- **JS `puckPosition` injection** — Instead of Selenium ActionChains mouse events, set paddle position directly via `driver.execute_script()`. The game's `setMousePos()` just does `puckPosition = Math.round(x)` with no transformation. More reliable than synthetic mouse events.
+- **Game mouse input pipeline** — `mousemove` on `#game` canvas → `e.clientX * getPixelRatio()` → `setMousePos()` → `puckPosition = Math.round(x)` → `normalizeGameState()` clamps to game zone. No pointer lock by default. `getPixelRatio()` returns 1 on standard displays.
+- **`puckPosition` coordinate system** — Canvas pixels from left edge. Game zone centered with `offsetX`. Clamp bounds: `offsetX + puckWidth/2` to `offsetX + gameZoneWidth - puckWidth/2`.
+
+### Continuous Action Space & Coverage (session 16)
+
+- **Continuous action space implemented** — `Discrete(3)` → `Box(-1, 1, shape=(1,), dtype=float32)`. Action value linearly maps to absolute paddle pixel position via `SET_PUCK_POSITION_JS`. Removed `_paddle_target_x`, replaced with `_game_zone_left`/`_game_zone_right` queried from JS globals (`offsetX`, `gameZoneWidth`, `puckWidth`).
+- **`DashboardRenderer` bug in `session_runner.py`** — `run()` called `DashboardRenderer(output_dir=...)` but the constructor only accepts `template_dir`/`template_name`. Also called `.render()` (returns HTML string) instead of `.render_to_file()`. Fixed to use `DashboardRenderer()` + `render_to_file()`.
+- **Coverage threshold enforced** — Added `fail_under = 80` to `[tool.coverage.report]` in `pyproject.toml`. All source files now ≥82% coverage.
+- **`session_runner.py` coverage: 79% → 98%** — Added 8 new tests: `_setup()` with mocked lazy imports (4 tests), `_cleanup()` loader branch (2 tests), `run()` data collection finalize + dashboard generation (2 tests). Only uncovered: exception handler in dashboard try/except.
+- **`_setup()` testing pattern** — Must mock 4 lazy imports: `scripts._smoke_utils.BrowserInstance`, `src.env.breakout71_env.Breakout71Env`, `src.game_loader.create_loader`, `src.game_loader.config.load_game_config`. The imports happen inside `_setup()` so patches must target the original module paths.
+- **`scripts/train_rl.py` unchanged** — SB3 PPO auto-detects continuous `Box` action space; no code changes needed.
+- **`scripts/capture_dataset.py` unchanged** — Random bot uses its own ActionChains; separate concern from env action space.
+
 ## Project Structure
 
 ```
@@ -170,7 +189,7 @@ documentation/
 docs/                     # Sphinx source (conf.py, api/, specs/)
 ```
 
-## What's Done (sessions 1-14)
+## What's Done (sessions 1-15)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -186,6 +205,7 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 12. **Session 12** — XPU YOLO training: 3 ultralytics monkey patches, dataset preparation, 100-epoch training (mAP50=0.679), open-source contribution to ultralytics #16930 (PR #26)
 13. **Session 13** — Integration & E2E + RL scaffold: orchestrator (FrameCollector, SessionRunner), run_session.py, train_rl.py (SB3 PPO), 6 env bug fixes, legacy code cleanup, pytest-cov (96% coverage) (PR #28)
 14. **Session 14** — Selenium-based env control: replaced pydirectinput with Selenium ActionChains for paddle control and JS execution for modal handling, GameLoader integration in train_rl.py, Copilot review fixes (public JS constants, body fallback handling) (PR #30)
+15. **Session 15** — First RL training attempt: pipeline validated end-to-end, diagnosed Discrete(3) action space as wrong for continuous paddle control, decided to switch to Box(-1,1) continuous action with JS puckPosition injection (no PR — interrupted before implementation)
 
 Total: **489 tests** (465 unit + 24 integration), 7 subsystems + training pipeline complete.
 

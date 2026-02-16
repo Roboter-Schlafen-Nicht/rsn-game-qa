@@ -251,10 +251,11 @@ class SessionRunner:
 
         # Generate HTML dashboard
         try:
-            dashboard = DashboardRenderer(
-                output_dir=self.output_dir / "reports",
+            dashboard = DashboardRenderer()
+            dashboard_path = dashboard.render_to_file(
+                report_gen.to_dict(),
+                self.output_dir / "reports" / "dashboard.html",
             )
-            dashboard_path = dashboard.render(report_gen.to_dict())
             logger.info("Dashboard saved to %s", dashboard_path)
         except Exception:
             logger.warning("Dashboard generation failed", exc_info=True)
