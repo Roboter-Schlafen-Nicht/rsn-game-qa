@@ -1,0 +1,24 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["../breakout71-testbed/src"],
+  "entryPointStrategy": "expand",
+  "tsconfig": "./tsconfig.testbed.json",
+  "out": "docs/_build/testbed",
+  "name": "Breakout 71 — Game Source Reference",
+  "readme": "none",
+  "excludeExternals": true,
+  "excludePrivate": false,
+  "excludeInternal": false,
+  "skipErrorChecking": true,
+  "includeVersion": false,
+  "disableSources": false,
+  "exclude": [
+    "**/*.test.ts",
+    "**/node_modules/**",
+    "**/PWA/**"
+  ],
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true
+  }
+}
