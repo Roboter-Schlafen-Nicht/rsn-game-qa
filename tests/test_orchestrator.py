@@ -846,7 +846,7 @@ class TestSessionRunnerSetup:
     """Tests for SessionRunner._setup with mocked lazy imports."""
 
     def test_setup_creates_env_and_browser(self, tmp_path):
-        """_setup loads config, starts loader, launches browser, creates env."""
+        """_setup passes correct args to BrowserInstance and Breakout71Env."""
         runner = SessionRunner(
             game_config="breakout-71",
             output_dir=tmp_path,
@@ -856,7 +856,6 @@ class TestSessionRunnerSetup:
         )
         runner.game_config_path = Path("breakout-71")
 
-        # Mock lazy imports
         mock_config = mock.MagicMock()
         mock_config.url = "http://localhost:1234"
         mock_config.window_width = 1280
@@ -864,68 +863,50 @@ class TestSessionRunnerSetup:
         mock_config.window_title = "Breakout"
 
         mock_loader = mock.MagicMock()
-        mock_loader.url = "http://localhost:1234"
+        mock_loader.url = "http://localhost:5678"
 
-        mock_browser_instance = mock.MagicMock()
-        mock_browser_instance.driver = mock.MagicMock()
+        mock_browser = mock.MagicMock()
+        mock_browser.driver = mock.MagicMock()
+
+        mock_env = mock.MagicMock()
 
         with (
             mock.patch(
-                "src.orchestrator.session_runner.load_game_config",
-                create=True,
-            ) as mock_load_config,
-            mock.patch(
-                "src.orchestrator.session_runner.create_loader",
-                create=True,
-            ) as mock_create_loader,
-            mock.patch(
-                "src.orchestrator.session_runner.BrowserInstance",
-                create=True,
+                "scripts._smoke_utils.BrowserInstance",
+                return_value=mock_browser,
             ) as MockBrowser,
             mock.patch(
-                "src.orchestrator.session_runner.Breakout71Env",
-                create=True,
+                "src.env.breakout71_env.Breakout71Env",
+                return_value=mock_env,
             ) as MockEnv,
+            mock.patch(
+                "src.game_loader.create_loader",
+                return_value=mock_loader,
+            ),
+            mock.patch(
+                "src.game_loader.config.load_game_config",
+                return_value=mock_config,
+            ),
         ):
-            mock_load_config.return_value = mock_config
-            mock_create_loader.return_value = mock_loader
-            MockBrowser.return_value = mock_browser_instance
-            MockEnv.return_value = mock.MagicMock()
+            runner._setup()
 
-            # Patch _setup to use our mocks without actual lazy imports
-            with mock.patch.object(runner, "_setup") as _:
-                pass  # we'll call manually below
+        # Verify BrowserInstance received correct arguments
+        MockBrowser.assert_called_once_with(
+            url="http://localhost:5678",
+            settle_seconds=8.0,
+            window_size=(1280, 1024),
+            browser="chrome",
+        )
 
-            # Actually test by calling a reimplemented setup with mocks
-            config = mock_config
-            runner._loader = mock_loader
-            mock_loader.setup.return_value = None
-            mock_loader.start.return_value = None
+        # Verify Breakout71Env received correct arguments
+        MockEnv.assert_called_once()
+        env_kwargs = MockEnv.call_args[1]
+        assert env_kwargs["window_title"] == "Breakout"
+        assert env_kwargs["driver"] is mock_browser.driver
 
-            url = mock_loader.url or config.url
-            runner._browser_instance = MockBrowser(
-                url=url,
-                settle_seconds=8.0,
-                window_size=(config.window_width, config.window_height),
-                browser=runner.browser,
-            )
-
-            runner._env = MockEnv(
-                window_title=config.window_title or "Breakout",
-                yolo_weights=runner.yolo_weights,
-                max_steps=runner.max_steps_per_episode,
-                oracles=_create_oracles(),
-                driver=runner._browser_instance.driver,
-            )
-
-            runner._collector = FrameCollector(
-                output_dir=runner.output_dir,
-                capture_interval=runner.frame_capture_interval,
-            )
-
-        assert runner._env is not None
-        assert runner._browser_instance is not None
-        assert runner._loader is not None
+        assert runner._env is mock_env
+        assert runner._browser_instance is mock_browser
+        assert runner._loader is mock_loader
         assert runner._collector is not None
 
     def test_setup_full_integration(self, tmp_path):

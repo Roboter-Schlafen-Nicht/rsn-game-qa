@@ -660,6 +660,34 @@ class TestApplyAction:
         # -0.5 -> (−0.5 + 1) / 2 = 0.25 -> 320 + 0.25 * 640 = 480
         assert abs(pixel_x - 480.0) < 1e-6
 
+    def test_action_scalar_input(self):
+        """Scalar action (0-d array or float) is normalised to (1,)."""
+        driver, canvas = _mock_driver()
+        env = Breakout71Env(driver=driver)
+        env._game_zone_left = 320.0
+        env._game_zone_right = 960.0
+
+        # 0-d numpy array
+        env._apply_action(np.float32(0.0))
+        pixel_x = driver.execute_script.call_args[0][1]
+        assert abs(pixel_x - 640.0) < 1e-6
+
+        # Plain Python float
+        driver.execute_script.reset_mock()
+        env._apply_action(0.0)
+        pixel_x = driver.execute_script.call_args[0][1]
+        assert abs(pixel_x - 640.0) < 1e-6
+
+    def test_action_wrong_size_raises(self):
+        """Action with size != 1 should raise ValueError."""
+        driver, canvas = _mock_driver()
+        env = Breakout71Env(driver=driver)
+        env._game_zone_left = 320.0
+        env._game_zone_right = 960.0
+
+        with pytest.raises(ValueError, match="size 1"):
+            env._apply_action(np.array([0.1, 0.2], dtype=np.float32))
+
 
 # -- Game State Handling -------------------------------------------------------
 

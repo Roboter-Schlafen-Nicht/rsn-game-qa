@@ -709,7 +709,7 @@ class Breakout71Env(gym.Env):
 
         return reward
 
-    def _apply_action(self, action: np.ndarray) -> None:
+    def _apply_action(self, action: "np.ndarray") -> None:
         """Send the chosen action to the game via JavaScript puckPosition.
 
         Maps the continuous action value ``[-1, 1]`` to a pixel
@@ -721,12 +721,18 @@ class Breakout71Env(gym.Env):
         Parameters
         ----------
         action : np.ndarray
-            Continuous action array of shape ``(1,)`` with value in
-            ``[-1, 1]``.  Maps to absolute paddle position: -1 = left
-            edge, 0 = centre, +1 = right edge of the game zone.
+            Continuous action value in ``[-1, 1]``.  Accepts a scalar,
+            0-d array, or shape ``(1,)`` array.  Maps to absolute
+            paddle position: -1 = left edge, 0 = centre, +1 = right
+            edge of the game zone.
         """
         if self._driver is None:
             return
+
+        # Normalize: accept scalar, 0-d, or (1,) array
+        action = np.asarray(action, dtype=np.float32).reshape(-1)
+        if action.size != 1:
+            raise ValueError(f"Expected action of size 1, got size {action.size}")
 
         # Extract scalar from the action array
         value = float(np.clip(action[0], -1.0, 1.0))
@@ -759,8 +765,9 @@ class Breakout71Env(gym.Env):
 
         Sets ``_game_zone_left`` and ``_game_zone_right`` from the
         game's ``offsetX``, ``gameZoneWidth``, and ``puckWidth``
-        variables.  Falls back to canvas-based estimates if the
-        globals are not yet available (e.g. before first frame).
+        variables when available.  If the globals are not yet
+        available (e.g. before the first frame), this method logs a
+        warning and leaves the existing game-zone values unchanged.
         """
         if self._driver is None:
             return
