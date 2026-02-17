@@ -323,6 +323,41 @@ class SessionRunner:
             headless=self.headless,
         )
 
+        # -- Apply plugin JS snippets (mute, setup, reinit) ---------------
+        driver = self._browser_instance.driver
+        needs_refresh = False
+        mute_js = getattr(self._plugin, "mute_js", None)
+        setup_js = getattr(self._plugin, "setup_js", None)
+        reinit_js = getattr(self._plugin, "reinit_js", None)
+
+        if mute_js and driver is not None:
+            try:
+                driver.execute_script(mute_js)
+                needs_refresh = True
+                logger.info("Game audio muted via plugin mute_js")
+            except Exception as exc:
+                logger.warning("Failed to mute game audio: %s", exc)
+
+        if setup_js and driver is not None:
+            try:
+                driver.execute_script(setup_js)
+                needs_refresh = True
+                logger.info("Game settings applied via plugin setup_js")
+            except Exception as exc:
+                logger.warning("Failed to apply setup_js: %s", exc)
+
+        if needs_refresh and driver is not None:
+            driver.refresh()
+            time.sleep(3)  # let page reload with new settings
+
+        if reinit_js and driver is not None:
+            try:
+                driver.execute_script(reinit_js)
+                time.sleep(2)  # let game re-initialise
+                logger.info("Game re-initialised via plugin reinit_js")
+            except Exception as exc:
+                logger.warning("Failed to re-initialise game: %s", exc)
+
         # Create oracles
         oracles = _create_oracles()
 

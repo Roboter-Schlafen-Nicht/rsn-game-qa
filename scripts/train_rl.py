@@ -805,6 +805,20 @@ def main(argv: list[str] | None = None) -> int:
         browser_instance.driver.refresh()
         time.sleep(3)  # let page reload with new settings
 
+    # -- Re-initialise game after refresh ----------------------------------
+    # After a refresh, window.gameState may point to a stale object
+    # (newGameState/Object.assign pointer mismatch).  The plugin's
+    # reinit_js calls window.restart({}) to rebuild game state and
+    # re-assign the live pointer.
+    reinit_js = getattr(plugin, "reinit_js", None)
+    if reinit_js and browser_instance.driver is not None:
+        try:
+            browser_instance.driver.execute_script(reinit_js)
+            time.sleep(2)  # let game re-initialise
+            logger.info("Game re-initialised via plugin reinit_js")
+        except Exception as exc:
+            logger.warning("Failed to re-initialise game: %s", exc)
+
     # -- Log config event --------------------------------------------------
     tlog.log(
         {

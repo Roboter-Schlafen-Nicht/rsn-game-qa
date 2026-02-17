@@ -47,3 +47,10 @@ setup_js = "\n".join(
         'localStorage.setItem("breakout-settings-enable-touch_delayed_start", "false");',
     ]
 )
+
+# JS snippet to re-initialise the game after a page refresh.
+# Calls the exposed window.restart() hook which re-creates the game state
+# AND re-assigns window.gameState to the live module-scoped object (fixing
+# the pointer mismatch caused by newGameState() / Object.assign in restart).
+# Must be executed AFTER the page has fully loaded.
+reinit_js = "window.restart({})"

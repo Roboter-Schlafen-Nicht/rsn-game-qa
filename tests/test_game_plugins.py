@@ -103,6 +103,14 @@ class TestLoadGamePlugin:
         assert "mobile-mode" in setup_js
         assert "touch_delayed_start" in setup_js
 
+    def test_breakout71_has_reinit_js(self):
+        """Breakout71 plugin should define reinit_js for game re-init after refresh."""
+        plugin = load_game_plugin("breakout71")
+
+        assert hasattr(plugin, "reinit_js")
+        reinit_js = plugin.reinit_js
+        assert "restart" in reinit_js
+
 
 class TestGetEnvClass:
     """Tests for get_env_class()."""

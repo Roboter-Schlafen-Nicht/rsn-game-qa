@@ -1,6 +1,9 @@
 # Breakout 71 — browser game loader configuration
 #
-# Roguelite breakout game served by Parcel dev server.
+# Roguelite breakout game built with Parcel and served as a static
+# bundle.  The loader runs `npx parcel build` during setup(), then
+# serves the dist/ directory via Python's http.server.
+#
 # Source: https://gitlab.com/lecarore/breakout71
 # Testbed fork: https://github.com/nicogs/breakout71
 #
@@ -20,8 +23,10 @@ game_dir: ${BREAKOUT71_DIR:-./breakout71-testbed}
 loader_type: breakout-71
 
 # -- Build / serve -----------------------------------------------------
+# setup() runs install_command + `npx parcel build` (in Breakout71Loader)
+# start() runs serve_command to serve the pre-built dist/ directory
 install_command: npm install
-serve_command: npx parcel src/index.html --no-cache
+serve_command: python3 -m http.server 1234 --directory dist
 serve_port: 1234
 url: http://localhost:1234
 readiness_endpoint: http://localhost:1234

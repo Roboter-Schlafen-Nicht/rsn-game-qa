@@ -1,14 +1,21 @@
 """Breakout 71 game loader — specialisation of :class:`BrowserGameLoader`.
 
 Provides sensible defaults for loading the Breakout 71 browser game
-from a local clone of the repository.  The game uses **Parcel** as its
-bundler and serves on ``http://localhost:1234`` by default.
+from a local clone of the repository.  The game is built with
+**Parcel** into a static ``dist/`` directory and served by Python's
+built-in HTTP server.
+
+The two-phase approach (build → serve) avoids Parcel dev-server issues
+in headless environments (HMR race conditions, stale module caches)
+and produces a deterministic bundle identical to production.
 """
 
 from __future__ import annotations
 
 import logging
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -22,7 +29,7 @@ _DEFAULTS = dict(
     name="breakout-71",
     loader_type="breakout-71",
     install_command="npm install",
-    serve_command="npx parcel src/index.html --no-cache",
+    serve_command=(f"{sys.executable} -m http.server 1234 --directory dist"),
     serve_port=1234,
     url="http://localhost:1234",
     readiness_endpoint="http://localhost:1234",
@@ -30,6 +37,8 @@ _DEFAULTS = dict(
     readiness_poll_interval_s=2.0,
     window_title="Breakout",
 )
+
+_BUILD_COMMAND = "npx parcel build src/index.html --no-cache"
 
 
 class Breakout71Loader(BrowserGameLoader):
@@ -89,11 +98,44 @@ class Breakout71Loader(BrowserGameLoader):
         return cls(config)
 
     def setup(self) -> None:
-        """Install npm dependencies and clear the Parcel cache."""
+        """Install npm dependencies, clear caches, and build the game.
+
+        Runs ``npm install``, removes stale Parcel / dist caches, then
+        executes ``npx parcel build`` to produce a fresh ``dist/``
+        bundle.  The subsequent ``start()`` serves this static build.
+        """
         logger.info("[%s] Clearing .parcel-cache", self.name)
-        cache_dir = self.config.game_dir / ".parcel-cache"
+        game_dir = Path(self.config.game_dir)
+        cache_dir = game_dir / ".parcel-cache"
         if cache_dir.is_dir():
             shutil.rmtree(cache_dir, ignore_errors=True)
             logger.info("[%s] Removed %s", self.name, cache_dir)
 
+        dist_dir = game_dir / "dist"
+        if dist_dir.is_dir():
+            shutil.rmtree(dist_dir, ignore_errors=True)
+            logger.info("[%s] Removed %s", self.name, dist_dir)
+
         super().setup()
+
+        # Build the game into dist/
+        logger.info("[%s] Building game: %s", self.name, _BUILD_COMMAND)
+        result = subprocess.run(
+            _BUILD_COMMAND,
+            cwd=str(game_dir),
+            shell=True,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.error(
+                "[%s] Build failed (exit %d): %s",
+                self.name,
+                result.returncode,
+                result.stderr,
+            )
+            raise RuntimeError(
+                f"Game build failed: {_BUILD_COMMAND!r} exited with "
+                f"code {result.returncode}"
+            )
+        logger.info("[%s] Build complete — dist/ ready", self.name)
