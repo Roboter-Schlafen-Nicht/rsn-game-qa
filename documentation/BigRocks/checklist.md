@@ -234,7 +234,7 @@
 
 > See `documentation/ROADMAP.md` for the full 5-phase plan.
 
-- [ ] Merge PR #65 (`--game` flag and dynamic plugin loading)
+- [x] Merge PR #65 (`--game` flag and dynamic plugin loading) — session 30
 - [ ] Run 200K-step PPO training (CNN policy, portrait, `--max-time 7200`)
 - [ ] Evaluate trained model: 10-episode eval with `run_session.py`
 - [ ] Generate QA report with oracle findings and HTML dashboard
@@ -248,6 +248,24 @@
 - [x] Create `documentation/ROADMAP.md` — 5-phase plan
 - [x] Rewrite `AGENTS.md` — lean ~120-line operational guide (was 449 lines)
 - [x] Update `documentation/BigRocks/checklist.md` — mark done items, add Phase 1 tasks
+
+### 7. Public repo hardening & CI automation (session 31)
+
+- [x] **PR #67: Public repo hardening**
+  - [x] Security audit (135 commits) — no secrets in git history
+  - [x] Removed hardcoded local paths (8 files, ~14 locations)
+  - [x] Deleted dead `scripts/train.py` (referenced wrong project)
+  - [x] Added MIT License
+  - [x] Created `.github/copilot-instructions.md` (review guidelines)
+  - [x] Hardened `.gitignore` (certs, credentials, databases)
+  - [x] Hardened `ci.yml` (`permissions: contents: read`)
+  - [x] Session logs moved to `private/` (gitignored)
+  - [x] Repo made public
+- [x] **Copilot review ruleset** (`copilot-review-for-main`, ID 12909207)
+  - [x] Target: default branch (`main`)
+  - [x] Copilot auto-reviews PRs on creation and on push
+  - [x] Draft PRs excluded from auto-review
+  - [x] 0 required approvals (Copilot reviews but doesn't block)
 
 #### Deferred
 - [ ] Retrain YOLO with human-reviewed Roboflow annotations
