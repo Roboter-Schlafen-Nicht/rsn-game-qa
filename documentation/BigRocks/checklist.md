@@ -131,7 +131,7 @@
   - [x] 510 tests (486 unit + 24 integration), Copilot review: 2 rounds, 7 fixes
   - [x] Post-merge admin (PR #33)
 
-### 3. RL training & iteration
+### 3. RL training & iteration (completed items)
 - [x] Switch action space from Discrete(3) to continuous Box(-1,1) with JS puckPosition injection (PR #32 — session 16)
 - [x] Enforce ≥80% test coverage on all source files (`fail_under = 80` in pyproject.toml) (PR #32 — session 16)
 - [x] Fix DashboardRenderer bug in session_runner.py (wrong constructor args + wrong method call) (PR #32 — session 16)
@@ -150,9 +150,84 @@
 - [x] Episode boundary bug fix: game-over modals no longer silently dismissed mid-episode, fixed terminal penalty (-5.01) for modal-occluded frames, TDD convention formalized, robust test assertions (PR #51 — session 23)
 - [x] Modal check throttling: skip Selenium HTTP round-trip when ball visible, immediate late check on 0→1 ball-miss transition, deduplicated test helper, 55 FPS pipeline (PR #53 — session 24)
 - [x] CNN policy pipeline for A/B comparison with MLP: `CnnObservationWrapper` (84x84 grayscale), `--policy cnn|mlp` / `--frame-stack` / `--max-episodes` CLI args, removed oracles from training loop, data collection opt-in, live validation, Copilot review (4 fixes), 673 tests (PR #55 — session 25)
-- [ ] Run first real RL training session on Breakout 71 (PPO, ~10k steps validation then 200k)
-- [ ] Evaluate trained policy vs random baseline
-- [ ] Iterate on reward shaping based on observed behavior
+- [x] Selenium-only input: replaced pydirectinput with Selenium ActionChains for all game input, eliminated pause bug, unified headless/native code paths, 640 unit + 24 integration tests (PR #57 — session 26)
+
+### 4. Platform architecture & exploration-driven reward
+
+> **Why this matters:** A QA tester is not a game player. A player
+> maximises score; a QA tester maximises *coverage* of game states.
+> A score-maximising agent learns one dominant strategy, avoids unusual
+> actions, and never exercises edge cases. An exploration-maximising
+> agent visits diverse states, tries unexpected things, and exercises
+> the code paths where bugs hide. Our 12 oracles can only detect bugs
+> in states the agent actually visits — so exploration is everything.
+>
+> The platform must also scale to new games without per-game engineering.
+> The current YOLO-based brick-counting reward requires a trained YOLO
+> model, game-specific detection mapping, and custom reward logic for
+> each game. The architecture below replaces this with a game-agnostic
+> plugin system where onboarding a new game takes minutes, not days.
+>
+> See `documentation/specs/platform_architecture_spec.md` and
+> `documentation/specs/reward_strategy_spec.md` for full details.
+
+#### 4a. Platform / plugin separation
+- [ ] Design `BaseGameEnv` ABC in `src/platform/base_env.py`
+  - [ ] Extract generic lifecycle from `Breakout71Env` (lazy init, capture, detect, oracle wiring)
+  - [ ] Define abstract methods: `game_classes()`, `build_observation()`, `compute_reward()`, `check_termination()`, `handle_modals()`, `apply_action()`, `start_game()`, `canvas_selector()`
+  - [ ] Add `on_lazy_init()` and `on_reset_complete()` hooks
+  - [ ] Add `_reward_mode` parameter (yolo|survival|rnd) with platform-level override
+- [ ] Create `games/breakout71/` plugin directory
+  - [ ] `env.py` — `Breakout71Env(BaseGameEnv)` with all Breakout-specific logic
+  - [ ] `loader.py` — moved from `src/game_loader/breakout71_loader.py`
+  - [ ] `modal_handler.py` — JS snippets (`DETECT_STATE_JS`, `CLICK_PERK_JS`, etc.)
+  - [ ] `perception.py` — YOLO class names + detection-to-gamestate mapping
+  - [ ] `reward.py` — YOLO-based brick-counting reward (optional, for `--reward-mode yolo`)
+  - [ ] `config.yaml` — game config (moved from `configs/games/`)
+  - [ ] `training.yaml` — YOLO training config (moved from `configs/training/`)
+- [ ] Move `src/env/cnn_wrapper.py` → `src/platform/cnn_wrapper.py`
+- [ ] Refactor `YoloDetector.detect_to_game_state()` — remove `BREAKOUT71_CLASSES` default, accept class mapping from plugin
+- [ ] Refactor `SessionRunner` — accept any `BaseGameEnv`, remove hardcoded `Breakout71Env` import
+- [ ] Refactor `train_rl.py` — add `--game` flag, load plugin dynamically by name
+- [ ] Refactor `run_session.py` — add `--game` flag
+- [ ] Game plugin registry with `register_game()` decorator
+- [ ] CNN as default observation mode, MLP as optional (requires game-specific YOLO)
+- [ ] Update all tests: platform tests vs game-specific tests
+- [ ] Validate: all existing tests pass after refactoring (behaviour-preserving)
+
+#### 4b. Exploration-driven reward — Tier 1: Survival + RND
+- [ ] Implement `src/platform/rnd_wrapper.py` (VecEnv wrapper)
+  - [ ] RND target network (fixed random CNN: 3 conv → 512-dim)
+  - [ ] RND predictor network (trainable, same backbone + deeper head)
+  - [ ] Intrinsic reward: MSE(target(obs), predictor(obs))
+  - [ ] Observation normalisation (running mean/std, clip [-5, 5])
+  - [ ] Reward normalisation (running variance, non-episodic, no mean subtraction)
+- [ ] Add survival-only reward mode to `BaseGameEnv` (+0.01 survival, -5.0 game over)
+- [ ] Add `--reward-mode yolo|survival|rnd` CLI flag to `train_rl.py`
+- [ ] Tests for RND wrapper (TDD required — env/platform scope)
+- [ ] Run CNN + RND training on Breakout 71 (~200K steps)
+- [ ] Measure state coverage: unique visual states, perk picker encounters, level progression
+- [ ] Compare against random baseline
+
+#### 4c. Exploration-driven reward — Tier 2: Score-aware (OCR)
+- [ ] Implement game-agnostic score OCR (Tesseract or EasyOCR on score region)
+- [ ] Add `score_delta` to reward as secondary signal
+- [ ] Score region auto-detection or per-game config
+- [ ] Validate OCR reliability across game states (modals, transitions)
+
+#### 4d. Exploration-driven reward — Tier 3: Oracle-guided (research)
+- [ ] Design feedback loop: oracle findings → state fingerprint → exploration bonus
+- [ ] State proximity metric (pixel space? latent space? RND embedding space?)
+- [ ] Proximity bonus with decay (avoid getting stuck near one anomaly)
+- [ ] Evaluate directed exploration vs undirected novelty-seeking
+
+#### 4e. Game-over detection generalisation
+- [ ] Screen freeze detector (pixel diff < threshold for N frames)
+- [ ] OCR-based terminal text detector ("Game Over", "You Died", "Continue?", etc.)
+- [ ] Entropy collapse detector (static/uniform screen)
+- [ ] Input responsiveness detector (send actions, check state changes)
+- [ ] Ensemble `GameOverDetector` with configurable strategies and per-game weights
+
+#### Deferred
 - [ ] Generate QA reports from trained agent episodes
 - [ ] Retrain YOLO with human-reviewed Roboflow annotations
-- [ ] Multi-game refactoring (issue #24 — deferred until Breakout 71 E2E complete)

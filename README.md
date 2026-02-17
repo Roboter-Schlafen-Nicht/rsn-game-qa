@@ -53,7 +53,7 @@ configs/
   games/                Game loader YAML configs (breakout-71.yaml, ...)
   training/             YOLO training configs per game (breakout-71.yaml, ...)
 scripts/                YOLO training, dataset capture, upload, smoke tests, RL training
-tests/                  pytest suite (649 unit + 24 integration tests)
+tests/                  pytest suite (640 unit + 24 integration tests)
 docs/                   Sphinx docs (Furo theme, MyST Markdown)
 documentation/
   specs/                Design specs for env, oracles, capture, reporting, game loader

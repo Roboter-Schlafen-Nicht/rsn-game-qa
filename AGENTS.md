@@ -366,7 +366,20 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 - **Pipeline timing breakdown** — Capture 3.3ms (wincam) + YOLO 13.9ms (OpenVINO GPU.0) + Input 0.4ms (pydirectinput) = ~18ms/frame = 55.5 FPS raw pipeline. SB3 PPO overhead reduces to ~8-10 FPS.
 - **TDD convention** — Required for `src/env/`, `src/orchestrator/`, and behavioral contract modules. Write test names as specs first, fill bodies (red), implement (green), refactor.
 
-## What's Done (sessions 1-25)
+### Selenium-Only Input & Platform Architecture Planning (session 26)
+
+- **Selenium-only input (PR #57)** — Removed `pydirectinput` from env entirely. All input via Selenium `ActionChains` (mouse move, click). Eliminated `mouseup` pause bug where game paused on every mouse release. pydirectinput module still exists in `src/capture/input_controller.py` for non-env use cases.
+- **~80% of codebase already game-agnostic** — Full audit: all 12 oracles, capture, game loader ABC, reporting, data collector, CNN wrapper need zero changes. Game-specific code concentrated in `breakout71_env.py`, `breakout71_loader.py`, `session_runner.py` (hardcoded import), `train_rl.py` (hardcoded env), `yolo_detector.py` (`BREAKOUT71_CLASSES` default).
+- **BaseGameEnv ABC designed** — Abstract methods: `game_classes()`, `build_observation()`, `compute_reward()`, `check_termination()`, `handle_modals()`, `apply_action()`, `start_game()`, `canvas_selector()`. Optional hooks: `on_lazy_init()`, `on_reset_complete()`.
+- **Plugin location: `games/` (top-level)** — Games are not part of the platform package. Minimal plugin ~40 lines for a new game.
+- **Three-tier reward strategy** — Tier 1: survival + RND intrinsic novelty (game-agnostic, needs only game-over detection). Tier 2: + OCR score delta. Tier 3: + oracle-guided exploration bonus.
+- **RND implementation plan** — `VecEnvWrapper` adding intrinsic bonus to reward. Fixed random CNN target (3 conv → 512-dim), trainable predictor (same backbone + deeper head, MSE loss). Non-episodic intrinsic rewards with running variance normalization. Most valuable for CNN (pixel space); limited benefit for MLP (8-dim).
+- **No official SB3 RND library** — Must implement in-house. Best approach: single value head with combined extrinsic + intrinsic reward.
+- **CNN is default observation mode** — Game-agnostic (84x84 grayscale, no YOLO needed). MLP is optional plugin feature requiring game-specific YOLO model.
+- **Reward mode as platform-level override** — `--reward-mode` CLI flag works for any game plugin, not per-game config.
+- **"Test Horseshoe" concept** — Platform wraps around the game: Capture → Perception → Policy → Input. Platform Core (BaseGameEnv, RND, CNN, Oracles, Orchestrator, Reporting) at the base. Game Plugin sits at the top providing game-specific glue.
+
+## What's Done (sessions 1-26)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -393,14 +406,16 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 23. **Session 23** — Episode boundary bug fix + TDD convention: game-over modals no longer silently dismissed mid-episode (merged multiple games into one infinite episode), fixed terminal penalty for modal-occluded frames, TDD convention formalized in AGENTS.md. Copilot review: 4 fixes (PR #51)
 24. **Session 24** — Modal check throttling: skip Selenium HTTP round-trip when ball visible (~100-150ms saved per step), immediate late check on 0→1 ball-miss transition to prevent spurious rewards, deduplicated `_make_env_ready()` test helper, live validation (55 FPS pipeline, ~8 FPS with SB3 overhead), alpha release v0.1.0a1, post-merge admin (PR #49, #51, #52, #53)
 25. **Session 25** — CNN policy pipeline for A/B comparison with MLP: `CnnObservationWrapper` (84x84 grayscale), `--policy cnn|mlp` / `--frame-stack` / `--max-episodes` CLI args, VecFrameStack(4)+VecTransposeImage pipeline, XPU device routing for CNN policy (`xpu:1`), removed oracles from training loop, flipped data collection to opt-in, live validation (MLP 9.6 FPS / CNN 8.4 FPS on xpu:1), Copilot review (4 fixes). 40 new tests (PR #55)
+26. **Session 26** — Selenium-only input & platform architecture planning: removed pydirectinput from env (Selenium ActionChains only), eliminated mouseup pause bug, full codebase audit (~80% already game-agnostic), BaseGameEnv ABC design, three-tier reward strategy spec, platform architecture spec, RND implementation plan, checklist roadmap update (PR #57, docs PR pending)
 
-Total: **673 tests** (649 unit + 24 integration), 7 subsystems + training pipeline complete.
+Total: **664 tests** (640 unit + 24 integration), 7 subsystems + training pipeline complete.
 
 ## What's Next
 
 Read `documentation/BigRocks/checklist.md` for the full breakdown. In order:
 
-1. **RL Training & Iteration** — run first real PPO training, evaluate vs random baseline, iterate on reward shaping, retrain YOLO with human-reviewed annotations
+1. **Platform Architecture & Exploration-Driven Reward** — BaseGameEnv ABC, game plugin separation, RND intrinsic reward, game-over generalization (see checklist section 4)
+2. **RL Training & Iteration** — run first real PPO training, evaluate vs random baseline, iterate on reward shaping, retrain YOLO with human-reviewed annotations
 
 ## Reference Files
 
