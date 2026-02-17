@@ -642,7 +642,7 @@ class TestEnvBugFixes:
         assert obs[1] == pytest.approx(0.5)  # ball_x from with_ball
 
     def test_bricks_total_retry_on_zero(self):
-        """_build_observation retries when 0 bricks detected on reset."""
+        """build_observation retries when 0 bricks detected on reset."""
         from src.env.breakout71_env import Breakout71Env
 
         env = Breakout71Env()
@@ -677,7 +677,7 @@ class TestEnvBugFixes:
 
         with mock.patch("src.env.breakout71_env.time") as mock_time:
             mock_time.sleep = mock.MagicMock()
-            env._build_observation(detections_no_bricks, reset=True)
+            env.build_observation(detections_no_bricks, reset=True)
 
         # Should have retried and found 10 bricks
         assert env._bricks_total == 10
