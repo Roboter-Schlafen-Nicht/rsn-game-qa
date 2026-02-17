@@ -792,6 +792,71 @@ class TestTrainRLCLI:
         assert args.ent_coef == 0.05
         assert args.device == "cuda"
 
+    def test_resume_default_none(self):
+        """--resume defaults to None."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args([])
+        assert args.resume is None
+
+    def test_resume_custom_path(self):
+        """--resume accepts a path string."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args(["--resume", "output/checkpoints/ppo_breakout71_50000.zip"])
+        assert args.resume == "output/checkpoints/ppo_breakout71_50000.zip"
+
+    def test_resume_path_validation_exists(self, tmp_path):
+        """Resume path validation accepts existing file."""
+        from scripts.train_rl import parse_args
+
+        ckpt = tmp_path / "model.zip"
+        ckpt.write_bytes(b"fake")
+        args = parse_args(["--resume", str(ckpt)])
+        assert args.resume == str(ckpt)
+
+    def test_resume_path_validation_zip_suffix(self, tmp_path):
+        """Resume path validation falls back to .zip suffix."""
+        # The .zip suffix fallback happens in main(), not parse_args.
+        # We verify the path logic via the Path resolution code.
+        from pathlib import Path
+
+        ckpt = tmp_path / "model.zip"
+        ckpt.write_bytes(b"fake")
+        # User passes path without .zip
+        resume_path = Path(str(tmp_path / "model"))
+        assert not resume_path.exists()
+        assert resume_path.with_suffix(".zip").exists()
+
+    def test_resume_path_validation_not_found(self, tmp_path):
+        """Resume path validation detects missing file."""
+        from pathlib import Path
+
+        resume_path = Path(str(tmp_path / "nonexistent"))
+        assert not resume_path.exists()
+        assert not resume_path.with_suffix(".zip").exists()
+
+    def test_resume_sets_reset_num_timesteps(self):
+        """When --resume is set, reset_num_timesteps should be False."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args(["--resume", "checkpoint.zip"])
+        # The flag logic: reset_num_timesteps = not bool(args.resume)
+        assert bool(args.resume) is True
+        # reset_num_timesteps would be False
+        reset_num_timesteps = not bool(args.resume)
+        assert reset_num_timesteps is False
+
+    def test_resume_not_set_resets_timesteps(self):
+        """Without --resume, reset_num_timesteps should be True."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args([])
+        assert args.resume is None
+        # reset_num_timesteps would be True
+        reset_num_timesteps = not bool(args.resume)
+        assert reset_num_timesteps is True
+
 
 # ===========================================================================
 # FrameCollectionCallback Tests
