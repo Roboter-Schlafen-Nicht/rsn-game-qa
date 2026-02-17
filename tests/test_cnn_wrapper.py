@@ -138,7 +138,8 @@ def _make_base_env_ready(bricks_count=10):
     env._no_ball_count = 0
     env._no_bricks_count = 0
     env._last_frame = _frame()
-    env._client_origin = (100, 200)
+    env._game_canvas = mock.MagicMock()
+    env._canvas_size = (640, 480)
 
     env._capture = mock.MagicMock()
     env._capture.width = 640
