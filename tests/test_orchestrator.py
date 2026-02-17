@@ -557,11 +557,13 @@ class TestEnvBugFixes:
         env._initialized = True
         env._capture = mock.MagicMock()
         env._detector = mock.MagicMock()
-        env._client_origin = (100, 200)
+        env._game_canvas = mock.MagicMock()
+        env._canvas_size = (640, 480)
 
         env.close()
         assert env._initialized is False
-        assert env._client_origin is None
+        assert env._game_canvas is None
+        assert env._canvas_size is None
 
     def test_step_count_property(self):
         """step_count property returns _step_count."""
@@ -600,7 +602,8 @@ class TestEnvBugFixes:
 
         env = Breakout71Env(driver=mock_driver)
         env._initialized = True
-        env._client_origin = (100, 200)
+        env._game_canvas = mock.MagicMock()
+        env._canvas_size = (640, 480)
 
         mock_capture = mock.MagicMock()
         mock_detector = mock.MagicMock()

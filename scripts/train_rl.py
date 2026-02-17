@@ -187,9 +187,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=(
             "Run browser in headless mode.  Uses Selenium screenshots "
-            "and ActionChains for capture/input instead of pydirectinput "
-            "and Win32 screen capture.  Much slower (~2-3 FPS) but does "
-            "not capture the mouse."
+            "for capture instead of Win32 screen capture.  "
+            "Much slower (~2-3 FPS) but does not capture the mouse."
         ),
     )
     parser.add_argument(

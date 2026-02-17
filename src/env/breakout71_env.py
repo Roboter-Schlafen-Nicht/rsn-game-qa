@@ -3,18 +3,24 @@
 Wraps the Breakout 71 browser game running in a native Windows window.
 Uses ``WinCamCapture`` (Direct3D11, <1 ms) or ``WindowCapture`` (PrintWindow
 fallback) for frame acquisition, ``YoloDetector`` for object detection,
-``pydirectinput`` for pixel-based paddle control, and Selenium WebDriver
-for **modal handling only** (game-over, perk picker, menu overlays).
+Selenium ``ActionChains`` for paddle control, and Selenium WebDriver
+for modal handling (game-over, perk picker, menu overlays).
 
-In **headless** mode, capture uses Selenium screenshots (``get_screenshot_as_png``)
-and paddle control uses ``ActionChains.move_to_element_with_offset()``.  This is
-much slower (~2-3 FPS) but avoids capturing the host mouse and does not
-require a physical display.
+In **headless** mode, capture uses Selenium screenshots
+(``get_screenshot_as_png``) instead of Win32-based screen capture.
+This is much slower (~2-3 FPS) but avoids capturing the host mouse
+and does not require a physical display.
+
+All input (paddle movement, canvas clicks) uses Selenium
+``ActionChains`` in both native and headless modes.  This avoids
+OS-level mouse events (e.g. ``pydirectinput``) which can trigger
+unintended game behaviour (click-to-pause, focus loss, etc.) and
+are inherently game-specific.
 
 The action space is a continuous ``Box(-1, 1, shape=(1,))`` value that
-maps directly to the absolute paddle screen position via
-``pydirectinput.moveTo()`` (native) or ``ActionChains`` (headless).
-A value of ``-1`` moves the paddle to the left edge of the client area,
+maps directly to the absolute paddle position via
+``ActionChains.move_to_element_with_offset()``.
+A value of ``-1`` moves the paddle to the left edge of the game canvas,
 ``+1`` to the right edge, and ``0`` to the centre.
 
 Observation vector layout (8 elements)::
@@ -170,67 +176,21 @@ return (function() {
 """
 
 
-def _get_client_origin(hwnd: int) -> tuple[int, int]:
-    """Return screen-absolute (x, y) of the client area's top-left corner.
-
-    Parameters
-    ----------
-    hwnd : int
-        Window handle.
-
-    Returns
-    -------
-    tuple[int, int]
-        ``(screen_x, screen_y)`` of client area origin.
-    """
-    import win32gui
-
-    return win32gui.ClientToScreen(hwnd, (0, 0))
-
-
-def _norm_to_screen(
-    x_norm: float,
-    y_norm: float,
-    client_w: int,
-    client_h: int,
-    client_origin: tuple[int, int],
-) -> tuple[int, int]:
-    """Convert normalised [0,1] coords to absolute screen pixels.
-
-    Parameters
-    ----------
-    x_norm, y_norm : float
-        Normalised position within the captured frame.
-    client_w, client_h : int
-        Client area dimensions (from capture).
-    client_origin : tuple[int, int]
-        Screen-absolute (x, y) of client area top-left.
-
-    Returns
-    -------
-    tuple[int, int]
-        ``(screen_x, screen_y)`` absolute pixel coordinates.
-    """
-    x_norm_clamped = max(0.0, min(1.0, x_norm))
-    y_norm_clamped = max(0.0, min(1.0, y_norm))
-    x_client = min(int(x_norm_clamped * client_w), max(client_w - 1, 0))
-    y_client = min(int(y_norm_clamped * client_h), max(client_h - 1, 0))
-    return client_origin[0] + x_client, client_origin[1] + y_client
-
-
 class Breakout71Env(gym.Env):
     """Gymnasium environment wrapping the Breakout 71 browser game.
 
     This environment captures frames from the game window, runs YOLO
     inference to extract game-object positions, converts them to a
-    structured observation vector, and injects actions via
-    ``pydirectinput.moveTo()`` (native mode) or Selenium
-    ``ActionChains`` (headless mode).
+    structured observation vector, and injects actions via Selenium
+    ``ActionChains.move_to_element_with_offset()`` (both native and
+    headless modes).
+
+    Frame capture uses ``WinCamCapture`` (Direct3D11, <1 ms) in native
+    mode or Selenium ``get_screenshot_as_png`` in headless mode.
 
     Selenium WebDriver is used for modal handling (game-over, perk
-    picker, menu overlays).  In headless mode it is also used for
-    frame capture (``get_screenshot_as_png``) and paddle input
-    (``move_to_element_with_offset``).
+    picker, menu overlays) and all input (paddle movement, canvas
+    clicks) in both modes.
 
     Parameters
     ----------
@@ -247,17 +207,16 @@ class Breakout71Env(gym.Env):
         List of ``Oracle`` instances to attach.  If None, no oracles
         are used.
     driver : object, optional
-        Selenium WebDriver instance for modal handling (and for
-        capture/input in headless mode).  If provided in native mode,
-        the env uses JavaScript execution to detect and dismiss
-        game-over, perk-picker, and menu modals.  In headless mode,
-        this parameter is **required**.
+        Selenium WebDriver instance for modal handling and input.
+        Required for both native and headless modes.  In native mode,
+        capture still uses Win32 screen capture (wincam/PrintWindow)
+        for speed.  In headless mode, capture also uses Selenium.
     device : str
         Device for YOLO inference: ``"auto"`` (default), ``"xpu"``,
         ``"cuda"``, ``"cpu"``.  Passed to ``YoloDetector``.
     headless : bool
-        If ``True``, use Selenium-based capture and input instead of
-        Win32 APIs (pydirectinput/WinCamCapture/WindowCapture).
+        If ``True``, use Selenium-based capture instead of Win32 APIs.
+        Input always uses Selenium in both modes.
         Requires ``driver`` to be set.  Much slower (~2-3 FPS) but does
         not capture the host mouse.  Default is ``False``.
 
@@ -268,7 +227,7 @@ class Breakout71Env(gym.Env):
     action_space : gym.spaces.Box
         Continuous Box(-1, 1, shape=(1,)).  The value maps to the
         absolute paddle position: -1 = left edge, 0 = centre,
-        +1 = right edge of the client area.
+        +1 = right edge of the game canvas.
     """
 
     metadata = {"render_modes": ["human", "rgb_array"]}
@@ -333,13 +292,10 @@ class Breakout71Env(gym.Env):
         # Sub-components (initialised lazily)
         self._capture = None  # WinCamCapture or WindowCapture instance
         self._detector = None  # YoloDetector instance
-        self._driver = driver  # Selenium WebDriver (modals only)
+        self._driver = driver  # Selenium WebDriver (modals + input)
         self._initialized: bool = False
 
-        # Pixel-based control state
-        self._client_origin: tuple[int, int] | None = None  # screen coords
-
-        # Headless mode state (Selenium-based capture/input)
+        # Selenium canvas element for ActionChains input (both modes)
         self._game_canvas: Any | None = None  # Selenium WebElement
         self._canvas_size: tuple[int, int] | None = None  # (width, height)
 
@@ -351,16 +307,18 @@ class Breakout71Env(gym.Env):
         testing or config validation).
 
         All imports are performed inside this method to avoid breaking
-        CI in Docker where pywin32/wincam/pydirectinput are unavailable.
+        CI in Docker where pywin32/wincam are unavailable.
 
         **Native mode** (default): Prefers ``WinCamCapture`` (Direct3D11,
         <1 ms per frame) and falls back to ``WindowCapture`` (PrintWindow,
-        ~25 ms) if wincam is unavailable.
+        ~25 ms) if wincam is unavailable.  Input uses Selenium
+        ``ActionChains`` (same as headless).
 
-        **Headless mode**: Skips Win32 capture/input entirely.  Uses
-        Selenium ``get_screenshot_as_png`` for frames and
-        ``ActionChains`` for paddle control.  Finds the ``#game`` canvas
-        element for coordinate mapping.
+        **Headless mode**: Skips Win32 capture entirely.  Uses
+        Selenium ``get_screenshot_as_png`` for frames.
+
+        In both modes, the ``#game`` canvas element is located via
+        Selenium for ``ActionChains`` coordinate mapping.
         """
         if self._initialized:
             return
@@ -368,34 +326,14 @@ class Breakout71Env(gym.Env):
         from src.perception.yolo_detector import YoloDetector
 
         if self.headless:
-            # -- Headless: Selenium-based capture/input --------------------
+            # -- Headless: Selenium-based capture ------------------------------
             if self._driver is None:
                 raise RuntimeError(
                     "Headless mode requires a Selenium WebDriver "
                     "(pass driver= to Breakout71Env)"
                 )
-
-            # Find the game canvas element for coordinate mapping
-            try:
-                from selenium.webdriver.common.by import By
-
-                self._game_canvas = self._driver.find_element(By.ID, "game")
-            except Exception:
-                logger.warning("Canvas #game not found, falling back to <body>")
-                from selenium.webdriver.common.by import By
-
-                self._game_canvas = self._driver.find_element(By.TAG_NAME, "body")
-
-            # Read canvas size for action coordinate mapping
-            size = self._game_canvas.size
-            self._canvas_size = (size["width"], size["height"])
-            logger.info(
-                "Headless mode: canvas %dx%d",
-                self._canvas_size[0],
-                self._canvas_size[1],
-            )
         else:
-            # -- Native: Win32-based capture/input -------------------------
+            # -- Native: Win32-based capture -----------------------------------
             try:
                 from src.capture.wincam_capture import WinCamCapture
 
@@ -421,16 +359,8 @@ class Breakout71Env(gym.Env):
                     self._capture.height,
                 )
 
-            # Client origin for pydirectinput coordinate mapping
-            self._update_client_origin()
-
-            # Disable pydirectinput's built-in 100ms sleep
-            try:
-                import pydirectinput
-
-                pydirectinput.PAUSE = 0
-            except ImportError:
-                logger.debug("pydirectinput not available (CI environment)")
+        # -- Find game canvas element for ActionChains (both modes) --------
+        self._init_canvas()
 
         # -- YOLO detector (shared by both modes) --------------------------
         self._detector = YoloDetector(
@@ -441,23 +371,38 @@ class Breakout71Env(gym.Env):
 
         self._initialized = True
 
-    def _update_client_origin(self) -> None:
-        """Update the screen-absolute origin of the client area.
+    def _init_canvas(self) -> None:
+        """Find the game canvas element for ActionChains input.
 
-        Reads the window handle from the capture subsystem and converts
-        client (0,0) to screen coordinates.  Called during init and on
-        each reset to track window movement.
+        Locates the ``#game`` canvas via Selenium ``find_element`` and
+        reads its size for coordinate mapping.  Falls back to ``<body>``
+        if the canvas is not found.  Silently skips if no driver is
+        available (e.g. testing without a browser).
         """
-        if self._capture is None or self._capture.hwnd == 0:
-            self._client_origin = None
+        if self._driver is None:
             return
 
         try:
-            self._client_origin = _get_client_origin(self._capture.hwnd)
-            logger.debug("Client origin: (%d, %d)", *self._client_origin)
-        except Exception as exc:
-            logger.warning("Failed to get client origin: %s", exc)
-            self._client_origin = None
+            from selenium.webdriver.common.by import By
+
+            self._game_canvas = self._driver.find_element(By.ID, "game")
+        except Exception:
+            logger.warning("Canvas #game not found, falling back to <body>")
+            try:
+                from selenium.webdriver.common.by import By
+
+                self._game_canvas = self._driver.find_element(By.TAG_NAME, "body")
+            except Exception:
+                logger.warning("Could not find <body> either")
+                return
+
+        size = self._game_canvas.size
+        self._canvas_size = (size["width"], size["height"])
+        logger.info(
+            "Canvas: %dx%d",
+            self._canvas_size[0],
+            self._canvas_size[1],
+        )
 
     def reset(
         self,
@@ -469,7 +414,7 @@ class Breakout71Env(gym.Env):
 
         Handles game-over modals, perk picker screens, and initial
         game start by using Selenium JavaScript execution for modal
-        dismissal and pydirectinput for canvas clicks.
+        dismissal and ActionChains for canvas clicks.
 
         Parameters
         ----------
@@ -489,10 +434,6 @@ class Breakout71Env(gym.Env):
 
         if not self._initialized:
             self._lazy_init()
-
-        # Refresh client origin (window may have moved) — native only
-        if not self.headless:
-            self._update_client_origin()
 
         # Dismiss any modals and start the game
         detections: dict[str, Any] = {}
@@ -698,7 +639,6 @@ class Breakout71Env(gym.Env):
             self._capture.release()
         self._capture = None
         self._detector = None
-        self._client_origin = None
         self._game_canvas = None
         self._canvas_size = None
         self._initialized = False
@@ -904,12 +844,15 @@ class Breakout71Env(gym.Env):
         return reward
 
     def _apply_action(self, action: "np.ndarray") -> None:
-        """Send the chosen action to the game.
+        """Send the chosen action to the game via Selenium ActionChains.
 
-        In native mode, uses ``pydirectinput.moveTo()`` to set the
-        mouse position on screen.  In headless mode, uses Selenium
-        ``ActionChains.move_to_element_with_offset()`` on the game
-        canvas.
+        Maps the continuous ``[-1, 1]`` action to a pixel offset from
+        the canvas centre and moves the mouse there using
+        ``ActionChains.move_to_element_with_offset()``.  The Y position
+        is fixed at 90% of canvas height (relative to centre).
+
+        This method is used in both native and headless modes — all
+        input goes through Selenium to avoid OS-level mouse events.
 
         Parameters
         ----------
@@ -917,63 +860,14 @@ class Breakout71Env(gym.Env):
             Continuous action value in ``[-1, 1]``.  Accepts a scalar,
             0-d array, or shape ``(1,)`` array.  Maps to absolute
             paddle position: -1 = left edge, 0 = centre, +1 = right
-            edge of the client area.
-        """
-        if self.headless:
-            self._apply_action_headless(action)
-            return
-
-        if self._capture is None or self._client_origin is None:
-            return
-
-        # Normalize: accept scalar, 0-d, or (1,) array
-        action = np.asarray(action, dtype=np.float32).reshape(-1)
-        if action.size != 1:
-            raise ValueError(f"Expected action of size 1, got size {action.size}")
-
-        # Extract scalar from the action array
-        value = float(np.clip(action[0], -1.0, 1.0))
-
-        # Map [-1, 1] to normalised [0, 1] for screen mapping
-        x_norm = (value + 1.0) / 2.0
-
-        # Fixed paddle Y position (~90% of client height)
-        y_norm = 0.90
-
-        screen_x, screen_y = _norm_to_screen(
-            x_norm,
-            y_norm,
-            self._capture.width,
-            self._capture.height,
-            self._client_origin,
-        )
-
-        try:
-            import pydirectinput
-
-            pydirectinput.moveTo(screen_x, screen_y)
-        except ImportError:
-            logger.debug("pydirectinput not available — action skipped")
-        except Exception as exc:
-            logger.debug("Action failed: %s", exc)
-
-    def _apply_action_headless(self, action: "np.ndarray") -> None:
-        """Send action via Selenium ActionChains (headless mode).
-
-        Maps the continuous ``[-1, 1]`` action to a pixel offset from
-        the canvas centre and moves the mouse there.  The Y position
-        is fixed at 90% of canvas height (relative to centre).
-
-        Parameters
-        ----------
-        action : np.ndarray
-            Continuous action value in ``[-1, 1]``.
+            edge of the game canvas.
         """
         if self._driver is None or self._game_canvas is None:
             return
         if self._canvas_size is None:
             return
 
+        # Normalize: accept scalar, 0-d, or (1,) array
         action = np.asarray(action, dtype=np.float32).reshape(-1)
         if action.size != 1:
             raise ValueError(f"Expected action of size 1, got size {action.size}")
@@ -996,7 +890,7 @@ class Breakout71Env(gym.Env):
                 self._game_canvas, x_offset, y_offset
             ).perform()
         except Exception as exc:
-            logger.debug("Headless action failed: %s", exc)
+            logger.debug("Action failed: %s", exc)
 
     def _handle_game_state(self, *, dismiss_game_over: bool = True) -> str:
         """Detect and handle game UI state (modals, game over, perks).
@@ -1087,37 +981,8 @@ class Breakout71Env(gym.Env):
     def _click_canvas(self) -> None:
         """Click the game canvas centre to start/unpause the game.
 
-        In native mode, uses ``pydirectinput.click()`` at the centre
-        of the client area.  In headless mode, uses Selenium
-        ``ActionChains.click()``.
-        """
-        if self.headless:
-            self._click_canvas_headless()
-            return
-
-        if self._capture is None or self._client_origin is None:
-            return
-
-        try:
-            import pydirectinput
-
-            screen_x, screen_y = _norm_to_screen(
-                0.5,
-                0.5,
-                self._capture.width,
-                self._capture.height,
-                self._client_origin,
-            )
-            pydirectinput.click(screen_x, screen_y)
-        except ImportError:
-            logger.debug("pydirectinput not available — click skipped")
-        except Exception as exc:
-            logger.debug("Canvas click failed: %s", exc)
-
-    def _click_canvas_headless(self) -> None:
-        """Click the game canvas via Selenium ActionChains (headless mode).
-
-        Moves to the canvas element centre and clicks.
+        Uses Selenium ``ActionChains.click()`` in both native and
+        headless modes.
         """
         if self._driver is None or self._game_canvas is None:
             return
@@ -1129,7 +994,7 @@ class Breakout71Env(gym.Env):
                 self._game_canvas
             ).click().perform()
         except Exception as exc:
-            logger.debug("Headless canvas click failed: %s", exc)
+            logger.debug("Canvas click failed: %s", exc)
 
     def _run_oracles(
         self,
