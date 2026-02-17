@@ -254,9 +254,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="PATH",
         help=(
             "Resume training from a saved model/checkpoint (.zip).  "
-            "Loads the model weights and optimizer state.  The --timesteps "
-            "value is the TOTAL target (not additional), so set it to the "
-            "original target (e.g. 200000) to complete a partial run."
+            "Loads the model weights, optimizer state, and PPO hyperparameters.  "
+            "The --timesteps value is the TOTAL target (not additional), so set "
+            "it to the original target (e.g. 200000) to complete a partial run.  "
+            "Note: PPO hyperparameters from the checkpoint are preserved; "
+            "command-line overrides for PPO flags are ignored when resuming "
+            "(only --timesteps and --device are applied)."
         ),
     )
 
@@ -991,14 +994,32 @@ def main(argv: list[str] | None = None) -> int:
                     logger.error("Resume path not found: %s", resume_path)
                     return 1
             logger.info("Resuming training from checkpoint: %s", resume_path)
-            model = PPO.load(
-                str(resume_path),
-                env=train_env,
-                device=sb3_device,
-            )
+            try:
+                model = PPO.load(
+                    str(resume_path),
+                    env=train_env,
+                    device=sb3_device,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "Failed to load checkpoint from %s: %s. "
+                    "The checkpoint may be corrupted or incompatible "
+                    "with the current configuration.",
+                    resume_path,
+                    exc,
+                )
+                return 1
             logger.info(
                 "Loaded model: %d timesteps completed previously",
                 model.num_timesteps,
+            )
+            tlog.log(
+                {
+                    "event": "resume",
+                    "checkpoint_path": str(resume_path),
+                    "resumed_timesteps": model.num_timesteps,
+                    "target_timesteps": args.timesteps,
+                }
             )
         else:
             model = PPO(
