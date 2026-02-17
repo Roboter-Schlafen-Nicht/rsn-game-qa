@@ -1,10 +1,11 @@
 """Breakout 71 Gymnasium environment for RL-driven game QA.
 
-Wraps the Breakout 71 browser game running in a native Windows window.
-Uses ``WinCamCapture`` (Direct3D11, <1 ms) or ``WindowCapture`` (PrintWindow
-fallback) for frame acquisition, ``YoloDetector`` for object detection,
-Selenium ``ActionChains`` for paddle control, and Selenium WebDriver
-for modal handling (game-over, perk picker, menu overlays).
+Game-specific subclass of :class:`BaseGameEnv` implementing the
+Breakout 71 browser game.  Uses ``WinCamCapture`` (Direct3D11, <1 ms)
+or ``WindowCapture`` (PrintWindow fallback) for frame acquisition,
+``YoloDetector`` for object detection, Selenium ``ActionChains`` for
+paddle control, and Selenium WebDriver for modal handling (game-over,
+perk picker, menu overlays).
 
 In **headless** mode, capture uses Selenium screenshots
 (``get_screenshot_as_png``) instead of Win32-based screen capture.
@@ -50,9 +51,10 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+
+from .base_env import BaseGameEnv
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +178,7 @@ return (function() {
 """
 
 
-class Breakout71Env(gym.Env):
+class Breakout71Env(BaseGameEnv):
     """Gymnasium environment wrapping the Breakout 71 browser game.
 
     This environment captures frames from the game window, runs YOLO
@@ -230,8 +232,6 @@ class Breakout71Env(gym.Env):
         +1 = right edge of the game canvas.
     """
 
-    metadata = {"render_modes": ["human", "rgb_array"]}
-
     # Termination thresholds
     _BALL_LOST_THRESHOLD: int = 5
     """Consecutive frames without ball detection before game-over."""
@@ -250,14 +250,16 @@ class Breakout71Env(gym.Env):
         device: str = "auto",
         headless: bool = False,
     ) -> None:
-        super().__init__()
-
-        self.window_title = window_title
-        self.yolo_weights = Path(yolo_weights)
-        self.max_steps = max_steps
-        self.render_mode = render_mode
-        self.device = device
-        self.headless = headless
+        super().__init__(
+            window_title=window_title,
+            yolo_weights=yolo_weights,
+            max_steps=max_steps,
+            render_mode=render_mode,
+            oracles=oracles,
+            driver=driver,
+            device=device,
+            headless=headless,
+        )
 
         # Observation: 8-element vector
         # [paddle_x, ball_x, ball_y, ball_vx, ball_vy,
@@ -277,444 +279,40 @@ class Breakout71Env(gym.Env):
             dtype=np.float32,
         )
 
-        # Internal state
-        self._step_count: int = 0
+        # Game-specific state
         self._prev_ball_pos: tuple[float, float] | None = None
         self._bricks_total: int | None = None  # set on first reset
         self._prev_bricks_norm: float = 1.0
-        self._oracles: list[Any] = oracles or []
-        self._last_frame: np.ndarray | None = None
 
         # Termination counters
         self._no_ball_count: int = 0
         self._no_bricks_count: int = 0
 
-        # Sub-components (initialised lazily)
-        self._capture = None  # WinCamCapture or WindowCapture instance
-        self._detector = None  # YoloDetector instance
-        self._driver = driver  # Selenium WebDriver (modals + input)
-        self._initialized: bool = False
+    # ------------------------------------------------------------------
+    # Abstract method implementations
+    # ------------------------------------------------------------------
 
-        # Selenium canvas element for ActionChains input (both modes)
-        self._game_canvas: Any | None = None  # Selenium WebElement
-        self._canvas_size: tuple[int, int] | None = None  # (width, height)
-
-    def _lazy_init(self) -> None:
-        """Lazily initialise capture, detector, and input sub-components.
-
-        Called on the first ``reset()`` so that the env can be
-        constructed without requiring a live game window (e.g. for
-        testing or config validation).
-
-        All imports are performed inside this method to avoid breaking
-        CI in Docker where pywin32/wincam are unavailable.
-
-        **Native mode** (default): Prefers ``WinCamCapture`` (Direct3D11,
-        <1 ms per frame) and falls back to ``WindowCapture`` (PrintWindow,
-        ~25 ms) if wincam is unavailable.  Input uses Selenium
-        ``ActionChains`` (same as headless).
-
-        **Headless mode**: Skips Win32 capture entirely.  Uses
-        Selenium ``get_screenshot_as_png`` for frames.
-
-        In both modes, the ``#game`` canvas element is located via
-        Selenium for ``ActionChains`` coordinate mapping.
-        """
-        if self._initialized:
-            return
-
-        from src.perception.yolo_detector import YoloDetector
-
-        if self.headless:
-            # -- Headless: Selenium-based capture ------------------------------
-            if self._driver is None:
-                raise RuntimeError(
-                    "Headless mode requires a Selenium WebDriver "
-                    "(pass driver= to Breakout71Env)"
-                )
-        else:
-            # -- Native: Win32-based capture -----------------------------------
-            try:
-                from src.capture.wincam_capture import WinCamCapture
-
-                self._capture = WinCamCapture(window_title=self.window_title, fps=60)
-                logger.info(
-                    "Capture: WinCamCapture (Direct3D11) HWND=%s, %dx%d",
-                    self._capture.hwnd,
-                    self._capture.width,
-                    self._capture.height,
-                )
-            except (ImportError, RuntimeError, OSError) as exc:
-                logger.warning(
-                    "WinCamCapture unavailable (%s), falling back to PrintWindow",
-                    exc,
-                )
-                from src.capture.window_capture import WindowCapture
-
-                self._capture = WindowCapture(window_title=self.window_title)
-                logger.info(
-                    "Capture: WindowCapture (PrintWindow) HWND=%s, %dx%d",
-                    self._capture.hwnd,
-                    self._capture.width,
-                    self._capture.height,
-                )
-
-        # -- Find game canvas element for ActionChains (both modes) --------
-        self._init_canvas()
-
-        # -- YOLO detector (shared by both modes) --------------------------
-        self._detector = YoloDetector(
-            weights_path=self.yolo_weights,
-            device=self.device,
-        )
-        self._detector.load()
-
-        self._initialized = True
-
-    def _init_canvas(self) -> None:
-        """Find the game canvas element for ActionChains input.
-
-        Locates the ``#game`` canvas via Selenium ``find_element`` and
-        reads its size for coordinate mapping.  Falls back to ``<body>``
-        if the canvas is not found.  Silently skips if no driver is
-        available (e.g. testing without a browser).
-        """
-        if self._driver is None:
-            return
-
-        try:
-            from selenium.webdriver.common.by import By
-
-            self._game_canvas = self._driver.find_element(By.ID, "game")
-        except Exception:
-            logger.warning("Canvas #game not found, falling back to <body>")
-            try:
-                from selenium.webdriver.common.by import By
-
-                self._game_canvas = self._driver.find_element(By.TAG_NAME, "body")
-            except Exception:
-                logger.warning("Could not find <body> either")
-                return
-
-        size = self._game_canvas.size
-        self._canvas_size = (size["width"], size["height"])
-        logger.info(
-            "Canvas: %dx%d",
-            self._canvas_size[0],
-            self._canvas_size[1],
-        )
-
-    def reset(
-        self,
-        *,
-        seed: Optional[int] = None,
-        options: Optional[dict[str, Any]] = None,
-    ) -> tuple[np.ndarray, dict[str, Any]]:
-        """Reset the environment for a new episode.
-
-        Handles game-over modals, perk picker screens, and initial
-        game start by using Selenium JavaScript execution for modal
-        dismissal and ActionChains for canvas clicks.
-
-        Parameters
-        ----------
-        seed : int, optional
-            Random seed (for reproducibility of any stochastic elements).
-        options : dict, optional
-            Additional reset options.
+    def game_classes(self) -> list[str]:
+        """Return Breakout 71 YOLO class names.
 
         Returns
         -------
-        obs : np.ndarray
-            Initial observation vector (8 elements).
-        info : dict[str, Any]
-            Auxiliary information (``"frame"``, ``"detections"``, etc.).
+        list[str]
+            ``["ball", "brick", "paddle", "powerup", "wall"]``
         """
-        super().reset(seed=seed)
+        return ["ball", "brick", "paddle", "powerup", "wall"]
 
-        if not self._initialized:
-            self._lazy_init()
-
-        # Dismiss any modals and start the game
-        detections: dict[str, Any] = {}
-        for attempt in range(5):
-            logger.info("reset() attempt %d/5", attempt + 1)
-            self._handle_game_state()
-            self._click_canvas()
-            time.sleep(0.5)
-
-            frame = self._capture_frame()
-            detections = self._detect_objects(frame)
-
-            ball = detections.get("ball")
-            brick_count = len(detections.get("bricks", []))
-            logger.info(
-                "reset() attempt %d: ball=%s, bricks=%d",
-                attempt + 1,
-                ball is not None,
-                brick_count,
-            )
-
-            if ball is not None:
-                break
-
-        if detections.get("ball") is None:
-            raise RuntimeError(
-                "Breakout71Env.reset() failed to detect a ball after "
-                "5 attempts; the game may not have initialized correctly."
-            )
-
-        # Build observation with reset semantics
-        obs = self._build_observation(detections, reset=True)
-
-        # Reset episode counters
-        self._step_count = 0
-        self._prev_bricks_norm = 1.0
-        self._no_ball_count = 0
-        self._no_bricks_count = 0
-
-        # Build info dict
-        info = self._build_info(detections)
-
-        # Clear and notify oracles
-        for oracle in self._oracles:
-            oracle.clear()
-            oracle.on_reset(obs, info)
-
-        return obs, info
-
-    def step(
-        self, action: np.ndarray
-    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        """Execute one action and return the resulting transition.
-
-        Parameters
-        ----------
-        action : np.ndarray
-            Continuous action array of shape ``(1,)`` with value in
-            ``[-1, 1]``.  Maps to absolute paddle position: -1 = left
-            edge, 0 = centre, +1 = right edge of the client area.
+    def canvas_selector(self) -> str:
+        """Return the CSS ID of the Breakout 71 game canvas.
 
         Returns
         -------
-        obs : np.ndarray
-            Observation vector after the action (8 elements).
-        reward : float
-            Reward signal.
-        terminated : bool
-            True if the game is over (ball lost or level cleared).
-        truncated : bool
-            True if ``max_steps`` has been reached.
-        info : dict[str, Any]
-            Auxiliary information including ``"frame"``, ``"score"``,
-            ``"oracle_findings"``.
+        str
+            ``"game"``
         """
-        # Apply action — no artificial throttle; the pipeline runs as
-        # fast as capture + inference allow.
-        self._apply_action(action)
+        return "game"
 
-        # Modal check throttling: only call _handle_game_state() when
-        # the ball has been missing for one or more frames.  During
-        # normal gameplay (ball visible), we skip the Selenium HTTP
-        # round-trip entirely, removing ~100-150ms of overhead per step.
-        mid_state = "gameplay"
-        if self._no_ball_count > 0:
-            mid_state = self._handle_game_state(dismiss_game_over=False)
-        if mid_state == "game_over":
-            # Return last observation with terminated=True.
-            # Use a fixed terminal penalty instead of computing reward
-            # from detections — the game-over modal occludes bricks,
-            # producing incorrect brick-count deltas and potentially
-            # spurious positive terminal rewards.
-            frame = self._capture_frame()
-            detections = self._detect_objects(frame)
-            obs = self._build_observation(detections)
-            self._step_count += 1
-            truncated = self._step_count >= self.max_steps
-            reward = -5.0 - 0.01  # terminal penalty + time penalty
-            info = self._build_info(detections)
-            findings = self._run_oracles(obs, reward, True, truncated, info)
-            info["oracle_findings"] = findings
-            return obs, reward, True, truncated, info
-
-        # Handle perk picker / menu modals — these are part of normal
-        # gameplay and should be dismissed mid-episode.
-        if mid_state in ("perk_picker", "menu"):
-            self._click_canvas()
-            time.sleep(0.3)
-
-        # Capture and detect
-        frame = self._capture_frame()
-        detections = self._detect_objects(frame)
-
-        # Build observation
-        obs = self._build_observation(detections)
-
-        # Update termination counters
-        ball_detected = detections.get("ball") is not None
-        brick_count = len(detections.get("bricks", []))
-
-        if not ball_detected:
-            self._no_ball_count += 1
-            # On the 0→1 transition (ball just disappeared), check for
-            # game-over modal immediately.  Without this, a game-over
-            # modal that appears in the same frame the ball vanishes
-            # would be missed until the next step, and _compute_reward
-            # would run on modal-occluded detections — potentially
-            # producing spurious positive rewards from brick-delta.
-            if self._no_ball_count == 1:
-                late_state = self._handle_game_state(dismiss_game_over=False)
-                if late_state == "game_over":
-                    self._step_count += 1
-                    truncated = self._step_count >= self.max_steps
-                    reward = -5.0 - 0.01
-                    info = self._build_info(detections)
-                    findings = self._run_oracles(obs, reward, True, truncated, info)
-                    info["oracle_findings"] = findings
-                    return obs, reward, True, truncated, info
-        else:
-            self._no_ball_count = 0
-
-        if brick_count == 0 and self._bricks_total is not None:
-            self._no_bricks_count += 1
-        else:
-            self._no_bricks_count = 0
-
-        # Increment step counter (before truncation check so max_steps is
-        # the exact number of transitions allowed per episode)
-        self._step_count += 1
-
-        # Determine termination
-        level_cleared = self._no_bricks_count >= self._LEVEL_CLEAR_THRESHOLD
-        game_over = (
-            self._no_ball_count >= self._BALL_LOST_THRESHOLD
-            and self._bricks_total is not None
-            and brick_count == self._prev_brick_count()
-        )
-        terminated = level_cleared or game_over
-        truncated = self._step_count >= self.max_steps
-
-        # Compute reward
-        reward = self._compute_reward(detections, terminated, level_cleared)
-
-        # Build info dict
-        info = self._build_info(detections)
-
-        # Run oracles
-        findings = self._run_oracles(obs, reward, terminated, truncated, info)
-        info["oracle_findings"] = findings
-
-        return obs, reward, terminated, truncated, info
-
-    def render(self) -> np.ndarray | None:
-        """Render the current frame.
-
-        Returns
-        -------
-        np.ndarray or None
-            RGB frame if ``render_mode="rgb_array"``, else None.
-        """
-        if self.render_mode == "rgb_array":
-            return self._last_frame
-        return None
-
-    @property
-    def step_count(self) -> int:
-        """Return the current step count (read-only).
-
-        Returns
-        -------
-        int
-            Number of steps taken in the current episode.
-        """
-        return self._step_count
-
-    def close(self) -> None:
-        """Release capture resources.
-
-        Does **not** close the Selenium driver — that is owned by the
-        caller (e.g. ``train_rl.py``).
-        """
-        if self._capture is not None:
-            self._capture.release()
-        self._capture = None
-        self._detector = None
-        self._game_canvas = None
-        self._canvas_size = None
-        self._initialized = False
-
-    # -- Private helpers -------------------------------------------------------
-
-    def _capture_frame(self) -> np.ndarray:
-        """Capture a frame from the game window.
-
-        In native mode, uses ``WinCamCapture`` or ``WindowCapture``.
-        In headless mode, uses Selenium ``get_screenshot_as_png``.
-
-        Returns
-        -------
-        np.ndarray
-            BGR image of the game window's client area.
-        """
-        if self.headless:
-            return self._capture_frame_headless()
-        frame = self._capture.capture_frame()
-        self._last_frame = frame
-        return frame
-
-    def _capture_frame_headless(self) -> np.ndarray:
-        """Capture a frame via Selenium screenshot.
-
-        Takes a full-page PNG screenshot, decodes it to a BGR numpy
-        array.  Slower than native capture (~50-100 ms) but works
-        without a physical display.
-
-        Returns
-        -------
-        np.ndarray
-            BGR image decoded from the screenshot.
-
-        Raises
-        ------
-        RuntimeError
-            If the driver is unavailable or the screenshot cannot be
-            decoded.
-        """
-        if self._driver is None:
-            raise RuntimeError("Cannot capture headless frame: driver is None")
-
-        try:
-            import cv2
-        except ImportError as exc:
-            raise RuntimeError(
-                "cv2 (opencv-python) is required for headless frame capture"
-            ) from exc
-
-        png_bytes = self._driver.get_screenshot_as_png()
-        nparr = np.frombuffer(png_bytes, np.uint8)
-        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if frame is None:
-            raise RuntimeError("Failed to decode screenshot PNG to BGR frame")
-        self._last_frame = frame
-        return frame
-
-    def _detect_objects(self, frame: np.ndarray) -> dict[str, Any]:
-        """Run YOLO inference on a frame and extract detections.
-
-        Parameters
-        ----------
-        frame : np.ndarray
-            BGR game frame.
-
-        Returns
-        -------
-        dict[str, Any]
-            Detection results from ``YoloDetector.detect_to_game_state``.
-        """
-        h, w = frame.shape[:2]
-        return self._detector.detect_to_game_state(frame, w, h)
-
-    def _build_observation(
+    def build_observation(
         self, detections: dict[str, Any], *, reset: bool = False
     ) -> np.ndarray:
         """Convert YOLO detections into the flat observation vector.
@@ -796,7 +394,7 @@ class Breakout71Env(gym.Env):
 
         return obs
 
-    def _compute_reward(
+    def compute_reward(
         self,
         detections: dict[str, Any],
         terminated: bool,
@@ -843,7 +441,42 @@ class Breakout71Env(gym.Env):
 
         return reward
 
-    def _apply_action(self, action: "np.ndarray") -> None:
+    def check_termination(self, detections: dict[str, Any]) -> tuple[bool, bool]:
+        """Check whether the episode should terminate.
+
+        Reads ``_no_ball_count`` (already updated by
+        ``_check_late_game_over``) and updates ``_no_bricks_count``.
+
+        Parameters
+        ----------
+        detections : dict[str, Any]
+            Current YOLO detections.
+
+        Returns
+        -------
+        terminated : bool
+            True if the episode should end.
+        level_cleared : bool
+            True if the level was cleared.
+        """
+        brick_count = len(detections.get("bricks", []))
+
+        if brick_count == 0 and self._bricks_total is not None:
+            self._no_bricks_count += 1
+        else:
+            self._no_bricks_count = 0
+
+        level_cleared = self._no_bricks_count >= self._LEVEL_CLEAR_THRESHOLD
+        game_over = (
+            self._no_ball_count >= self._BALL_LOST_THRESHOLD
+            and self._bricks_total is not None
+            and brick_count == self._prev_brick_count()
+        )
+        terminated = level_cleared or game_over
+
+        return terminated, level_cleared
+
+    def apply_action(self, action: "np.ndarray") -> None:
         """Send the chosen action to the game via Selenium ActionChains.
 
         Maps the continuous ``[-1, 1]`` action to a pixel offset from
@@ -892,7 +525,7 @@ class Breakout71Env(gym.Env):
         except Exception as exc:
             logger.debug("Action failed: %s", exc)
 
-    def _handle_game_state(self, *, dismiss_game_over: bool = True) -> str:
+    def handle_modals(self, *, dismiss_game_over: bool = True) -> str:
         """Detect and handle game UI state (modals, game over, perks).
 
         Uses JavaScript execution via Selenium to query the game DOM
@@ -978,7 +611,7 @@ class Breakout71Env(gym.Env):
 
         return state
 
-    def _click_canvas(self) -> None:
+    def start_game(self) -> None:
         """Click the game canvas centre to start/unpause the game.
 
         Uses Selenium ``ActionChains.click()`` in both native and
@@ -996,42 +629,10 @@ class Breakout71Env(gym.Env):
         except Exception as exc:
             logger.debug("Canvas click failed: %s", exc)
 
-    def _run_oracles(
-        self,
-        obs: np.ndarray,
-        reward: float,
-        terminated: bool,
-        truncated: bool,
-        info: dict[str, Any],
-    ) -> list[Any]:
-        """Run all attached oracles and collect findings.
+    def build_info(self, detections: dict[str, Any]) -> dict[str, Any]:
+        """Build the game-specific portion of the info dict.
 
-        Parameters
-        ----------
-        obs : np.ndarray
-            Current observation.
-        reward : float
-            Current reward.
-        terminated : bool
-            Terminated flag.
-        truncated : bool
-            Truncated flag.
-        info : dict[str, Any]
-            Step info dict.
-
-        Returns
-        -------
-        list
-            Aggregated findings from all oracles.
-        """
-        findings: list[Any] = []
-        for oracle in self._oracles:
-            oracle.on_step(obs, reward, terminated, truncated, info)
-            findings.extend(oracle.get_findings())
-        return findings
-
-    def _build_info(self, detections: dict[str, Any]) -> dict[str, Any]:
-        """Build the info dict returned by reset/step.
+        The base class adds ``"frame"`` and ``"step"`` automatically.
 
         Parameters
         ----------
@@ -1041,21 +642,98 @@ class Breakout71Env(gym.Env):
         Returns
         -------
         dict[str, Any]
-            Info dict with frame, detections, positions, counts.
+            Game-specific info entries.
         """
         paddle = detections.get("paddle")
         ball = detections.get("ball")
 
         return {
-            "frame": self._last_frame,
             "detections": detections,
             "ball_pos": [ball[0], ball[1]] if ball is not None else None,
             "paddle_pos": [paddle[0], paddle[1]] if paddle is not None else None,
             "brick_count": len(detections.get("bricks", [])),
-            "step": self._step_count,
             "score": 0.0,  # placeholder for v1
             "no_ball_count": self._no_ball_count,
         }
+
+    def terminal_reward(self) -> float:
+        """Return the fixed terminal penalty for game-over via modal.
+
+        Returns
+        -------
+        float
+            ``-5.01`` (terminal penalty + time penalty).
+        """
+        return -5.0 - 0.01
+
+    def on_reset_detections(self, detections: dict[str, Any]) -> bool:
+        """Check whether the ball is detected (required to start playing).
+
+        Parameters
+        ----------
+        detections : dict[str, Any]
+            Detections from a reset attempt frame.
+
+        Returns
+        -------
+        bool
+            True if a ball is detected.
+        """
+        return detections.get("ball") is not None
+
+    def reset_termination_state(self) -> None:
+        """Reset game-specific termination counters for a new episode."""
+        self._prev_bricks_norm = 1.0
+        self._no_ball_count = 0
+        self._no_bricks_count = 0
+
+    # ------------------------------------------------------------------
+    # Modal throttling hooks
+    # ------------------------------------------------------------------
+
+    def _should_check_modals(self) -> bool:
+        """Check modals only when ball has been missing.
+
+        Returns
+        -------
+        bool
+            True when ``_no_ball_count > 0``.
+        """
+        return self._no_ball_count > 0
+
+    def _check_late_game_over(self, detections: dict[str, Any]) -> bool:
+        """Check for game-over on the 0→1 ball-miss transition.
+
+        When the ball was visible last step and disappears this step,
+        check for a game-over modal immediately to prevent spurious
+        positive rewards from modal-occluded brick detections.
+
+        Parameters
+        ----------
+        detections : dict[str, Any]
+            Current YOLO detections.
+
+        Returns
+        -------
+        bool
+            True if late game-over modal detected.
+        """
+        ball_detected = detections.get("ball") is not None
+
+        if not ball_detected:
+            self._no_ball_count += 1
+            if self._no_ball_count == 1:
+                late_state = self.handle_modals(dismiss_game_over=False)
+                if late_state == "game_over":
+                    return True
+        else:
+            self._no_ball_count = 0
+
+        return False
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
 
     def _prev_brick_count(self) -> int:
         """Return the previous brick count based on ``_prev_bricks_norm``.

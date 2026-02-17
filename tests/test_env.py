@@ -6,17 +6,17 @@ Covers:
 - Canvas element lookup (_init_canvas) for ActionChains input
 - Frame capture delegation (_capture_frame)
 - Object detection delegation (_detect_objects)
-- Observation building (_build_observation) with reset, missing detections,
+- Observation building (build_observation) with reset, missing detections,
   velocity computation, clipping
-- Reward computation (_compute_reward) with brick delta, time penalty,
+- Reward computation (compute_reward) with brick delta, time penalty,
   terminal rewards, score_delta placeholder
-- Action application (_apply_action) via Selenium ActionChains
-- Game state handling (_handle_game_state, _click_canvas)
+- Action application (apply_action) via Selenium ActionChains
+- Game state handling (handle_modals, start_game)
 - Oracle execution (_run_oracles)
 - Full reset() lifecycle
 - Full step() lifecycle with termination logic (ball lost, level cleared,
   max steps)
-- Info dict contents (_build_info)
+- Info dict contents (build_info)
 - Render and close
 """
 
@@ -441,7 +441,7 @@ class TestDetectObjects:
 
 
 class TestBuildObservation:
-    """Tests for _build_observation with various detection scenarios."""
+    """Tests for build_observation with various detection scenarios."""
 
     def test_normal_detection(self):
         """Normal detections should produce correct observation values."""
@@ -451,7 +451,7 @@ class TestBuildObservation:
             ball=(0.6, 0.4, 0.02, 0.02),
             bricks=[(0.1, 0.1, 0.05, 0.03)] * 8,
         )
-        obs = env._build_observation(det, reset=True)
+        obs = env.build_observation(det, reset=True)
 
         assert obs[0] == 0.3  # paddle_x
         assert obs[1] == 0.6  # ball_x
@@ -463,7 +463,7 @@ class TestBuildObservation:
         """Missing paddle detection should default to 0.5."""
         env = Breakout71Env()
         det = _detections(paddle=None)
-        obs = env._build_observation(det, reset=True)
+        obs = env.build_observation(det, reset=True)
 
         assert obs[0] == 0.5  # default paddle_x
 
@@ -471,7 +471,7 @@ class TestBuildObservation:
         """Missing ball detection should default to 0.5 for position."""
         env = Breakout71Env()
         det = _detections(ball=None)
-        obs = env._build_observation(det, reset=True)
+        obs = env.build_observation(det, reset=True)
 
         assert obs[1] == 0.5  # default ball_x
         assert obs[2] == 0.5  # default ball_y
@@ -480,7 +480,7 @@ class TestBuildObservation:
         """Missing paddle and ball should both default to 0.5."""
         env = Breakout71Env()
         det = _detections(paddle=None, ball=None)
-        obs = env._build_observation(det, reset=True)
+        obs = env.build_observation(det, reset=True)
 
         assert obs[0] == 0.5  # paddle_x
         assert obs[1] == 0.5  # ball_x
@@ -492,7 +492,7 @@ class TestBuildObservation:
         env._prev_ball_pos = (0.3, 0.3)  # simulate prior state
 
         det = _detections(ball=(0.6, 0.4, 0.02, 0.02))
-        obs = env._build_observation(det, reset=True)
+        obs = env.build_observation(det, reset=True)
 
         assert obs[3] == 0.0  # ball_vx
         assert obs[4] == 0.0  # ball_vy
@@ -502,7 +502,7 @@ class TestBuildObservation:
         env = Breakout71Env()
         bricks = [(0.1 * i, 0.1, 0.05, 0.03) for i in range(15)]
         det = _detections(bricks=bricks)
-        env._build_observation(det, reset=True)
+        env.build_observation(det, reset=True)
 
         assert env._bricks_total == 15
 
@@ -510,7 +510,7 @@ class TestBuildObservation:
         """On reset with no bricks, _bricks_total should be at least 1."""
         env = Breakout71Env()
         det = _detections(bricks=[])
-        env._build_observation(det, reset=True)
+        env.build_observation(det, reset=True)
 
         assert env._bricks_total == 1
 
@@ -519,11 +519,11 @@ class TestBuildObservation:
         env = Breakout71Env()
         # First frame (reset)
         det1 = _detections(ball=(0.5, 0.5, 0.02, 0.02))
-        env._build_observation(det1, reset=True)
+        env.build_observation(det1, reset=True)
 
         # Second frame
         det2 = _detections(ball=(0.6, 0.45, 0.02, 0.02))
-        obs = env._build_observation(det2)
+        obs = env.build_observation(det2)
 
         assert abs(obs[3] - 0.1) < 1e-6  # ball_vx = 0.6 - 0.5
         assert abs(obs[4] - (-0.05)) < 1e-6  # ball_vy = 0.45 - 0.5
@@ -532,13 +532,13 @@ class TestBuildObservation:
         """Velocities exceeding [-1, 1] should be clipped."""
         env = Breakout71Env()
         det1 = _detections(ball=(0.0, 0.0, 0.02, 0.02))
-        env._build_observation(det1, reset=True)
+        env.build_observation(det1, reset=True)
 
         # Large jump -- would give velocity > 1.0
         det2 = _detections(ball=(1.0, 1.0, 0.02, 0.02))
         # Override prev_ball_pos to create extreme delta
         env._prev_ball_pos = (-1.0, -1.0)
-        obs = env._build_observation(det2)
+        obs = env.build_observation(det2)
 
         assert obs[3] == 1.0  # clipped to 1.0
         assert obs[4] == 1.0  # clipped to 1.0
@@ -548,12 +548,12 @@ class TestBuildObservation:
         env = Breakout71Env()
         bricks_initial = [(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)]
         det1 = _detections(bricks=bricks_initial)
-        env._build_observation(det1, reset=True)
+        env.build_observation(det1, reset=True)
 
         # Simulate 3 bricks destroyed
         bricks_remaining = [(0.1 * i, 0.1, 0.05, 0.03) for i in range(7)]
         det2 = _detections(bricks=bricks_remaining)
-        obs = env._build_observation(det2)
+        obs = env.build_observation(det2)
 
         assert abs(obs[5] - 0.7) < 1e-6  # 7/10
 
@@ -561,7 +561,7 @@ class TestBuildObservation:
         """coins_norm and score_norm should be 0.0 in v1."""
         env = Breakout71Env()
         det = _detections()
-        obs = env._build_observation(det, reset=True)
+        obs = env.build_observation(det, reset=True)
 
         assert obs[6] == 0.0  # coins_norm
         assert obs[7] == 0.0  # score_norm
@@ -573,7 +573,7 @@ class TestBuildObservation:
             paddle=(0.8, 0.9, 0.1, 0.02),
             ball=(0.2, 0.3, 0.02, 0.02),
         )
-        obs = env._build_observation(det, reset=True)
+        obs = env.build_observation(det, reset=True)
 
         assert env.observation_space.contains(obs)
 
@@ -582,7 +582,7 @@ class TestBuildObservation:
 
 
 class TestComputeReward:
-    """Tests for _compute_reward with various scenarios."""
+    """Tests for compute_reward with various scenarios."""
 
     def test_brick_destruction_reward(self):
         """Destroying bricks should give positive reward proportional to delta."""
@@ -592,7 +592,7 @@ class TestComputeReward:
 
         # 8 bricks remaining (2 destroyed)
         det = _detections(bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(8)])
-        reward = env._compute_reward(det, terminated=False, level_cleared=False)
+        reward = env.compute_reward(det, terminated=False, level_cleared=False)
 
         # brick_delta = 1.0 - 0.8 = 0.2; reward = 0.2 * 10 - 0.01 = 1.99
         assert abs(reward - 1.99) < 1e-6
@@ -604,7 +604,7 @@ class TestComputeReward:
         env._prev_bricks_norm = 0.5
 
         det = _detections(bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(5)])
-        reward = env._compute_reward(det, terminated=False, level_cleared=False)
+        reward = env.compute_reward(det, terminated=False, level_cleared=False)
 
         assert abs(reward - (-0.01)) < 1e-6
 
@@ -615,7 +615,7 @@ class TestComputeReward:
         env._prev_bricks_norm = 0.5
 
         det = _detections(bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(5)])
-        reward = env._compute_reward(det, terminated=True, level_cleared=False)
+        reward = env.compute_reward(det, terminated=True, level_cleared=False)
 
         # time penalty (-0.01) + game_over (-5.0) = -5.01
         assert abs(reward - (-5.01)) < 1e-6
@@ -627,7 +627,7 @@ class TestComputeReward:
         env._prev_bricks_norm = 0.0  # already at 0
 
         det = _detections(bricks=[])
-        reward = env._compute_reward(det, terminated=True, level_cleared=True)
+        reward = env.compute_reward(det, terminated=True, level_cleared=True)
 
         # brick_delta = 0.0; time penalty (-0.01) + level_clear (+5.0) = 4.99
         assert abs(reward - 4.99) < 1e-6
@@ -639,7 +639,7 @@ class TestComputeReward:
         env._prev_bricks_norm = 0.1  # 1 brick left
 
         det = _detections(bricks=[])
-        reward = env._compute_reward(det, terminated=True, level_cleared=True)
+        reward = env.compute_reward(det, terminated=True, level_cleared=True)
 
         # brick_delta = 0.1 * 10 = 1.0; + time (-0.01) + level (+5.0) = 5.99
         assert abs(reward - 5.99) < 1e-6
@@ -651,7 +651,7 @@ class TestComputeReward:
         env._prev_bricks_norm = 1.0
 
         det = _detections(bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)])
-        reward = env._compute_reward(det, terminated=False, level_cleared=False)
+        reward = env.compute_reward(det, terminated=False, level_cleared=False)
 
         # Only time penalty since no bricks changed
         assert abs(reward - (-0.01)) < 1e-6
@@ -663,7 +663,7 @@ class TestComputeReward:
         env._prev_bricks_norm = 1.0
 
         det = _detections(bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(7)])
-        env._compute_reward(det, terminated=False, level_cleared=False)
+        env.compute_reward(det, terminated=False, level_cleared=False)
 
         assert abs(env._prev_bricks_norm - 0.7) < 1e-6
 
@@ -672,7 +672,7 @@ class TestComputeReward:
 
 
 class TestApplyAction:
-    """Tests for _apply_action via Selenium ActionChains."""
+    """Tests for apply_action via Selenium ActionChains."""
 
     def _make_env_for_action(self, *, canvas_w=1280, canvas_h=1024):
         """Create an env with canvas set up for action tests."""
@@ -690,7 +690,7 @@ class TestApplyAction:
         mock_chains.move_to_element_with_offset.return_value = mock_chains
         mock_ac_module.ActionChains.return_value = mock_chains
 
-        env._apply_action(_action(0.0))
+        env.apply_action(_action(0.0))
 
         args, _ = mock_chains.move_to_element_with_offset.call_args
         assert args[0] is env._game_canvas
@@ -705,7 +705,7 @@ class TestApplyAction:
         mock_chains.move_to_element_with_offset.return_value = mock_chains
         mock_ac_module.ActionChains.return_value = mock_chains
 
-        env._apply_action(_action(-1.0))
+        env.apply_action(_action(-1.0))
 
         args, _ = mock_chains.move_to_element_with_offset.call_args
         assert args[1] == -500  # -1.0 * (1000/2)
@@ -718,7 +718,7 @@ class TestApplyAction:
         mock_chains.move_to_element_with_offset.return_value = mock_chains
         mock_ac_module.ActionChains.return_value = mock_chains
 
-        env._apply_action(_action(1.0))
+        env.apply_action(_action(1.0))
 
         args, _ = mock_chains.move_to_element_with_offset.call_args
         assert args[1] == 500  # +1.0 * (1000/2)
@@ -731,7 +731,7 @@ class TestApplyAction:
         mock_chains.move_to_element_with_offset.return_value = mock_chains
         mock_ac_module.ActionChains.return_value = mock_chains
 
-        env._apply_action(_action(2.0))
+        env.apply_action(_action(2.0))
 
         args, _ = mock_chains.move_to_element_with_offset.call_args
         assert args[1] == 500  # clipped to +1.0 -> 500
@@ -744,28 +744,28 @@ class TestApplyAction:
         mock_chains.move_to_element_with_offset.return_value = mock_chains
         mock_ac_module.ActionChains.return_value = mock_chains
 
-        env._apply_action(_action(-0.5))
+        env.apply_action(_action(-0.5))
 
         args, _ = mock_chains.move_to_element_with_offset.call_args
         assert args[1] == -250  # -0.5 * (1000/2)
 
     def test_no_driver_is_noop(self):
-        """Without driver, _apply_action should be a no-op."""
+        """Without driver, apply_action should be a no-op."""
         env = Breakout71Env()
-        env._apply_action(_action(0.5))  # should not raise
+        env.apply_action(_action(0.5))  # should not raise
 
     def test_no_canvas_is_noop(self):
-        """Without game_canvas, _apply_action should be a no-op."""
+        """Without game_canvas, apply_action should be a no-op."""
         env = Breakout71Env(driver=_mock_driver())
         env._game_canvas = None
-        env._apply_action(_action(0.5))  # should not raise
+        env.apply_action(_action(0.5))  # should not raise
 
     def test_no_canvas_size_is_noop(self):
-        """Without canvas_size, _apply_action should be a no-op."""
+        """Without canvas_size, apply_action should be a no-op."""
         env = Breakout71Env(driver=_mock_driver())
         env._game_canvas = mock.MagicMock()
         env._canvas_size = None
-        env._apply_action(_action(0.5))  # should not raise
+        env.apply_action(_action(0.5))  # should not raise
 
     def test_action_scalar_input(self):
         """Scalar action (0-d array or float) is normalised to (1,)."""
@@ -776,14 +776,14 @@ class TestApplyAction:
         mock_ac_module.ActionChains.return_value = mock_chains
 
         # 0-d numpy array
-        env._apply_action(np.float32(0.0))
+        env.apply_action(np.float32(0.0))
         args, _ = mock_chains.move_to_element_with_offset.call_args
         assert args[1] == 0  # centre
 
         # Plain Python float
         mock_chains.reset_mock()
         mock_chains.move_to_element_with_offset.return_value = mock_chains
-        env._apply_action(0.0)
+        env.apply_action(0.0)
         args, _ = mock_chains.move_to_element_with_offset.call_args
         assert args[1] == 0  # centre
 
@@ -792,7 +792,7 @@ class TestApplyAction:
         env = self._make_env_for_action()
 
         with pytest.raises(ValueError, match="size 1"):
-            env._apply_action(np.array([0.1, 0.2], dtype=np.float32))
+            env.apply_action(np.array([0.1, 0.2], dtype=np.float32))
 
     def test_y_position_is_paddle_row(self):
         """Y offset should be 0.4 * canvas_h (i.e. 90% from top, relative to centre)."""
@@ -802,7 +802,7 @@ class TestApplyAction:
         mock_chains.move_to_element_with_offset.return_value = mock_chains
         mock_ac_module.ActionChains.return_value = mock_chains
 
-        env._apply_action(_action(0.0))
+        env.apply_action(_action(0.0))
 
         args, _ = mock_chains.move_to_element_with_offset.call_args
         assert args[2] == int(1000 * 0.4)  # y_offset = 400
@@ -815,7 +815,7 @@ class TestApplyAction:
         mock_chains.move_to_element_with_offset.return_value = mock_chains
         mock_ac_module.ActionChains.return_value = mock_chains
 
-        env._apply_action(_action(0.0))
+        env.apply_action(_action(0.0))
 
         mock_chains.perform.assert_called_once()
 
@@ -824,7 +824,7 @@ class TestApplyAction:
 
 
 class TestHandleGameState:
-    """Tests for _handle_game_state and _click_canvas."""
+    """Tests for handle_modals and start_game."""
 
     def test_gameplay_state_no_action(self):
         """Gameplay state should return 'gameplay' without extra JS calls."""
@@ -835,7 +835,7 @@ class TestHandleGameState:
         }
         env = Breakout71Env(driver=driver)
 
-        state = env._handle_game_state()
+        state = env.handle_modals()
 
         assert state == "gameplay"
         # Only the detect call, no dismiss calls
@@ -851,7 +851,7 @@ class TestHandleGameState:
         ]
         env = Breakout71Env(driver=driver)
 
-        state = env._handle_game_state()
+        state = env.handle_modals()
 
         assert state == "game_over"
         # Verify the dismiss JS was actually called (not just call count)
@@ -868,7 +868,7 @@ class TestHandleGameState:
         }
         env = Breakout71Env(driver=driver)
 
-        state = env._handle_game_state(dismiss_game_over=False)
+        state = env.handle_modals(dismiss_game_over=False)
 
         assert state == "game_over"
         # Verify dismiss JS was NOT called
@@ -885,7 +885,7 @@ class TestHandleGameState:
         ]
         env = Breakout71Env(driver=driver)
 
-        state = env._handle_game_state()
+        state = env.handle_modals()
 
         assert state == "perk_picker"
         assert driver.execute_script.call_count == 2
@@ -900,15 +900,15 @@ class TestHandleGameState:
         ]
         env = Breakout71Env(driver=driver)
 
-        state = env._handle_game_state()
+        state = env.handle_modals()
 
         assert state == "menu"
 
     def test_no_driver_returns_gameplay(self):
-        """Without a driver, _handle_game_state returns 'gameplay'."""
+        """Without a driver, handle_modals returns 'gameplay'."""
         env = Breakout71Env()
 
-        assert env._handle_game_state() == "gameplay"
+        assert env.handle_modals() == "gameplay"
 
     def test_state_detection_exception_returns_unknown(self):
         """Exception during state detection should return 'unknown'."""
@@ -916,7 +916,7 @@ class TestHandleGameState:
         driver.execute_script.side_effect = RuntimeError("WebDriver error")
         env = Breakout71Env(driver=driver)
 
-        state = env._handle_game_state()
+        state = env.handle_modals()
 
         assert state == "unknown"
 
@@ -926,12 +926,12 @@ class TestHandleGameState:
         driver.execute_script.return_value = None
         env = Breakout71Env(driver=driver)
 
-        state = env._handle_game_state()
+        state = env.handle_modals()
 
         assert state == "unknown"
 
     def test_click_canvas_uses_action_chains(self):
-        """_click_canvas should use ActionChains to click the canvas centre."""
+        """start_game should use ActionChains to click the canvas centre."""
         driver = _mock_driver()
         env = Breakout71Env(driver=driver)
         env._game_canvas = mock.MagicMock()
@@ -942,22 +942,22 @@ class TestHandleGameState:
         mock_chains.click.return_value = mock_chains
         mock_ac_module.ActionChains.return_value = mock_chains
 
-        env._click_canvas()
+        env.start_game()
 
         mock_chains.move_to_element.assert_called_once_with(env._game_canvas)
         mock_chains.click.assert_called_once()
         mock_chains.perform.assert_called_once()
 
     def test_click_canvas_no_driver(self):
-        """_click_canvas without driver should be a no-op."""
+        """start_game without driver should be a no-op."""
         env = Breakout71Env()
-        env._click_canvas()  # should not raise
+        env.start_game()  # should not raise
 
     def test_click_canvas_no_canvas(self):
-        """_click_canvas without game_canvas should be a no-op."""
+        """start_game without game_canvas should be a no-op."""
         env = Breakout71Env(driver=_mock_driver())
         env._game_canvas = None
-        env._click_canvas()  # should not raise
+        env.start_game()  # should not raise
 
 
 # -- Run Oracles ---------------------------------------------------------------
@@ -1027,16 +1027,16 @@ class TestRunOracles:
 
 
 class TestBuildInfo:
-    """Tests for _build_info helper."""
+    """Tests for build_info helper and _make_info wrapper."""
 
     def test_info_contains_expected_keys(self):
-        """Info dict should contain all expected keys."""
+        """Combined info dict (_make_info) should contain all expected keys."""
         env = Breakout71Env()
         env._last_frame = _frame()
         env._step_count = 5
         det = _detections()
 
-        info = env._build_info(det)
+        info = env._make_info(det)
 
         assert "frame" in info
         assert "detections" in info
@@ -1052,7 +1052,7 @@ class TestBuildInfo:
         env._last_frame = _frame()
         det = _detections(ball=(0.3, 0.7, 0.02, 0.02))
 
-        info = env._build_info(det)
+        info = env.build_info(det)
 
         assert info["ball_pos"] == [0.3, 0.7]
 
@@ -1062,7 +1062,7 @@ class TestBuildInfo:
         env._last_frame = _frame()
         det = _detections(ball=None)
 
-        info = env._build_info(det)
+        info = env.build_info(det)
 
         assert info["ball_pos"] is None
 
@@ -1073,7 +1073,7 @@ class TestBuildInfo:
         bricks = [(0.1 * i, 0.1, 0.05, 0.03) for i in range(7)]
         det = _detections(bricks=bricks)
 
-        info = env._build_info(det)
+        info = env.build_info(det)
 
         assert info["brick_count"] == 7
 
@@ -1109,7 +1109,7 @@ class TestReset:
 
     @mock.patch("src.env.breakout71_env.time")
     def test_reset_handles_game_state(self, mock_time):
-        """reset() should call _handle_game_state to dismiss modals."""
+        """reset() should call handle_modals to dismiss modals."""
         env = self._make_env_with_mocks()
 
         env.reset()
@@ -1174,7 +1174,7 @@ class TestReset:
         env._detector = mock.MagicMock()
         env._detector.detect_to_game_state.return_value = _detections(ball=None)
 
-        with pytest.raises(RuntimeError, match="failed to detect a ball"):
+        with pytest.raises(RuntimeError, match="failed to get valid detections"):
             env.reset()
 
 
@@ -1215,10 +1215,10 @@ class TestStep:
 
     @mock.patch("src.env.breakout71_env.time")
     def test_step_applies_action(self, mock_time):
-        """step() should call _apply_action."""
+        """step() should call apply_action."""
         env = self._make_env_ready()
 
-        with mock.patch.object(env, "_apply_action") as mock_apply:
+        with mock.patch.object(env, "apply_action") as mock_apply:
             env.step(_action(0.5))
             mock_apply.assert_called_once()
 
@@ -1639,7 +1639,7 @@ class TestHeadless:
                 env._capture_frame_headless()
 
     def test_headless_apply_action_uses_action_chains(self):
-        """_apply_action in headless mode should use ActionChains."""
+        """apply_action in headless mode should use ActionChains."""
         env = Breakout71Env(headless=True)
         env._driver = mock.MagicMock()
         env._game_canvas = mock.MagicMock()
@@ -1653,14 +1653,14 @@ class TestHeadless:
         )
         mock_ac_module.ActionChains.return_value = mock_chains_instance
 
-        env._apply_action(_action(0.5))
+        env.apply_action(_action(0.5))
 
         mock_ac_module.ActionChains.assert_called_with(env._driver)
         mock_chains_instance.move_to_element_with_offset.assert_called_once()
         mock_chains_instance.perform.assert_called_once()
 
     def test_headless_apply_action_maps_position(self):
-        """_apply_action should map [-1,1] to pixel offsets from centre."""
+        """apply_action should map [-1,1] to pixel offsets from centre."""
         env = Breakout71Env(headless=True)
         env._driver = mock.MagicMock()
         env._game_canvas = mock.MagicMock()
@@ -1673,7 +1673,7 @@ class TestHeadless:
         )
         mock_ac_module.ActionChains.return_value = mock_chains_instance
 
-        env._apply_action(_action(-1.0))
+        env.apply_action(_action(-1.0))
 
         # x_offset should be -1.0 * (1000/2) = -500
         args, kwargs = mock_chains_instance.move_to_element_with_offset.call_args
@@ -1682,20 +1682,20 @@ class TestHeadless:
         assert args[2] == int(800 * 0.4)  # y_offset
 
     def test_headless_apply_action_no_driver(self):
-        """_apply_action in headless mode should do nothing without driver."""
+        """apply_action in headless mode should do nothing without driver."""
         env = Breakout71Env(headless=True)
         env._driver = None
-        env._apply_action(_action(0.0))  # should not raise
+        env.apply_action(_action(0.0))  # should not raise
 
     def test_headless_apply_action_no_canvas(self):
-        """_apply_action in headless mode should do nothing without canvas."""
+        """apply_action in headless mode should do nothing without canvas."""
         env = Breakout71Env(headless=True)
         env._driver = mock.MagicMock()
         env._game_canvas = None
-        env._apply_action(_action(0.0))  # should not raise
+        env.apply_action(_action(0.0))  # should not raise
 
     def test_headless_click_canvas(self):
-        """_click_canvas in headless mode should use ActionChains click."""
+        """start_game in headless mode should use ActionChains click."""
         env = Breakout71Env(headless=True)
         env._driver = mock.MagicMock()
         env._game_canvas = mock.MagicMock()
@@ -1706,17 +1706,17 @@ class TestHeadless:
         mock_chains_instance.click.return_value = mock_chains_instance
         mock_ac_module.ActionChains.return_value = mock_chains_instance
 
-        env._click_canvas()
+        env.start_game()
 
         mock_chains_instance.move_to_element.assert_called_once_with(env._game_canvas)
         mock_chains_instance.click.assert_called_once()
         mock_chains_instance.perform.assert_called_once()
 
     def test_headless_click_canvas_no_driver(self):
-        """_click_canvas in headless mode should do nothing without driver."""
+        """start_game in headless mode should do nothing without driver."""
         env = Breakout71Env(headless=True)
         env._driver = None
-        env._click_canvas()  # should not raise
+        env.start_game()  # should not raise
 
     def test_close_clears_headless_state(self):
         """close() should clear headless-specific state."""
@@ -1736,15 +1736,15 @@ class TestHeadless:
 
 
 class TestBuildInfoNoBallCount:
-    """Tests for no_ball_count in _build_info."""
+    """Tests for no_ball_count in build_info."""
 
     def test_info_includes_no_ball_count(self):
-        """_build_info should include no_ball_count field."""
+        """build_info should include no_ball_count field."""
         env = Breakout71Env()
         env._no_ball_count = 3
         det = _detections()
 
-        info = env._build_info(det)
+        info = env.build_info(det)
 
         assert "no_ball_count" in info
         assert info["no_ball_count"] == 3
@@ -1754,7 +1754,7 @@ class TestBuildInfoNoBallCount:
         env = Breakout71Env()
         det = _detections()
 
-        info = env._build_info(det)
+        info = env.build_info(det)
 
         assert info["no_ball_count"] == 0
 
@@ -1762,7 +1762,7 @@ class TestBuildInfoNoBallCount:
 class TestModalCheckThrottling:
     """TDD specs for modal check throttling (option 3).
 
-    The behavioral contract: ``_handle_game_state()`` should only be
+    The behavioral contract: ``handle_modals()`` should only be
     called when ``_no_ball_count > 0`` (ball is missing).  During normal
     gameplay (ball visible), we skip the Selenium round-trip entirely,
     removing the ~100-150ms overhead per step.
@@ -1773,8 +1773,8 @@ class TestModalCheckThrottling:
         return _make_env_ready(bricks_count=bricks_count)
 
     @mock.patch("src.env.breakout71_env.time")
-    def test_step_skips_handle_game_state_when_ball_detected(self, mock_time):
-        """step() should NOT call _handle_game_state when _no_ball_count == 0.
+    def test_step_skipshandle_modals_when_ball_detected(self, mock_time):
+        """step() should NOT call handle_modals when _no_ball_count == 0.
 
         This is the key optimization: during normal gameplay with the ball
         visible, we skip the Selenium round-trip entirely.
@@ -1782,13 +1782,13 @@ class TestModalCheckThrottling:
         env = self._make_env_ready()
         assert env._no_ball_count == 0  # ball was detected last step
 
-        with mock.patch.object(env, "_handle_game_state") as mock_hgs:
+        with mock.patch.object(env, "handle_modals") as mock_hgs:
             env.step(_action())
             mock_hgs.assert_not_called()
 
     @mock.patch("src.env.breakout71_env.time")
-    def test_step_calls_handle_game_state_when_ball_missing(self, mock_time):
-        """step() should call _handle_game_state when _no_ball_count > 0.
+    def test_step_callshandle_modals_when_ball_missing(self, mock_time):
+        """step() should call handle_modals when _no_ball_count > 0.
 
         When the ball has been missing for one or more frames, we check
         for modals since the missing ball might be caused by a modal overlay.
@@ -1797,7 +1797,7 @@ class TestModalCheckThrottling:
         env._no_ball_count = 3  # ball has been missing for 3 frames
 
         with mock.patch.object(
-            env, "_handle_game_state", return_value="gameplay"
+            env, "handle_modals", return_value="gameplay"
         ) as mock_hgs:
             env.step(_action())
             mock_hgs.assert_called_once()
@@ -1810,7 +1810,7 @@ class TestModalCheckThrottling:
         env = self._make_env_ready()
         env._no_ball_count = 2  # ball missing → triggers modal check
 
-        with mock.patch.object(env, "_handle_game_state", return_value="game_over"):
+        with mock.patch.object(env, "handle_modals", return_value="game_over"):
             _, _, terminated, _, _ = env.step(_action())
             assert terminated is True
 
@@ -1823,7 +1823,7 @@ class TestModalCheckThrottling:
         env._no_ball_count = 1  # ball missing → triggers modal check
 
         with mock.patch.object(
-            env, "_handle_game_state", return_value="perk_picker"
+            env, "handle_modals", return_value="perk_picker"
         ) as mock_hgs:
             _, _, terminated, _, _ = env.step(_action())
             # Perk picker is part of normal gameplay — not terminated
@@ -1831,29 +1831,29 @@ class TestModalCheckThrottling:
             mock_hgs.assert_called_once()
 
     @mock.patch("src.env.breakout71_env.time")
-    def test_step_skips_handle_game_state_on_first_step_after_reset(self, mock_time):
+    def test_step_skipshandle_modals_on_first_step_after_reset(self, mock_time):
         """The first step after reset (ball visible) should NOT call
-        _handle_game_state — no unnecessary Selenium overhead.
+        handle_modals — no unnecessary Selenium overhead.
         """
         env = self._make_env_ready()
         # Fresh after reset: _no_ball_count == 0, _step_count == 0
         assert env._no_ball_count == 0
         assert env._step_count == 0
 
-        with mock.patch.object(env, "_handle_game_state") as mock_hgs:
+        with mock.patch.object(env, "handle_modals") as mock_hgs:
             env.step(_action())
             mock_hgs.assert_not_called()
 
     @mock.patch("src.env.breakout71_env.time")
-    def test_step_calls_handle_game_state_at_threshold_boundary(self, mock_time):
-        """step() should call _handle_game_state when _no_ball_count
+    def test_step_callshandle_modals_at_threshold_boundary(self, mock_time):
+        """step() should call handle_modals when _no_ball_count
         is exactly 1 (just crossed from 0).
         """
         env = self._make_env_ready()
         env._no_ball_count = 1  # exactly at boundary
 
         with mock.patch.object(
-            env, "_handle_game_state", return_value="gameplay"
+            env, "handle_modals", return_value="gameplay"
         ) as mock_hgs:
             env.step(_action())
             mock_hgs.assert_called_once()
@@ -1861,13 +1861,13 @@ class TestModalCheckThrottling:
     @mock.patch("src.env.breakout71_env.time")
     def test_step_consecutive_ball_visible_frames_never_check_modals(self, mock_time):
         """Multiple consecutive steps with ball visible should never
-        call _handle_game_state.
+        call handle_modals.
         """
         env = self._make_env_ready()
         # Detector always returns ball detected
         assert env._no_ball_count == 0
 
-        with mock.patch.object(env, "_handle_game_state") as mock_hgs:
+        with mock.patch.object(env, "handle_modals") as mock_hgs:
             for _ in range(5):
                 env.step(_action())
             mock_hgs.assert_not_called()
@@ -1893,7 +1893,7 @@ class TestModalCheckThrottling:
 
         # Late modal check (after detection, on 0->1 transition)
         # returns game_over
-        with mock.patch.object(env, "_handle_game_state", return_value="game_over"):
+        with mock.patch.object(env, "handle_modals", return_value="game_over"):
             _, reward, terminated, _, _ = env.step(_action())
             assert terminated is True
             assert reward == pytest.approx(-5.01)
@@ -1901,7 +1901,7 @@ class TestModalCheckThrottling:
     @mock.patch("src.env.breakout71_env.time")
     def test_step_no_spurious_reward_on_zero_to_one_game_over(self, mock_time):
         """When game-over is detected on the 0->1 ball-miss transition,
-        _compute_reward should NOT be called — the fixed terminal
+        compute_reward should NOT be called — the fixed terminal
         penalty is used directly to avoid modal-occluded brick-delta
         producing a spurious positive reward.
         """
@@ -1915,12 +1915,12 @@ class TestModalCheckThrottling:
         )
 
         with (
-            mock.patch.object(env, "_handle_game_state", return_value="game_over"),
-            mock.patch.object(env, "_compute_reward") as mock_cr,
+            mock.patch.object(env, "handle_modals", return_value="game_over"),
+            mock.patch.object(env, "compute_reward") as mock_cr,
         ):
             _, reward, terminated, _, _ = env.step(_action())
             assert terminated is True
-            # _compute_reward should NOT have been called
+            # compute_reward should NOT have been called
             mock_cr.assert_not_called()
             # Fixed penalty used instead
             assert reward == pytest.approx(-5.01)
