@@ -1,13 +1,12 @@
 # Breakout 71 -- Comprehensive Game Technical Specification
 
-> Extracted from the Breakout 71 TypeScript source code at
-> `F:\work\breakout71-testbed\src\` during session 17. This document is the
-> canonical reference for building, debugging, and extending the Gymnasium
-> environment (`Breakout71Env`). Future agents should NOT need to re-read
-> the testbed source.
+> Extracted from the Breakout 71 TypeScript source code during session 17.
+> This document is the canonical reference for building, debugging, and
+> extending the Gymnasium environment (`Breakout71Env`). Future agents
+> should NOT need to re-read the testbed source.
 
-**Source repository:** <https://github.com/nicogs/breakout71> (or local
-`F:\work\breakout71-testbed`)
+**Source repository:** <https://github.com/nicogs/breakout71> (clone
+locally and set `$BREAKOUT71_DIR`)
 
 **Key source files:**
 

@@ -1,8 +1,8 @@
 # Breakout71 Gymnasium Environment Spec (v1)
 
-> Revised in session 8 after studying the Breakout 71 source code at
-> `F:\work\breakout71-testbed`. Replaces the session 1 spec which was based
-> on assumptions about standard breakout games.
+> Revised in session 8 after studying the Breakout 71 source code.
+> Replaces the session 1 spec which was based on assumptions about
+> standard breakout games.
 
 ## Overview
 

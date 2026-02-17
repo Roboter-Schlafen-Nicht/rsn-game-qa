@@ -68,9 +68,9 @@ see `AGENTS.md` at the project root.
 - **pywin32 + pydirectinput ARE installed** in conda env -- tests
   simulating "missing" must use `importlib.reload` with `sys.modules`
   patched to `None`.
-- **`conda run -n yolo` frequently times out** -- use direct paths like
-  `C:/Users/human/miniconda3/envs/yolo/Scripts/ruff.exe` for ruff, or
-  generous timeouts.
+- **`conda run -n yolo` frequently times out** -- use the full conda
+  env path for the tool (e.g. `<conda_envs>/yolo/Scripts/ruff.exe`),
+  or generous timeouts.
 - **`argparse` `action="store_true"` + `default=True` is a no-op** -- Use
   `--no-X` with `action="store_false"` + `dest="X"` instead.
 - **`torch` import is local in `resolve_device()`** -- Must mock via

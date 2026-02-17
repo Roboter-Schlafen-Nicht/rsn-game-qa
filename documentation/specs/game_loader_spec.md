@@ -75,7 +75,7 @@ be constructed directly in Python or loaded from YAML files stored in
 
 ```yaml
 name: breakout-71
-game_dir: F:\work\breakout71-testbed
+game_dir: ${BREAKOUT71_DIR:-./breakout71-testbed}
 loader_type: breakout-71
 
 install_command: npm install
@@ -201,7 +201,7 @@ defaults.
 from src.game_loader import Breakout71Loader
 
 loader = Breakout71Loader.from_repo_path(
-    r"F:\work\breakout71-testbed",
+    r"/path/to/breakout71-testbed",
     serve_port=1234,           # optional
     readiness_timeout_s=120.0, # optional
     window_title="Breakout",   # optional

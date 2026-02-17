@@ -1,6 +1,6 @@
 # Windows Capture & Input Spec
 
-> Extracted from `documentation/sessions/session1.md`. This is the reference
+> Extracted from session 1 notes. This is the reference
 > design for frame capture (BitBlt/GDI) and input injection (pydirectinput).
 
 ## Overview
