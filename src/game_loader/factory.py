@@ -27,7 +27,7 @@ def _ensure_registry() -> None:
         return
 
     from src.game_loader.browser_loader import BrowserGameLoader
-    from src.game_loader.breakout71_loader import Breakout71Loader
+    from games.breakout71.loader import Breakout71Loader
 
     _LOADER_REGISTRY.setdefault("browser", BrowserGameLoader)
     _LOADER_REGISTRY.setdefault("breakout-71", Breakout71Loader)

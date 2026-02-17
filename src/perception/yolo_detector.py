@@ -198,7 +198,10 @@ class YoloDetector:
         If the weights file does not exist.
     """
 
-    # Default class names for Breakout 71 (from session1.md spec)
+    # Default class names for Breakout 71 (from session1.md spec).
+    # Canonical source: games.breakout71.perception.BREAKOUT71_CLASSES
+    # Kept here for backward compatibility; new code should import from
+    # the game plugin directly.
     BREAKOUT71_CLASSES = ["paddle", "ball", "brick", "powerup", "wall"]
 
     def __init__(

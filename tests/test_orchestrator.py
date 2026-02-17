@@ -551,7 +551,7 @@ class TestEnvBugFixes:
 
     def test_close_resets_initialized(self):
         """close() should set _initialized to False."""
-        from src.env.breakout71_env import Breakout71Env
+        from games.breakout71.env import Breakout71Env
 
         env = Breakout71Env()
         env._initialized = True
@@ -567,7 +567,7 @@ class TestEnvBugFixes:
 
     def test_step_count_property(self):
         """step_count property returns _step_count."""
-        from src.env.breakout71_env import Breakout71Env
+        from games.breakout71.env import Breakout71Env
 
         env = Breakout71Env()
         assert env.step_count == 0
@@ -577,7 +577,7 @@ class TestEnvBugFixes:
 
     def test_step_count_is_readonly(self):
         """step_count property cannot be set directly."""
-        from src.env.breakout71_env import Breakout71Env
+        from games.breakout71.env import Breakout71Env
 
         env = Breakout71Env()
         with pytest.raises(AttributeError):
@@ -585,14 +585,14 @@ class TestEnvBugFixes:
 
     def test_window_title_default(self):
         """Default window_title should be 'Breakout' (not 'Breakout - 71')."""
-        from src.env.breakout71_env import Breakout71Env
+        from games.breakout71.env import Breakout71Env
 
         env = Breakout71Env()
         assert env.window_title == "Breakout"
 
     def test_reset_retries_for_ball(self):
         """reset() retries up to 5 times to detect ball."""
-        from src.env.breakout71_env import Breakout71Env
+        from games.breakout71.env import Breakout71Env
 
         mock_driver = mock.MagicMock()
         mock_driver.execute_script.return_value = {
@@ -634,7 +634,7 @@ class TestEnvBugFixes:
         }
         mock_detector.detect_to_game_state.side_effect = [no_ball, no_ball, with_ball]
 
-        with mock.patch("src.env.breakout71_env.time") as mock_time:
+        with mock.patch("games.breakout71.env.time") as mock_time:
             mock_time.sleep = mock.MagicMock()
             obs, info = env.reset()
 
@@ -643,7 +643,7 @@ class TestEnvBugFixes:
 
     def test_bricks_total_retry_on_zero(self):
         """build_observation retries when 0 bricks detected on reset."""
-        from src.env.breakout71_env import Breakout71Env
+        from games.breakout71.env import Breakout71Env
 
         env = Breakout71Env()
         env._initialized = True
@@ -675,7 +675,7 @@ class TestEnvBugFixes:
             "raw_detections": [],
         }
 
-        with mock.patch("src.env.breakout71_env.time") as mock_time:
+        with mock.patch("games.breakout71.env.time") as mock_time:
             mock_time.sleep = mock.MagicMock()
             env.build_observation(detections_no_bricks, reset=True)
 
@@ -899,7 +899,7 @@ class TestSessionRunnerSetup:
                 return_value=mock_browser,
             ) as MockBrowser,
             mock.patch(
-                "src.env.breakout71_env.Breakout71Env",
+                "games.breakout71.env.Breakout71Env",
                 return_value=mock_env,
             ) as MockEnv,
             mock.patch(
@@ -962,7 +962,7 @@ class TestSessionRunnerSetup:
                 return_value=mock_browser,
             ),
             mock.patch(
-                "src.env.breakout71_env.Breakout71Env",
+                "games.breakout71.env.Breakout71Env",
                 return_value=mock_env,
             ),
             mock.patch(
@@ -1010,7 +1010,7 @@ class TestSessionRunnerSetup:
                 return_value=mock_browser,
             ),
             mock.patch(
-                "src.env.breakout71_env.Breakout71Env",
+                "games.breakout71.env.Breakout71Env",
                 return_value=mock.MagicMock(),
             ),
             mock.patch(
@@ -1056,7 +1056,7 @@ class TestSessionRunnerSetup:
                 mock_browser_cls,
             ),
             mock.patch(
-                "src.env.breakout71_env.Breakout71Env",
+                "games.breakout71.env.Breakout71Env",
                 return_value=mock.MagicMock(),
             ),
             mock.patch(

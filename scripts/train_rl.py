@@ -707,7 +707,7 @@ def main(argv: list[str] | None = None) -> int:
     from stable_baselines3 import PPO
 
     from scripts._smoke_utils import BrowserInstance
-    from src.env.breakout71_env import Breakout71Env
+    from games.breakout71.env import Breakout71Env
     from src.platform.cnn_wrapper import CnnObservationWrapper
     from src.game_loader import create_loader
     from src.game_loader.config import load_game_config

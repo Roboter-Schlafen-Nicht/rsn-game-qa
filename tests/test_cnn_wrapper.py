@@ -36,7 +36,7 @@ for _mod in _SELENIUM_MODULES:
 
 import pytest  # noqa: E402
 
-from src.env.breakout71_env import Breakout71Env  # noqa: E402
+from games.breakout71.env import Breakout71Env  # noqa: E402
 from src.platform.cnn_wrapper import CNN_OBS_SIZE, CnnObservationWrapper  # noqa: E402
 
 

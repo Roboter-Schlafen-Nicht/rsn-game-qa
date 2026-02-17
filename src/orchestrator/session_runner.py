@@ -266,7 +266,7 @@ class SessionRunner:
         """Launch the game browser and create the environment."""
         # Lazy imports to avoid CI failures
         from scripts._smoke_utils import BrowserInstance
-        from src.env.breakout71_env import Breakout71Env
+        from games.breakout71.env import Breakout71Env
         from src.game_loader import create_loader
         from src.game_loader.config import load_game_config
 

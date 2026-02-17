@@ -19,7 +19,6 @@ Typical usage::
 from src.game_loader.config import GameLoaderConfig, load_game_config
 from src.game_loader.base import GameLoader, GameLoaderError
 from src.game_loader.browser_loader import BrowserGameLoader
-from src.game_loader.breakout71_loader import Breakout71Loader
 from src.game_loader.factory import create_loader
 
 __all__ = [
@@ -31,3 +30,12 @@ __all__ = [
     "Breakout71Loader",
     "create_loader",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy import for backward compatibility with moved modules."""
+    if name == "Breakout71Loader":
+        from games.breakout71.loader import Breakout71Loader
+
+        return Breakout71Loader
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

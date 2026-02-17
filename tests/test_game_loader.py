@@ -25,7 +25,7 @@ import pytest
 
 from src.game_loader.base import GameLoader, GameLoaderError
 from src.game_loader.browser_loader import BrowserGameLoader
-from src.game_loader.breakout71_loader import Breakout71Loader
+from games.breakout71.loader import Breakout71Loader
 from src.game_loader.config import (
     GameLoaderConfig,
     _expand_vars,

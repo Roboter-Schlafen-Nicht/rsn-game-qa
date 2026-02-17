@@ -44,10 +44,10 @@ for _mod in _SELENIUM_MODULES:
         sys.modules[_mod] = mock.MagicMock()
         _injected.append(_mod)
 
-from src.env.breakout71_env import (  # noqa: E402
-    DISMISS_GAME_OVER_JS,
+from games.breakout71.env import (  # noqa: E402
     Breakout71Env,
 )
+from games.breakout71.modal_handler import DISMISS_GAME_OVER_JS  # noqa: E402
 
 
 # -- Helpers -------------------------------------------------------------------
@@ -274,7 +274,7 @@ class TestInitCanvas:
 class TestLazyInit:
     """Tests for _lazy_init sub-component wiring."""
 
-    @mock.patch("src.env.breakout71_env.Breakout71Env._lazy_init")
+    @mock.patch("games.breakout71.env.Breakout71Env._lazy_init")
     def test_lazy_init_not_called_on_construction(self, mock_init):
         """_lazy_init should NOT be called during construction."""
         Breakout71Env()
@@ -841,7 +841,7 @@ class TestHandleGameState:
         # Only the detect call, no dismiss calls
         driver.execute_script.assert_called_once()
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_game_over_dismissed(self, mock_time):
         """Game over state should trigger dismiss JS execution by default."""
         driver = _mock_driver()
@@ -858,7 +858,7 @@ class TestHandleGameState:
         js_calls = [args[0] for args, _ in driver.execute_script.call_args_list]
         assert DISMISS_GAME_OVER_JS in js_calls
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_game_over_not_dismissed_when_flag_false(self, mock_time):
         """Game over should be detected but NOT dismissed when dismiss_game_over=False."""
         driver = _mock_driver()
@@ -875,7 +875,7 @@ class TestHandleGameState:
         js_calls = [args[0] for args, _ in driver.execute_script.call_args_list]
         assert DISMISS_GAME_OVER_JS not in js_calls
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_perk_picker_clicks_perk(self, mock_time):
         """Perk picker state should click a random perk button."""
         driver = _mock_driver()
@@ -890,7 +890,7 @@ class TestHandleGameState:
         assert state == "perk_picker"
         assert driver.execute_script.call_count == 2
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_menu_dismissed(self, mock_time):
         """Menu state should trigger dismiss."""
         driver = _mock_driver()
@@ -1096,7 +1096,7 @@ class TestReset:
         env._detector.detect_to_game_state.return_value = _detections()
         return env
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_reset_returns_obs_and_info(self, mock_time):
         """reset() should return (obs, info) tuple."""
         env = self._make_env_with_mocks()
@@ -1107,7 +1107,7 @@ class TestReset:
         assert obs.shape == (8,)
         assert isinstance(info, dict)
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_reset_handles_game_state(self, mock_time):
         """reset() should call handle_modals to dismiss modals."""
         env = self._make_env_with_mocks()
@@ -1117,7 +1117,7 @@ class TestReset:
         # Driver.execute_script is called at least once for state detection
         env._driver.execute_script.assert_called()
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_reset_resets_counters(self, mock_time):
         """reset() should reset all episode counters."""
         env = self._make_env_with_mocks()
@@ -1133,7 +1133,7 @@ class TestReset:
         assert env._no_bricks_count == 0
         assert env._prev_bricks_norm == 1.0
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_reset_clears_oracles(self, mock_time):
         """reset() should clear and call on_reset on all oracles."""
         env = self._make_env_with_mocks()
@@ -1145,7 +1145,7 @@ class TestReset:
         oracle.clear.assert_called_once()
         oracle.on_reset.assert_called_once()
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_reset_calls_lazy_init_when_not_initialized(self, mock_time):
         """reset() should call _lazy_init on first call."""
         driver = _mock_driver()
@@ -1162,7 +1162,7 @@ class TestReset:
 
         env._lazy_init.assert_called_once()
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_reset_raises_after_ball_retry_exhausted(self, mock_time):
         """reset() raises RuntimeError if ball never detected after 5 retries."""
         driver = _mock_driver()
@@ -1188,7 +1188,7 @@ class TestStep:
         """Create env in a post-reset state with mocked sub-components."""
         return _make_env_ready(bricks_count=bricks_count)
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_returns_5_tuple(self, mock_time):
         """step() should return (obs, reward, terminated, truncated, info)."""
         env = self._make_env_ready()
@@ -1203,7 +1203,7 @@ class TestStep:
         assert isinstance(truncated, bool)
         assert isinstance(info, dict)
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_increments_counter(self, mock_time):
         """step() should increment _step_count."""
         env = self._make_env_ready()
@@ -1213,7 +1213,7 @@ class TestStep:
 
         assert env._step_count == 1
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_applies_action(self, mock_time):
         """step() should call apply_action."""
         env = self._make_env_ready()
@@ -1222,7 +1222,7 @@ class TestStep:
             env.step(_action(0.5))
             mock_apply.assert_called_once()
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_normal_not_terminated(self, mock_time):
         """Normal step with ball and bricks should not terminate."""
         env = self._make_env_ready()
@@ -1232,7 +1232,7 @@ class TestStep:
         assert terminated is False
         assert truncated is False
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_truncation_at_max_steps(self, mock_time):
         """step() should set truncated=True when max_steps is reached."""
         env = self._make_env_ready()
@@ -1243,7 +1243,7 @@ class TestStep:
 
         assert truncated is True
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_ball_lost_game_over(self, mock_time):
         """Game over when ball not detected for BALL_LOST_THRESHOLD frames."""
         env = self._make_env_ready()
@@ -1260,7 +1260,7 @@ class TestStep:
 
         assert terminated is True
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_ball_found_resets_counter(self, mock_time):
         """Finding ball should reset _no_ball_count to 0."""
         env = self._make_env_ready()
@@ -1270,7 +1270,7 @@ class TestStep:
 
         assert env._no_ball_count == 0
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_level_cleared(self, mock_time):
         """Level cleared when no bricks for LEVEL_CLEAR_THRESHOLD frames."""
         env = self._make_env_ready()
@@ -1283,7 +1283,7 @@ class TestStep:
 
         assert terminated is True
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_bricks_present_resets_counter(self, mock_time):
         """Having bricks should reset _no_bricks_count to 0."""
         env = self._make_env_ready()
@@ -1293,7 +1293,7 @@ class TestStep:
 
         assert env._no_bricks_count == 0
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_info_has_oracle_findings(self, mock_time):
         """step() info dict should include oracle_findings."""
         env = self._make_env_ready()
@@ -1302,7 +1302,7 @@ class TestStep:
 
         assert "oracle_findings" in info
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_runs_oracles(self, mock_time):
         """step() should call on_step on all attached oracles."""
         env = self._make_env_ready()
@@ -1314,7 +1314,7 @@ class TestStep:
 
         oracle.on_step.assert_called_once()
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_observation_in_bounds(self, mock_time):
         """step() observation should be within observation_space."""
         env = self._make_env_ready()
@@ -1323,7 +1323,7 @@ class TestStep:
 
         assert env.observation_space.contains(obs)
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_handles_mid_episode_modal(self, mock_time):
         """step() should handle perk_picker modals that appear mid-episode."""
         env = self._make_env_ready()
@@ -1337,7 +1337,7 @@ class TestStep:
         # Should not crash; modal is handled
         env.step(_action())
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_terminates_on_game_over_modal(self, mock_time):
         """step() should return terminated=True when game_over modal detected."""
         env = self._make_env_ready()
@@ -1351,7 +1351,7 @@ class TestStep:
 
         assert terminated is True
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_game_over_does_not_dismiss_modal(self, mock_time):
         """step() should NOT dismiss game_over modal (only reset() does)."""
         env = self._make_env_ready()
@@ -1367,7 +1367,7 @@ class TestStep:
         js_calls = [args[0] for args, _ in env._driver.execute_script.call_args_list]
         assert DISMISS_GAME_OVER_JS not in js_calls
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_game_over_still_increments_step_count(self, mock_time):
         """step() should still increment _step_count when game_over detected."""
         env = self._make_env_ready()
@@ -1382,7 +1382,7 @@ class TestStep:
 
         assert env._step_count == 1
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_game_over_returns_fixed_terminal_penalty(self, mock_time):
         """step() should use fixed penalty on game_over, not detection-based reward.
 
@@ -1402,7 +1402,7 @@ class TestStep:
         assert terminated is True
         assert reward == pytest.approx(-5.01)
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_perk_picker_does_not_terminate(self, mock_time):
         """step() should NOT terminate on perk_picker — it's part of gameplay."""
         env = self._make_env_ready()
@@ -1772,7 +1772,7 @@ class TestModalCheckThrottling:
         """Create env in a post-reset state with mocked sub-components."""
         return _make_env_ready(bricks_count=bricks_count)
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_skips_handle_modals_when_ball_detected(self, mock_time):
         """step() should NOT call handle_modals when _no_ball_count == 0.
 
@@ -1786,7 +1786,7 @@ class TestModalCheckThrottling:
             env.step(_action())
             mock_hgs.assert_not_called()
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_calls_handle_modals_when_ball_missing(self, mock_time):
         """step() should call handle_modals when _no_ball_count > 0.
 
@@ -1802,7 +1802,7 @@ class TestModalCheckThrottling:
             env.step(_action())
             mock_hgs.assert_called_once()
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_detects_game_over_modal_when_ball_missing(self, mock_time):
         """step() should still detect game_over modals and terminate
         the episode when _no_ball_count > 0 triggers the check.
@@ -1814,7 +1814,7 @@ class TestModalCheckThrottling:
             _, _, terminated, _, _ = env.step(_action())
             assert terminated is True
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_handles_perk_picker_when_ball_missing(self, mock_time):
         """step() should still handle perk_picker modals when triggered
         by _no_ball_count > 0.
@@ -1830,7 +1830,7 @@ class TestModalCheckThrottling:
             assert terminated is False
             mock_hgs.assert_called_once()
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_skips_handle_modals_on_first_step_after_reset(self, mock_time):
         """The first step after reset (ball visible) should NOT call
         handle_modals — no unnecessary Selenium overhead.
@@ -1844,7 +1844,7 @@ class TestModalCheckThrottling:
             env.step(_action())
             mock_hgs.assert_not_called()
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_calls_handle_modals_at_threshold_boundary(self, mock_time):
         """step() should call handle_modals when _no_ball_count
         is exactly 1 (just crossed from 0).
@@ -1858,7 +1858,7 @@ class TestModalCheckThrottling:
             env.step(_action())
             mock_hgs.assert_called_once()
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_consecutive_ball_visible_frames_never_check_modals(self, mock_time):
         """Multiple consecutive steps with ball visible should never
         call handle_modals.
@@ -1872,7 +1872,7 @@ class TestModalCheckThrottling:
                 env.step(_action())
             mock_hgs.assert_not_called()
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_detects_game_over_on_zero_to_one_ball_miss(self, mock_time):
         """When ball was visible last step (_no_ball_count == 0) and
         disappears this step (game-over modal appeared), the late
@@ -1898,7 +1898,7 @@ class TestModalCheckThrottling:
             assert terminated is True
             assert reward == pytest.approx(-5.01)
 
-    @mock.patch("src.env.breakout71_env.time")
+    @mock.patch("games.breakout71.env.time")
     def test_step_no_spurious_reward_on_zero_to_one_game_over(self, mock_time):
         """When game-over is detected on the 0->1 ball-miss transition,
         compute_reward should NOT be called — the fixed terminal
