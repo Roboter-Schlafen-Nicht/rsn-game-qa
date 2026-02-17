@@ -530,7 +530,8 @@ class TestBreakout71Loader:
         assert loader.name == "breakout-71"
         assert loader.config.serve_port == 1234
         assert loader.config.game_dir == tmp_path
-        assert "parcel" in loader.config.serve_command
+        assert "http.server" in loader.config.serve_command
+        assert "dist" in loader.config.serve_command
 
     def test_from_repo_path_custom_port(self, tmp_path: Path):
         """from_repo_path respects a custom port."""
@@ -539,14 +540,20 @@ class TestBreakout71Loader:
         assert "3000" in loader.config.url
 
     def test_setup_clears_parcel_cache(self, tmp_path: Path):
-        """setup() removes .parcel-cache before installing."""
+        """setup() removes .parcel-cache and dist/ before building."""
         cache_dir = tmp_path / ".parcel-cache"
         cache_dir.mkdir()
         (cache_dir / "dummy").write_text("x")
 
         loader = Breakout71Loader.from_repo_path(tmp_path)
-        # Patch the parent setup to avoid actually running npm install
-        with mock.patch.object(BrowserGameLoader, "setup"):
+        # Patch parent setup (npm install) and subprocess.run (parcel build)
+        build_result = mock.MagicMock(returncode=0, stderr="", stdout="")
+        with (
+            mock.patch.object(BrowserGameLoader, "setup"),
+            mock.patch(
+                "games.breakout71.loader.subprocess.run", return_value=build_result
+            ),
+        ):
             loader.setup()
 
         assert not cache_dir.exists()
@@ -554,13 +561,51 @@ class TestBreakout71Loader:
     def test_setup_works_without_cache_dir(self, tmp_path: Path):
         """setup() succeeds even if .parcel-cache doesn't exist."""
         loader = Breakout71Loader.from_repo_path(tmp_path)
-        with mock.patch.object(BrowserGameLoader, "setup"):
+        build_result = mock.MagicMock(returncode=0, stderr="", stdout="")
+        with (
+            mock.patch.object(BrowserGameLoader, "setup"),
+            mock.patch(
+                "games.breakout71.loader.subprocess.run", return_value=build_result
+            ),
+        ):
             loader.setup()  # should not raise
 
     def test_window_title_default(self, tmp_path: Path):
         """Default window_title is set for Breakout."""
         loader = Breakout71Loader.from_repo_path(tmp_path)
         assert loader.config.window_title == "Breakout"
+
+    def test_setup_clears_dist_dir(self, tmp_path: Path):
+        """setup() removes stale dist/ before building."""
+        dist_dir = tmp_path / "dist"
+        dist_dir.mkdir()
+        (dist_dir / "index.html").write_text("<html></html>")
+
+        loader = Breakout71Loader.from_repo_path(tmp_path)
+        build_result = mock.MagicMock(returncode=0, stderr="", stdout="")
+        with (
+            mock.patch.object(BrowserGameLoader, "setup"),
+            mock.patch(
+                "games.breakout71.loader.subprocess.run", return_value=build_result
+            ),
+        ):
+            loader.setup()
+
+        # dist/ is removed before the build step recreates it
+        assert not dist_dir.exists()
+
+    def test_setup_raises_on_build_failure(self, tmp_path: Path):
+        """setup() raises RuntimeError when the build command fails."""
+        loader = Breakout71Loader.from_repo_path(tmp_path)
+        build_result = mock.MagicMock(returncode=1, stderr="Build error", stdout="")
+        with (
+            mock.patch.object(BrowserGameLoader, "setup"),
+            mock.patch(
+                "games.breakout71.loader.subprocess.run", return_value=build_result
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="Game build failed"):
+                loader.setup()
 
 
 # ── Factory ─────────────────────────────────────────────────────────
