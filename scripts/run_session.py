@@ -1,10 +1,15 @@
 #!/usr/bin/env python
-"""CLI entry point -- run N episodes with random policy and generate a QA report.
+"""CLI entry point -- run N episodes and generate a QA report.
 
-Usage::
+Supports both random policy (default) and trained model evaluation::
 
+    # Random policy (baseline):
     python scripts/run_session.py --game breakout71 \\
         --episodes 3 --max-steps 10000 --browser chrome
+
+    # Evaluate a trained PPO model:
+    python scripts/run_session.py --game breakout71 \\
+        --model models/ppo_breakout71.zip --episodes 10
 
     # Override config / weights (optional):
     python scripts/run_session.py --game breakout71 \\
@@ -37,13 +42,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         Parsed arguments.
     """
     parser = argparse.ArgumentParser(
-        description="Run N QA episodes with random policy and generate report.",
+        description="Run N QA episodes and generate report (random or trained policy).",
     )
     parser.add_argument(
         "--game",
         type=str,
         default="breakout71",
         help=("Game plugin name (directory under games/). Default: breakout71"),
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help=(
+            "Path to a trained SB3 PPO model (.zip).  When provided, the "
+            "model's policy is used instead of random action sampling."
+        ),
     )
     parser.add_argument(
         "--config",
@@ -127,6 +141,18 @@ def main(argv: list[str] | None = None) -> int:
 
     from src.orchestrator.session_runner import SessionRunner
 
+    # Build policy_fn from trained model if provided
+    policy_fn = None
+    if args.model:
+        from stable_baselines3 import PPO
+
+        logger.info("Loading trained model from %s", args.model)
+        model = PPO.load(args.model)
+
+        def policy_fn(obs):
+            action, _ = model.predict(obs, deterministic=True)
+            return action
+
     runner = SessionRunner(
         game=args.game,
         game_config=args.config,
@@ -137,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
         yolo_weights=args.yolo_weights,
         frame_capture_interval=args.frame_interval,
         enable_data_collection=not args.no_data_collection,
+        policy_fn=policy_fn,
     )
 
     report = runner.run()

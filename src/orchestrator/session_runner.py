@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -185,6 +187,11 @@ class SessionRunner:
         Save every Nth frame for data collection.
     enable_data_collection : bool
         Whether to collect frames for YOLO retraining.
+    policy_fn : callable or None
+        Action-selection function with signature ``(obs) -> action``.
+        When None (default), uses random sampling via
+        ``env.action_space.sample()``.  Pass a trained model's predict
+        function to evaluate a learned policy.
     """
 
     def __init__(
@@ -198,6 +205,7 @@ class SessionRunner:
         yolo_weights: str | Path | None = None,
         frame_capture_interval: int = 30,
         enable_data_collection: bool = True,
+        policy_fn: Callable[[Any], Any] | None = None,
     ) -> None:
         self.game = game
         self.n_episodes = n_episodes
@@ -206,6 +214,7 @@ class SessionRunner:
         self.browser = browser
         self.frame_capture_interval = frame_capture_interval
         self.enable_data_collection = enable_data_collection
+        self.policy_fn = policy_fn
 
         # Load plugin to resolve defaults
         from games import load_game_plugin
@@ -364,8 +373,11 @@ class SessionRunner:
         while not terminated and not truncated:
             step_start = time.perf_counter()
 
-            # Random policy (uniform over action space)
-            action = env.action_space.sample()
+            # Select action: use policy_fn if provided, else random
+            if self.policy_fn is not None:
+                action = self.policy_fn(obs)
+            else:
+                action = env.action_space.sample()
             obs, reward, terminated, truncated, info = env.step(action)
 
             step_elapsed = time.perf_counter() - step_start

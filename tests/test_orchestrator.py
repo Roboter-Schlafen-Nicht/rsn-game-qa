@@ -1086,6 +1086,279 @@ class TestSessionRunnerSetup:
 # ===========================================================================
 
 
+class TestSessionRunnerPolicyFn:
+    """Tests for SessionRunner policy_fn support (model evaluation path).
+
+    TDD specs:
+    - SessionRunner accepts optional policy_fn parameter (callable (obs) -> action)
+    - Default policy_fn is None, meaning random policy (env.action_space.sample)
+    - When policy_fn is provided, _run_episode uses it instead of random sampling
+    - policy_fn receives the observation and returns an action
+    """
+
+    def test_default_policy_fn_is_none(self):
+        """SessionRunner defaults to policy_fn=None (random policy)."""
+        runner = SessionRunner()
+        assert runner.policy_fn is None
+
+    def test_accepts_policy_fn(self):
+        """SessionRunner accepts a callable policy_fn."""
+        dummy_fn = lambda obs: np.array([0.0], dtype=np.float32)  # noqa: E731
+        runner = SessionRunner(policy_fn=dummy_fn)
+        assert runner.policy_fn is dummy_fn
+
+    def test_episode_uses_random_when_policy_fn_none(self):
+        """When policy_fn is None, _run_episode uses env.action_space.sample()."""
+        runner = SessionRunner(
+            n_episodes=1,
+            max_steps_per_episode=100,
+            enable_data_collection=False,
+        )
+
+        mock_env = mock.MagicMock()
+        mock_env.action_space = mock.MagicMock()
+        mock_env.action_space.sample.return_value = np.array([0.0], dtype=np.float32)
+        mock_env.step_count = 0
+        mock_env._oracles = []
+
+        obs = np.zeros(8, dtype=np.float32)
+        info = {"frame": None, "detections": {}, "step": 0}
+        mock_env.reset.return_value = (obs, info)
+
+        call_count = 0
+
+        def step_fn(action):
+            nonlocal call_count
+            call_count += 1
+            mock_env.step_count = call_count
+            return obs, 1.0, call_count >= 3, False, info
+
+        mock_env.step.side_effect = step_fn
+        runner._env = mock_env
+
+        runner._run_episode(0)
+
+        # action_space.sample should have been called (random policy)
+        assert mock_env.action_space.sample.call_count == 3
+
+    def test_episode_uses_policy_fn_when_provided(self):
+        """When policy_fn is provided, _run_episode calls it with obs."""
+        call_log = []
+
+        def policy_fn(obs):
+            call_log.append(obs)
+            return np.array([1.0], dtype=np.float32)
+
+        runner = SessionRunner(
+            n_episodes=1,
+            max_steps_per_episode=100,
+            enable_data_collection=False,
+            policy_fn=policy_fn,
+        )
+
+        mock_env = mock.MagicMock()
+        mock_env.action_space = mock.MagicMock()
+        mock_env.action_space.sample.return_value = np.array([0.0], dtype=np.float32)
+        mock_env.step_count = 0
+        mock_env._oracles = []
+
+        obs = np.zeros(8, dtype=np.float32)
+        info = {"frame": None, "detections": {}, "step": 0}
+        mock_env.reset.return_value = (obs, info)
+
+        call_count = 0
+
+        def step_fn(action):
+            nonlocal call_count
+            call_count += 1
+            mock_env.step_count = call_count
+            return obs, 1.0, call_count >= 3, False, info
+
+        mock_env.step.side_effect = step_fn
+        runner._env = mock_env
+
+        runner._run_episode(0)
+
+        # policy_fn should have been called 3 times (not action_space.sample)
+        assert len(call_log) == 3
+        assert mock_env.action_space.sample.call_count == 0
+
+    def test_policy_fn_receives_observation(self):
+        """policy_fn receives the current observation from env."""
+        received_obs = []
+
+        def policy_fn(obs):
+            received_obs.append(obs.copy())
+            return np.array([0.0], dtype=np.float32)
+
+        runner = SessionRunner(
+            n_episodes=1,
+            max_steps_per_episode=100,
+            enable_data_collection=False,
+            policy_fn=policy_fn,
+        )
+
+        mock_env = mock.MagicMock()
+        mock_env.action_space = mock.MagicMock()
+        mock_env.step_count = 0
+        mock_env._oracles = []
+
+        obs1 = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], dtype=np.float32)
+        obs2 = np.array(
+            [9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0], dtype=np.float32
+        )
+        info = {"frame": None, "detections": {}, "step": 0}
+
+        mock_env.reset.return_value = (obs1, info)
+
+        step_count = 0
+
+        def step_fn(action):
+            nonlocal step_count
+            step_count += 1
+            mock_env.step_count = step_count
+            # Return obs2 on step, terminate after 2 steps
+            return obs2, 1.0, step_count >= 2, False, info
+
+        mock_env.step.side_effect = step_fn
+        runner._env = mock_env
+
+        runner._run_episode(0)
+
+        # First call gets obs1 (from reset), second gets obs2 (from step)
+        assert len(received_obs) == 2
+        np.testing.assert_array_equal(received_obs[0], obs1)
+        np.testing.assert_array_equal(received_obs[1], obs2)
+
+    def test_policy_fn_action_passed_to_env(self):
+        """The action returned by policy_fn is passed to env.step()."""
+        custom_action = np.array([0.42], dtype=np.float32)
+
+        def policy_fn(obs):
+            return custom_action
+
+        runner = SessionRunner(
+            n_episodes=1,
+            max_steps_per_episode=100,
+            enable_data_collection=False,
+            policy_fn=policy_fn,
+        )
+
+        mock_env = mock.MagicMock()
+        mock_env.action_space = mock.MagicMock()
+        mock_env.step_count = 0
+        mock_env._oracles = []
+
+        obs = np.zeros(8, dtype=np.float32)
+        info = {"frame": None, "detections": {}, "step": 0}
+        mock_env.reset.return_value = (obs, info)
+
+        call_count = 0
+
+        def step_fn(action):
+            nonlocal call_count
+            call_count += 1
+            mock_env.step_count = call_count
+            return obs, 1.0, True, False, info
+
+        mock_env.step.side_effect = step_fn
+        runner._env = mock_env
+
+        runner._run_episode(0)
+
+        # env.step should have been called with the policy_fn's action
+        step_call_args = mock_env.step.call_args_list
+        assert len(step_call_args) == 1
+        np.testing.assert_array_equal(step_call_args[0][0][0], custom_action)
+
+
+class TestRunSessionModelFlag:
+    """Tests for --model CLI flag in run_session.py."""
+
+    def test_model_arg_default_none(self):
+        """--model defaults to None."""
+        from scripts.run_session import parse_args
+
+        args = parse_args([])
+        assert args.model is None
+
+    def test_model_arg_parsed(self):
+        """--model accepts a path string."""
+        from scripts.run_session import parse_args
+
+        args = parse_args(["--model", "models/ppo_breakout.zip"])
+        assert args.model == "models/ppo_breakout.zip"
+
+    def test_main_passes_policy_fn_when_model_given(self):
+        """main() creates a policy_fn from --model and passes to SessionRunner."""
+        from scripts.run_session import main
+
+        mock_ppo = mock.MagicMock()
+        mock_ppo.predict.return_value = (np.array([0.0]), None)
+
+        mock_ppo_cls = mock.MagicMock()
+        mock_ppo_cls.load.return_value = mock_ppo
+
+        with (
+            mock.patch.dict(
+                "sys.modules",
+                {"stable_baselines3": mock.MagicMock(PPO=mock_ppo_cls)},
+            ),
+            mock.patch(
+                "src.orchestrator.session_runner.SessionRunner",
+            ) as MockRunner,
+        ):
+            mock_runner_instance = mock.MagicMock()
+            mock_report = mock.MagicMock()
+            mock_report.summary = {
+                "total_episodes": 1,
+                "total_findings": 0,
+                "critical_findings": 0,
+                "warning_findings": 0,
+                "info_findings": 0,
+                "episodes_failed": 0,
+                "mean_episode_reward": 0.0,
+                "mean_episode_length": 0.0,
+            }
+            mock_runner_instance.run.return_value = mock_report
+            MockRunner.return_value = mock_runner_instance
+
+            main(["--model", "models/ppo_breakout.zip", "--episodes", "1"])
+
+            mock_ppo_cls.load.assert_called_once_with("models/ppo_breakout.zip")
+            # SessionRunner should have been called with policy_fn keyword arg
+            call_kwargs = MockRunner.call_args[1]
+            assert "policy_fn" in call_kwargs
+            assert call_kwargs["policy_fn"] is not None
+
+    def test_main_passes_none_policy_fn_without_model(self):
+        """main() passes policy_fn=None when no --model is given."""
+        from scripts.run_session import main
+
+        with mock.patch(
+            "src.orchestrator.session_runner.SessionRunner",
+        ) as MockRunner:
+            mock_runner_instance = mock.MagicMock()
+            mock_report = mock.MagicMock()
+            mock_report.summary = {
+                "total_episodes": 1,
+                "total_findings": 0,
+                "critical_findings": 0,
+                "warning_findings": 0,
+                "info_findings": 0,
+                "episodes_failed": 0,
+                "mean_episode_reward": 0.0,
+                "mean_episode_length": 0.0,
+            }
+            mock_runner_instance.run.return_value = mock_report
+            MockRunner.return_value = mock_runner_instance
+
+            main(["--episodes", "1"])
+
+            call_kwargs = MockRunner.call_args[1]
+            assert call_kwargs.get("policy_fn") is None
+
+
 class TestSessionRunnerRun:
     """Integration test for SessionRunner.run() with mocked game lifecycle."""
 
