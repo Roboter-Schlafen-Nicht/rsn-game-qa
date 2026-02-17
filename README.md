@@ -99,7 +99,7 @@ Or use the Breakout 71 convenience constructor directly:
 ```python
 from src.game_loader import Breakout71Loader
 
-loader = Breakout71Loader.from_repo_path(r"F:\work\breakout71-testbed")
+loader = Breakout71Loader.from_repo_path(r"/path/to/breakout71-testbed")
 loader.setup()   # npm install
 loader.start()   # parcel dev server → http://localhost:1234
 # … game is running …
@@ -191,4 +191,4 @@ Design specs live in `documentation/specs/` and cover the Breakout71 env, oracle
 
 ## License
 
-Proprietary. All rights reserved.
+MIT License. See [LICENSE](LICENSE) for details.

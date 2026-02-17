@@ -12,10 +12,22 @@ World Model V1.v1-roboflow-instant-1--eval-.yolov8/*
 *.png
 data/*
 docs/_build/
-documentation/sessions/*
+# Private data — never committed (session logs, local notes, etc.)
+private/
 output/
 .coverage
 nul
 weights/
 node_modules/
 package-lock.json
+
+# Security: prevent accidental commit of certs/credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.sqlite
+*.db
+credentials*.json
+service-account*.json

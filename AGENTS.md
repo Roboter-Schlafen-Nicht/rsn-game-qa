@@ -1,7 +1,8 @@
 # RSN Game QA — Agent Instructions
 
 RL-driven autonomous game testing platform. First target: **Breakout 71**
-(browser-based TypeScript canvas game at `F:\work\breakout71-testbed`).
+(browser-based TypeScript canvas game; local clone configured via
+`$BREAKOUT71_DIR` or `configs/games/breakout-71.yaml`).
 
 ## Role & Workflow
 
@@ -9,10 +10,10 @@ RL-driven autonomous game testing platform. First target: **Breakout 71**
   `documentation/ROADMAP.md` for the current phase, pick the next task,
   do it.
 - Work on feature branches from `main` (pattern: `feature/...`, `docs/...`)
-- Implement -> commit -> push -> create PR -> **request review from Copilot**
-  -> evaluate review, create issues if needed -> merge with `--delete-branch`
-  -> delete local branch -> **post-merge admin** (update checklist, create
-  session log, update AGENTS.md if needed)
+- Implement -> commit -> push -> create PR -> **Copilot reviews automatically**
+  (via GitHub Ruleset) -> evaluate review, create issues if needed -> merge
+  with `--delete-branch` -> delete local branch -> **post-merge admin**
+  (update checklist, create session log, update AGENTS.md if needed)
 - **Post-merge admin is checklist-only** — no Copilot review needed
 - Pre-commit hook runs CI via `act` (Docker). **Takes 5+ minutes.** Use
   `timeout` of 600000ms for commit commands; check `git log` afterward.
@@ -22,8 +23,8 @@ RL-driven autonomous game testing platform. First target: **Breakout 71**
 - Python 3.12, conda env `yolo`
 - NumPy-style docstrings, ruff for lint/format, pytest for tests, Sphinx
   (Furo theme) for docs
-- Use direct paths for tools:
-  `C:/Users/human/miniconda3/envs/yolo/Scripts/ruff.exe` for ruff
+- Use conda env `yolo` tools directly (e.g. `ruff` on PATH, or the
+  full conda env path if `conda run` times out)
 - CI has 4 jobs: Lint, Test, Build Check, Build Docs
 - Always run `ruff format` before committing
 - Commit messages: imperative mood with type prefix (`feat:`, `fix:`, `ci:`,
@@ -66,8 +67,8 @@ These cause bugs if forgotten. Full knowledge base at
 
 1. **`import cv2` at top level breaks CI** — Docker lacks `libGL.so.1`;
    use lazy imports inside methods
-2. **Copilot review is web-UI only** — CLI commands silently fail; must
-   request via GitHub web UI (PR page -> Reviewers -> Copilot)
+2. **Copilot review is automatic** — GitHub Ruleset triggers review on
+   PR creation; no manual reviewer assignment needed
 3. **`git pull` times out** — use
    `git fetch origin main && git reset --hard origin/main`
 4. **`gh pr merge` times out** but often succeeds — verify with
