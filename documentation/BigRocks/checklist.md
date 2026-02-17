@@ -185,7 +185,7 @@
   - [ ] `reward.py` — YOLO-based brick-counting reward (optional, for `--reward-mode yolo`)
   - [ ] `config.yaml` — game config (moved from `configs/games/`)
   - [ ] `training.yaml` — YOLO training config (moved from `configs/training/`)
-- [ ] Move `src/env/cnn_wrapper.py` → `src/platform/cnn_wrapper.py`
+- [x] Move `BaseGameEnv` + `CnnObservationWrapper` → `src/platform/` with backward-compat re-exports (PR #61 — session 28)
 - [ ] Refactor `YoloDetector.detect_to_game_state()` — remove `BREAKOUT71_CLASSES` default, accept class mapping from plugin
 - [ ] Refactor `SessionRunner` — accept any `BaseGameEnv`, remove hardcoded `Breakout71Env` import
 - [ ] Refactor `train_rl.py` — add `--game` flag, load plugin dynamically by name

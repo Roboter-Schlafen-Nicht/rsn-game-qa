@@ -313,6 +313,7 @@ src/
   perception/     # DONE — YoloDetector, breakout_capture (41 tests)
   oracles/        # DONE — 12 oracles with on_step detection (132 tests)
   env/            # DONE — Breakout71Env gymnasium wrapper (146 tests)
+  platform/       # DONE — BaseGameEnv ABC, CnnObservationWrapper (game-agnostic)
   orchestrator/   # DONE — FrameCollector, SessionRunner (55 tests)
 configs/
   games/                  # Per-game loader configs (breakout-71.yaml)
@@ -418,8 +419,9 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 25. **Session 25** — CNN policy pipeline for A/B comparison with MLP: `CnnObservationWrapper` (84x84 grayscale), `--policy cnn|mlp` / `--frame-stack` / `--max-episodes` CLI args, VecFrameStack(4)+VecTransposeImage pipeline, XPU device routing for CNN policy (`xpu:1`), removed oracles from training loop, flipped data collection to opt-in, live validation (MLP 9.6 FPS / CNN 8.4 FPS on xpu:1), Copilot review (4 fixes). 40 new tests (PR #55)
 26. **Session 26** — Selenium-only input & platform architecture planning: removed pydirectinput from env (Selenium ActionChains only), eliminated mouseup pause bug, full codebase audit (~80% already game-agnostic), BaseGameEnv ABC design, three-tier reward strategy spec, platform architecture spec, RND implementation plan, checklist roadmap update (PR #57, docs PR #58)
 27. **Session 27** — BaseGameEnv ABC extraction (PR #59): created `src/env/base_env.py` with 13 abstract methods + 2 optional hooks, refactored `Breakout71Env` to inherit from it (1200→630 lines), fixed `_no_ball_count` double-update bug, `_should_check_modals` default changed to `True` (safe for new games), 40 new BaseGameEnv tests. Copilot review: 8 comments (4 typos, docstring fix, default fix, game_classes planned use note, PR description counts). 680 tests, 96.67% coverage.
+28. **Session 28** — Platform package creation (PR #61): moved `BaseGameEnv` and `CnnObservationWrapper` from `src/env/` to `src/platform/`, backward-compat re-exports in `src/env/__init__.py`, updated all imports (env, scripts, tests, CI, docs), Sphinx autodoc for platform module. Copilot review: 1 comment (docstring accuracy for compat scope). 680 tests, 96.86% coverage.
 
-Total: **680 tests** (656 unit + 24 integration), 7 subsystems + training pipeline complete.
+Total: **680 tests** (656 unit + 24 integration), 8 subsystems + training pipeline complete.
 
 ## What's Next
 
