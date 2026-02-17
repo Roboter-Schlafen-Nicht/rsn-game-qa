@@ -222,6 +222,13 @@ class SessionRunner:
         policy: str = "mlp",
         frame_stack: int = 4,
     ) -> None:
+        valid_policies = ("mlp", "cnn")
+        if policy not in valid_policies:
+            raise ValueError(f"policy must be one of {valid_policies}, got {policy!r}")
+        if policy == "cnn" and frame_stack < 1:
+            raise ValueError(
+                f"frame_stack must be >= 1 when policy='cnn', got {frame_stack}"
+            )
         self.game = game
         self.n_episodes = n_episodes
         self.max_steps_per_episode = max_steps_per_episode
@@ -502,6 +509,7 @@ class SessionRunner:
             except Exception:
                 logger.warning("Env cleanup failed", exc_info=True)
             self._env = None
+            self._raw_env = None
 
         if self._browser_instance is not None:
             try:

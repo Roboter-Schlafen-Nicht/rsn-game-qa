@@ -280,6 +280,10 @@ class CnnEvalWrapper(gym.Wrapper):
         frame_stack: int = 4,
         obs_size: int = CNN_OBS_SIZE,
     ) -> None:
+        if frame_stack < 1:
+            raise ValueError(f"frame_stack must be >= 1, got {frame_stack}")
+        if obs_size < 1:
+            raise ValueError(f"obs_size must be >= 1, got {obs_size}")
         super().__init__(env)
         self._frame_stack = frame_stack
         self._obs_size = obs_size

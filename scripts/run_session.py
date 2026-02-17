@@ -130,9 +130,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "observations matching the CNN training pipeline."
         ),
     )
+
+    def _positive_int(value: str) -> int:
+        """Argparse type that enforces a positive integer (>= 1)."""
+        ival = int(value)
+        if ival < 1:
+            raise argparse.ArgumentTypeError(f"--frame-stack must be >= 1, got {ival}")
+        return ival
+
     parser.add_argument(
         "--frame-stack",
-        type=int,
+        type=_positive_int,
         default=4,
         help=(
             "Number of frames to stack when --policy=cnn (default: 4).  "

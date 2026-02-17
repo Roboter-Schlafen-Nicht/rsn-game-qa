@@ -1805,3 +1805,31 @@ class TestSessionRunnerCNNPolicy:
             call_kwargs = MockRunner.call_args[1]
             assert call_kwargs["policy"] == "cnn"
             assert call_kwargs["frame_stack"] == 8
+
+
+class TestSessionRunnerValidation:
+    """SessionRunner rejects invalid policy/frame_stack at construction."""
+
+    def test_invalid_policy_raises(self):
+        """policy='bad' raises ValueError."""
+        with pytest.raises(ValueError, match="policy must be one of"):
+            SessionRunner(game="breakout71", policy="bad")
+
+    def test_cnn_with_zero_frame_stack_raises(self):
+        """policy='cnn' with frame_stack=0 raises ValueError."""
+        with pytest.raises(ValueError, match="frame_stack must be >= 1"):
+            SessionRunner(game="breakout71", policy="cnn", frame_stack=0)
+
+    def test_mlp_with_zero_frame_stack_ok(self):
+        """policy='mlp' does not validate frame_stack (it's ignored)."""
+        runner = SessionRunner(game="breakout71", policy="mlp", frame_stack=0)
+        assert runner.policy == "mlp"
+
+    def test_cleanup_clears_raw_env(self):
+        """_cleanup() sets _raw_env to None alongside _env."""
+        runner = SessionRunner(game="breakout71")
+        runner._raw_env = mock.MagicMock()
+        runner._env = mock.MagicMock()
+        runner._cleanup()
+        assert runner._raw_env is None
+        assert runner._env is None

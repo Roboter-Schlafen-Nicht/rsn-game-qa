@@ -785,3 +785,35 @@ class TestCnnEvalWrapperMatchesTraining:
 
         obs2, _, _, _, _ = env.step(np.array([0.0]))
         assert env.observation_space.contains(obs2)
+
+
+class TestCnnEvalWrapperValidation:
+    """CnnEvalWrapper rejects invalid parameters at construction time."""
+
+    def test_frame_stack_zero_raises(self):
+        """frame_stack=0 raises ValueError."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        with pytest.raises(ValueError, match="frame_stack must be >= 1"):
+            CnnEvalWrapper(Breakout71Env(), frame_stack=0)
+
+    def test_frame_stack_negative_raises(self):
+        """frame_stack=-1 raises ValueError."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        with pytest.raises(ValueError, match="frame_stack must be >= 1"):
+            CnnEvalWrapper(Breakout71Env(), frame_stack=-1)
+
+    def test_obs_size_zero_raises(self):
+        """obs_size=0 raises ValueError."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        with pytest.raises(ValueError, match="obs_size must be >= 1"):
+            CnnEvalWrapper(Breakout71Env(), obs_size=0)
+
+    def test_obs_size_negative_raises(self):
+        """obs_size=-5 raises ValueError."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        with pytest.raises(ValueError, match="obs_size must be >= 1"):
+            CnnEvalWrapper(Breakout71Env(), obs_size=-5)
