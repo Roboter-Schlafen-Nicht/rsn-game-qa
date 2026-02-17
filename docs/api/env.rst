@@ -9,7 +9,8 @@ Game-specific Gymnasium environments for QA testing.
 Breakout71Env
 -------------
 
-.. autoclass:: src.env.Breakout71Env
+.. autoclass:: games.breakout71.env.Breakout71Env
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:

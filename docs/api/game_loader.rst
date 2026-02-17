@@ -40,10 +40,11 @@ BrowserGameLoader
 Breakout71Loader
 ----------------
 
-.. autoclass:: src.game_loader.Breakout71Loader
+.. autoclass:: games.breakout71.loader.Breakout71Loader
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 Factory
 -------

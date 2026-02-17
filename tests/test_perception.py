@@ -94,7 +94,8 @@ def _make_detector_with_mock_model(
         Detection data to return from model calls.
         None means the model returns empty results.
     class_names : list[str] or None
-        Class names to use. Defaults to BREAKOUT71_CLASSES.
+        Class names to use. Defaults to BREAKOUT71_CLASSES
+        (from ``games.breakout71.perception``).
     """
     detector = YoloDetector(classes=class_names)
     detector.model = mock.MagicMock(name="YOLO")

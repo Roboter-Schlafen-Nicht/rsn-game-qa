@@ -181,78 +181,15 @@ def _norm_to_screen(
 
 # -- Modal handling (Selenium) ---------------------------------------------
 # Modals (game-over, perk-picker) are DOM overlays — not canvas-drawn.
-# We reuse the proven JS snippets from capture_dataset.py via Selenium,
-# which remains alive throughout the session.  This is the one place
-# we use the browser driver at runtime; all observation and control is
-# pixel-based via Win32.
+# We import the canonical JS snippets from the game plugin (single
+# source of truth).  This is the one place we use the browser driver
+# at runtime; all observation and control is pixel-based via Win32.
 
-_DETECT_STATE_JS = """
-return (function() {
-    var result = {state: "unknown", details: {}};
-    var hasAlert = document.body.classList.contains('has-alert-open');
-    var popup = document.getElementById('popup');
-    var closeBtn = document.getElementById('close-modale');
-
-    if (!hasAlert) {
-        result.state = "gameplay";
-        return result;
-    }
-    if (!popup) {
-        result.state = "unknown";
-        return result;
-    }
-
-    var buttons = popup.querySelectorAll('button');
-    var closeBtnVisible = false;
-    if (closeBtn) {
-        var style = window.getComputedStyle(closeBtn);
-        closeBtnVisible = (style.display !== 'none' && style.visibility !== 'hidden');
-    }
-
-    if (!closeBtnVisible && buttons.length >= 2) {
-        result.state = "perk_picker";
-        return result;
-    }
-    if (closeBtnVisible) {
-        result.state = "game_over";
-        return result;
-    }
-    result.state = "unknown";
-    return result;
-})();
-"""
-
-_CLICK_PERK_JS = """
-return (function() {
-    var popup = document.getElementById('popup');
-    if (!popup) return {clicked: -1};
-    var buttons = popup.querySelectorAll('button');
-    if (buttons.length === 0) return {clicked: -1};
-    var idx = Math.floor(Math.random() * buttons.length);
-    buttons[idx].click();
-    return {clicked: idx, text: buttons[idx].innerText.trim()};
-})();
-"""
-
-_DISMISS_GAME_OVER_JS = """
-return (function() {
-    var popup = document.getElementById('popup');
-    if (popup) {
-        var buttons = popup.querySelectorAll('button');
-        for (var i = 0; i < buttons.length; i++) {
-            var t = buttons[i].innerText.trim().toLowerCase();
-            if (t.indexOf("restart") >= 0 || t.indexOf("new") >= 0 ||
-                t.indexOf("run") >= 0 || t.indexOf("again") >= 0) {
-                buttons[i].click();
-                return {action: "restart_button"};
-            }
-        }
-    }
-    var closeBtn = document.getElementById('close-modale');
-    if (closeBtn) { closeBtn.click(); return {action: "close_button"}; }
-    return {action: "none"};
-})();
-"""
+from games.breakout71.modal_handler import (  # noqa: E402
+    CLICK_PERK_JS as _CLICK_PERK_JS,
+    DETECT_STATE_JS as _DETECT_STATE_JS,
+    DISMISS_GAME_OVER_JS as _DISMISS_GAME_OVER_JS,
+)
 
 
 def _ensure_gameplay(

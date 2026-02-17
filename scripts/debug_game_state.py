@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts._smoke_utils import BrowserInstance
-from src.env.breakout71_env import (
+from games.breakout71.modal_handler import (
     CLICK_PERK_JS,
     DETECT_STATE_JS,
     DISMISS_GAME_OVER_JS,
