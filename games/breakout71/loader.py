@@ -46,7 +46,7 @@ class Breakout71Loader(BrowserGameLoader):
 
     Inherits all behaviour from :class:`BrowserGameLoader` and adds:
 
-    - Sensible defaults for Parcel-based serving of Breakout 71.
+    - Sensible defaults for HTTP serving of pre-built Breakout 71 bundles.
     - Convenience constructor :meth:`from_repo_path` that only needs
       the path to the game repository.
 
@@ -73,7 +73,7 @@ class Breakout71Loader(BrowserGameLoader):
         game_dir : str or Path
             Path to the ``breakout71-testbed`` repository.
         serve_port : int
-            Port for the Parcel dev server.  Default 1234.
+            Port for the HTTP server serving the built game.  Default 1234.
         readiness_timeout_s : float
             How long to wait for the server to come up.
         window_title : str, optional

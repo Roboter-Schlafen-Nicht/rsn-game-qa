@@ -26,6 +26,9 @@ loader_type: breakout-71
 # setup() runs install_command + `npx parcel build` (in Breakout71Loader)
 # start() runs serve_command to serve the pre-built dist/ directory
 install_command: npm install
+# Note: At runtime, Breakout71Loader._DEFAULTS uses sys.executable
+# instead of "python3" to match the active interpreter.  This YAML
+# value is a documentation fallback only.
 serve_command: python3 -m http.server 1234 --directory dist
 serve_port: 1234
 url: http://localhost:1234

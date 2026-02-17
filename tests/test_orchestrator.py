@@ -1033,6 +1033,161 @@ class TestSessionRunnerSetup:
         assert runner._env is not None
         assert runner._collector is None
 
+    def _setup_with_js_hooks(
+        self, tmp_path, *, mute_js=None, setup_js=None, reinit_js=None
+    ):
+        """Helper: run _setup() with a plugin that has specific JS hooks."""
+        runner = SessionRunner(
+            game_config="breakout-71",
+            output_dir=tmp_path,
+            enable_data_collection=False,
+        )
+        runner.game_config_path = Path("breakout-71")
+
+        mock_config = mock.MagicMock()
+        mock_config.url = "http://localhost:1234"
+        mock_config.window_width = 1280
+        mock_config.window_height = 1024
+        mock_config.window_title = "Breakout"
+
+        mock_loader = mock.MagicMock()
+        mock_loader.url = "http://localhost:1234"
+
+        mock_driver = mock.MagicMock()
+        mock_browser = mock.MagicMock()
+        mock_browser.driver = mock_driver
+
+        runner._plugin = mock.MagicMock(spec=[])  # empty spec
+        # Manually set only the hooks we want
+        if mute_js is not None:
+            runner._plugin.mute_js = mute_js
+        if setup_js is not None:
+            runner._plugin.setup_js = setup_js
+        if reinit_js is not None:
+            runner._plugin.reinit_js = reinit_js
+        runner._plugin.env_class = mock.MagicMock(return_value=mock.MagicMock())
+        runner._plugin.game_name = "breakout-71"
+
+        with (
+            mock.patch(
+                "scripts._smoke_utils.BrowserInstance",
+                return_value=mock_browser,
+            ),
+            mock.patch(
+                "src.game_loader.create_loader",
+                return_value=mock_loader,
+            ),
+            mock.patch(
+                "src.game_loader.config.load_game_config",
+                return_value=mock_config,
+            ),
+            mock.patch("src.orchestrator.session_runner.time") as mock_time,
+        ):
+            mock_time.sleep = mock.MagicMock()
+            mock_time.perf_counter = time.perf_counter
+            runner._setup()
+
+        return runner, mock_driver, mock_time
+
+    def test_setup_executes_mute_js(self, tmp_path):
+        """_setup() calls driver.execute_script with mute_js snippet."""
+        _, driver, _ = self._setup_with_js_hooks(tmp_path, mute_js="window.mute()")
+        driver.execute_script.assert_any_call("window.mute()")
+
+    def test_setup_executes_setup_js(self, tmp_path):
+        """_setup() calls driver.execute_script with setup_js snippet."""
+        _, driver, _ = self._setup_with_js_hooks(tmp_path, setup_js="window.setup()")
+        driver.execute_script.assert_any_call("window.setup()")
+
+    def test_setup_refreshes_after_mute_or_setup(self, tmp_path):
+        """_setup() calls driver.refresh() when mute_js or setup_js ran."""
+        _, driver, _ = self._setup_with_js_hooks(tmp_path, mute_js="window.mute()")
+        driver.refresh.assert_called_once()
+
+    def test_setup_no_refresh_without_hooks(self, tmp_path):
+        """_setup() does not refresh when no JS hooks are present."""
+        _, driver, _ = self._setup_with_js_hooks(tmp_path)
+        driver.refresh.assert_not_called()
+
+    def test_setup_reinit_js_runs_after_refresh(self, tmp_path):
+        """_setup() executes reinit_js after refresh when mute/setup ran."""
+        _, driver, _ = self._setup_with_js_hooks(
+            tmp_path,
+            mute_js="window.mute()",
+            reinit_js="window.restart({})",
+        )
+        driver.execute_script.assert_any_call("window.restart({})")
+
+    def test_setup_reinit_js_skipped_without_refresh(self, tmp_path):
+        """_setup() does NOT execute reinit_js when no refresh occurred."""
+        _, driver, _ = self._setup_with_js_hooks(
+            tmp_path, reinit_js="window.restart({})"
+        )
+        # reinit_js should not have been called (no mute/setup => no refresh)
+        for call in driver.execute_script.call_args_list:
+            assert call[0][0] != "window.restart({})"
+
+    def test_setup_sleeps_after_refresh_and_reinit(self, tmp_path):
+        """_setup() sleeps 3s after refresh and 2s after reinit_js."""
+        _, _, mock_time = self._setup_with_js_hooks(
+            tmp_path,
+            setup_js="window.setup()",
+            reinit_js="window.restart({})",
+        )
+        sleep_calls = [c[0][0] for c in mock_time.sleep.call_args_list]
+        assert 3 in sleep_calls  # post-refresh sleep
+        assert 2 in sleep_calls  # post-reinit sleep
+
+    def test_setup_js_exception_does_not_crash(self, tmp_path):
+        """_setup() catches exceptions from JS hook execution."""
+        runner = SessionRunner(
+            game_config="breakout-71",
+            output_dir=tmp_path,
+            enable_data_collection=False,
+        )
+        runner.game_config_path = Path("breakout-71")
+
+        mock_config = mock.MagicMock()
+        mock_config.url = "http://localhost:1234"
+        mock_config.window_width = 1280
+        mock_config.window_height = 1024
+        mock_config.window_title = "Breakout"
+
+        mock_loader = mock.MagicMock()
+        mock_loader.url = "http://localhost:1234"
+
+        mock_driver = mock.MagicMock()
+        mock_driver.execute_script.side_effect = RuntimeError("JS error")
+        mock_browser = mock.MagicMock()
+        mock_browser.driver = mock_driver
+
+        runner._plugin = mock.MagicMock(spec=[])
+        runner._plugin.mute_js = "window.mute()"
+        runner._plugin.setup_js = "window.setup()"
+        runner._plugin.env_class = mock.MagicMock(return_value=mock.MagicMock())
+        runner._plugin.game_name = "breakout-71"
+
+        with (
+            mock.patch(
+                "scripts._smoke_utils.BrowserInstance",
+                return_value=mock_browser,
+            ),
+            mock.patch(
+                "src.game_loader.create_loader",
+                return_value=mock_loader,
+            ),
+            mock.patch(
+                "src.game_loader.config.load_game_config",
+                return_value=mock_config,
+            ),
+            mock.patch("src.orchestrator.session_runner.time"),
+        ):
+            # Should not raise despite JS errors
+            runner._setup()
+
+        # _setup completed without crashing
+        assert runner._env is not None
+
     def test_setup_uses_loader_url_over_config_url(self, tmp_path):
         """_setup() prefers loader.url over config.url when available."""
         runner = SessionRunner(

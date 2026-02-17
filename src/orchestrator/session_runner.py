@@ -350,7 +350,7 @@ class SessionRunner:
             driver.refresh()
             time.sleep(3)  # let page reload with new settings
 
-        if reinit_js and driver is not None:
+        if needs_refresh and reinit_js and driver is not None:
             try:
                 driver.execute_script(reinit_js)
                 time.sleep(2)  # let game re-initialise

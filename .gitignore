@@ -21,6 +21,12 @@ weights/
 node_modules/
 package-lock.json
 
+# Private OpenCode agent configs (may contain sensitive business data)
+.opencode/agents/business.md
+.opencode/agents/sales-research.md
+.opencode/agents/strategy.md
+.opencode/commands/biz.md
+
 # Security: prevent accidental commit of certs/credentials
 *.pem
 *.key

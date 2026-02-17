@@ -811,7 +811,7 @@ def main(argv: list[str] | None = None) -> int:
     # reinit_js calls window.restart({}) to rebuild game state and
     # re-assign the live pointer.
     reinit_js = getattr(plugin, "reinit_js", None)
-    if reinit_js and browser_instance.driver is not None:
+    if needs_refresh and reinit_js and browser_instance.driver is not None:
         try:
             browser_instance.driver.execute_script(reinit_js)
             time.sleep(2)  # let game re-initialise
