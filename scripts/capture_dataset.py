@@ -189,7 +189,13 @@ def _click_to_start(driver, game_element, window_rect):
 
 
 def main() -> int:
-    parser = base_argparser("Capture Breakout 71 frames for YOLO training dataset.")
+    parser = base_argparser("Capture game frames for YOLO training dataset.")
+    parser.add_argument(
+        "--game",
+        type=str,
+        default="breakout71",
+        help="Game plugin name (directory under games/). Default: breakout71",
+    )
     parser.add_argument(
         "--frames",
         type=int,
@@ -235,10 +241,13 @@ def main() -> int:
 
     load_dotenv()
 
+    from games import load_game_plugin
     from src.game_loader import load_game_config, create_loader
     from src.capture import WindowCapture
 
-    config = load_game_config(args.config)
+    plugin = load_game_plugin(args.game)
+    config_path = args.config or plugin.default_config
+    config = load_game_config(config_path)
     loader = create_loader(config)
 
     # ── Start game server ────────────────────────────────────────────
@@ -388,7 +397,7 @@ def main() -> int:
     # ── Save manifest ────────────────────────────────────────────────
     manifest_path = out_dir / "manifest.json"
     manifest_data = {
-        "dataset": "breakout71",
+        "dataset": plugin.game_name,
         "capture_timestamp": ts,
         "total_frames": len(manifest),
         "interval_seconds": args.interval,

@@ -97,7 +97,9 @@ def _make_detector_with_mock_model(
         Class names to use. Defaults to BREAKOUT71_CLASSES
         (from ``games.breakout71.perception``).
     """
-    detector = YoloDetector(classes=class_names)
+    from games.breakout71.perception import BREAKOUT71_CLASSES
+
+    detector = YoloDetector(classes=class_names or BREAKOUT71_CLASSES)
     detector.model = mock.MagicMock(name="YOLO")
 
     data = boxes_data if boxes_data is not None else []
@@ -121,13 +123,9 @@ class TestYoloDetectorInit:
         assert detector.img_size == 640
 
     def test_default_classes(self):
-        """Default class list should match Breakout 71 spec."""
+        """Default class list is empty when no classes are provided."""
         detector = YoloDetector()
-        assert "paddle" in detector.class_names
-        assert "ball" in detector.class_names
-        assert "brick" in detector.class_names
-        assert "powerup" in detector.class_names
-        assert "wall" in detector.class_names
+        assert detector.class_names == []
 
     def test_is_loaded_before_load(self):
         """is_loaded should return False before load() is called."""

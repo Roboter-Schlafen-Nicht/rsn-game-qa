@@ -777,6 +777,14 @@ def phase4_gameplay_loop(
 
 def main() -> int:
     parser = base_argparser("Debug pixel-based game control pipeline.")
+    # Override base_argparser's --config default so plugin default kicks in
+    parser.set_defaults(config=None)
+    parser.add_argument(
+        "--game",
+        type=str,
+        default="breakout71",
+        help="Game plugin name (directory under games/). Default: breakout71",
+    )
     parser.add_argument(
         "--skip-setup",
         action="store_true",
@@ -804,8 +812,8 @@ def main() -> int:
     parser.add_argument(
         "--weights",
         type=str,
-        default="weights/breakout71/best.pt",
-        help="Path to YOLO weights (default: %(default)s)",
+        default=None,
+        help="Path to YOLO weights (default: from game plugin)",
     )
     parser.add_argument(
         "--confidence",
@@ -835,14 +843,20 @@ def main() -> int:
     )
     logger.info("Output directory: %s", out_dir)
 
+    # ── Load game plugin and resolve config ────────────────────────────
+    from games import load_game_plugin
+
+    plugin = load_game_plugin(args.game)
+
     # ── Load YOLO model ──────────────────────────────────────────────
     from src.perception import YoloDetector, resolve_device
 
     device = resolve_device(args.device)
-    logger.info("Loading YOLO model: %s (device=%s)", args.weights, device)
+    weights = args.weights or plugin.default_weights
+    logger.info("Loading YOLO model: %s (device=%s)", weights, device)
     with Timer("yolo_load") as t:
         detector = YoloDetector(
-            weights_path=args.weights,
+            weights_path=weights,
             device=device,
             confidence_threshold=args.confidence,
         )
@@ -856,7 +870,8 @@ def main() -> int:
     # ── Start game server ────────────────────────────────────────────
     from src.game_loader import create_loader, load_game_config
 
-    config = load_game_config(args.config)
+    config_path = args.config or plugin.default_config
+    config = load_game_config(config_path)
     loader = create_loader(config)
 
     if not args.skip_setup:

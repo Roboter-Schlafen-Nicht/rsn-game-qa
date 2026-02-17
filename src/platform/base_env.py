@@ -597,6 +597,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         self._detector = YoloDetector(
             weights_path=self.yolo_weights,
             device=self.device,
+            classes=self.game_classes(),
         )
         self._detector.load()
 

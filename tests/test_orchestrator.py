@@ -696,7 +696,8 @@ class TestRunSessionCLI:
         from scripts.run_session import parse_args
 
         args = parse_args([])
-        assert args.config == "configs/games/breakout-71.yaml"
+        assert args.game == "breakout71"
+        assert args.config is None
         assert args.episodes == 3
         assert args.max_steps == 10_000
         assert args.output_dir == "output"
@@ -869,7 +870,7 @@ class TestSessionRunnerSetup:
     """Tests for SessionRunner._setup with mocked lazy imports."""
 
     def test_setup_creates_env_and_browser(self, tmp_path):
-        """_setup passes correct args to BrowserInstance and Breakout71Env."""
+        """_setup passes correct args to BrowserInstance and EnvClass."""
         runner = SessionRunner(
             game_config="breakout-71",
             output_dir=tmp_path,
@@ -892,16 +893,18 @@ class TestSessionRunnerSetup:
         mock_browser.driver = mock.MagicMock()
 
         mock_env = mock.MagicMock()
+        MockEnvCls = mock.MagicMock(return_value=mock_env)
+
+        # Replace the plugin's env_class with our mock
+        runner._plugin = mock.MagicMock()
+        runner._plugin.env_class = MockEnvCls
+        runner._plugin.game_name = "breakout-71"
 
         with (
             mock.patch(
                 "scripts._smoke_utils.BrowserInstance",
                 return_value=mock_browser,
             ) as MockBrowser,
-            mock.patch(
-                "games.breakout71.env.Breakout71Env",
-                return_value=mock_env,
-            ) as MockEnv,
             mock.patch(
                 "src.game_loader.create_loader",
                 return_value=mock_loader,
@@ -921,9 +924,9 @@ class TestSessionRunnerSetup:
             browser="chrome",
         )
 
-        # Verify Breakout71Env received correct arguments
-        MockEnv.assert_called_once()
-        env_kwargs = MockEnv.call_args[1]
+        # Verify env class received correct arguments
+        MockEnvCls.assert_called_once()
+        env_kwargs = MockEnvCls.call_args[1]
         assert env_kwargs["window_title"] == "Breakout"
         assert env_kwargs["driver"] is mock_browser.driver
 
@@ -955,15 +958,16 @@ class TestSessionRunnerSetup:
 
         mock_env = mock.MagicMock()
 
+        # Replace the plugin's env_class with our mock
+        runner._plugin = mock.MagicMock()
+        runner._plugin.env_class = mock.MagicMock(return_value=mock_env)
+        runner._plugin.game_name = "breakout-71"
+
         # Patch all lazy imports at the point where _setup imports them
         with (
             mock.patch(
                 "scripts._smoke_utils.BrowserInstance",
                 return_value=mock_browser,
-            ),
-            mock.patch(
-                "games.breakout71.env.Breakout71Env",
-                return_value=mock_env,
             ),
             mock.patch(
                 "src.game_loader.create_loader",
@@ -1004,14 +1008,15 @@ class TestSessionRunnerSetup:
         mock_browser = mock.MagicMock()
         mock_browser.driver = mock.MagicMock()
 
+        # Replace the plugin's env_class with our mock
+        runner._plugin = mock.MagicMock()
+        runner._plugin.env_class = mock.MagicMock(return_value=mock.MagicMock())
+        runner._plugin.game_name = "breakout-71"
+
         with (
             mock.patch(
                 "scripts._smoke_utils.BrowserInstance",
                 return_value=mock_browser,
-            ),
-            mock.patch(
-                "games.breakout71.env.Breakout71Env",
-                return_value=mock.MagicMock(),
             ),
             mock.patch(
                 "src.game_loader.create_loader",
@@ -1050,14 +1055,15 @@ class TestSessionRunnerSetup:
         mock_browser.driver = mock.MagicMock()
         mock_browser_cls.return_value = mock_browser
 
+        # Replace the plugin's env_class with our mock
+        runner._plugin = mock.MagicMock()
+        runner._plugin.env_class = mock.MagicMock(return_value=mock.MagicMock())
+        runner._plugin.game_name = "breakout-71"
+
         with (
             mock.patch(
                 "scripts._smoke_utils.BrowserInstance",
                 mock_browser_cls,
-            ),
-            mock.patch(
-                "games.breakout71.env.Breakout71Env",
-                return_value=mock.MagicMock(),
             ),
             mock.patch(
                 "src.game_loader.create_loader",

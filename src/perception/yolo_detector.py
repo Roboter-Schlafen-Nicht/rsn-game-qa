@@ -181,7 +181,7 @@ class YoloDetector:
         Inference image size (square).  Default is 640.
     classes : list[str], optional
         Expected class names in order.  If None, read from the model
-        after loading, or fall back to ``BREAKOUT71_CLASSES``.
+        after loading, or fall back to ``_DEFAULT_CLASSES`` (empty list).
 
     Attributes
     ----------
@@ -198,11 +198,11 @@ class YoloDetector:
         If the weights file does not exist.
     """
 
-    # Default class names for Breakout 71 (from session1.md spec).
-    # Canonical source: games.breakout71.perception.BREAKOUT71_CLASSES
-    # Kept here for backward compatibility; new code should import from
-    # the game plugin directly.
-    BREAKOUT71_CLASSES = ["paddle", "ball", "brick", "powerup", "wall"]
+    # Default class names used when no ``classes`` are provided and the
+    # model has not been loaded yet.  After ``load()``, class names are
+    # read from the model itself.  Game plugins should always pass
+    # ``classes=`` explicitly (via ``BaseGameEnv.game_classes()``).
+    _DEFAULT_CLASSES: list[str] = []
 
     def __init__(
         self,
@@ -225,7 +225,7 @@ class YoloDetector:
         self.iou_threshold = iou_threshold
         self.img_size = img_size
         self._user_classes = classes  # Store user override separately
-        self.class_names = classes or self.BREAKOUT71_CLASSES
+        self.class_names = classes or self._DEFAULT_CLASSES
 
         self.model: Any = None  # Loaded lazily
         self._using_openvino: bool = False

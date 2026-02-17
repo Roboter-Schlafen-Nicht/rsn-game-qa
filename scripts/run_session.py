@@ -3,8 +3,13 @@
 
 Usage::
 
-    python scripts/run_session.py --config configs/games/breakout-71.yaml \\
+    python scripts/run_session.py --game breakout71 \\
         --episodes 3 --max-steps 10000 --browser chrome
+
+    # Override config / weights (optional):
+    python scripts/run_session.py --game breakout71 \\
+        --config configs/games/breakout-71.yaml \\
+        --yolo-weights weights/breakout71/best.pt
 
 Requires a running game server (see ``smoke_launch.py`` or start manually).
 """
@@ -35,10 +40,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Run N QA episodes with random policy and generate report.",
     )
     parser.add_argument(
+        "--game",
+        type=str,
+        default="breakout71",
+        help=("Game plugin name (directory under games/). Default: breakout71"),
+    )
+    parser.add_argument(
         "--config",
         type=str,
-        default="configs/games/breakout-71.yaml",
-        help="Path to game config YAML (default: configs/games/breakout-71.yaml)",
+        default=None,
+        help=(
+            "Path to game config YAML.  If omitted, uses the plugin's default config."
+        ),
     )
     parser.add_argument(
         "--episodes",
@@ -68,8 +81,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--yolo-weights",
         type=str,
-        default="weights/breakout71/best.pt",
-        help="Path to YOLO weights (default: weights/breakout71/best.pt)",
+        default=None,
+        help=("Path to YOLO weights.  If omitted, uses the plugin's default weights."),
     )
     parser.add_argument(
         "--frame-interval",
@@ -115,6 +128,7 @@ def main(argv: list[str] | None = None) -> int:
     from src.orchestrator.session_runner import SessionRunner
 
     runner = SessionRunner(
+        game=args.game,
         game_config=args.config,
         n_episodes=args.episodes,
         max_steps_per_episode=args.max_steps,
