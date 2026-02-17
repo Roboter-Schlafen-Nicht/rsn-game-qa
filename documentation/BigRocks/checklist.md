@@ -172,10 +172,10 @@
 > `documentation/specs/reward_strategy_spec.md` for full details.
 
 #### 4a. Platform / plugin separation
-- [ ] Design `BaseGameEnv` ABC in `src/platform/base_env.py`
-  - [ ] Extract generic lifecycle from `Breakout71Env` (lazy init, capture, detect, oracle wiring)
-  - [ ] Define abstract methods: `game_classes()`, `build_observation()`, `compute_reward()`, `check_termination()`, `handle_modals()`, `apply_action()`, `start_game()`, `canvas_selector()`
-  - [ ] Add `on_lazy_init()` and `on_reset_complete()` hooks
+- [x] Design `BaseGameEnv` ABC *(PR #59 — currently in `src/env/base_env.py`, will move to `src/platform/` in next PR)*
+  - [x] Extract generic lifecycle from `Breakout71Env` (lazy init, capture, detect, oracle wiring)
+  - [x] Define abstract methods: `game_classes()`, `build_observation()`, `compute_reward()`, `check_termination()`, `handle_modals()`, `apply_action()`, `start_game()`, `canvas_selector()` + `build_info()`, `terminal_reward()`, `on_reset_detections()`, `reset_termination_state()`
+  - [x] Add `on_lazy_init()` and `on_reset_complete()` hooks
   - [ ] Add `_reward_mode` parameter (yolo|survival|rnd) with platform-level override
 - [ ] Create `games/breakout71/` plugin directory
   - [ ] `env.py` — `Breakout71Env(BaseGameEnv)` with all Breakout-specific logic
