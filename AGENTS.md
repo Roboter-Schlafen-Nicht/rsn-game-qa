@@ -53,17 +53,17 @@ module where the behavioral contract matters more than implementation.
 
 ## Current State
 
-- **693 tests**, 96% coverage, 8 subsystems complete
+- **703 tests**, 96% coverage, 8 subsystems complete
 - **Architecture done:** BaseGameEnv ABC, game plugin system (`games/`),
   `--game` flag, CNN/MLP observation modes, dynamic plugin loading
 - **No real training results yet** — Phase 1 in roadmap
 - See `documentation/ROADMAP.md` for the 5-phase plan
-- See `documentation/BigRocks/checklist.md` for detailed task tracking
+- See `private/documentation/BigRocks/checklist.md` for detailed task tracking
 
 ## Critical Technical Pitfalls
 
 These cause bugs if forgotten. Full knowledge base at
-`documentation/reference/agent_knowledge_base.md`.
+`private/documentation/reference/agent_knowledge_base.md`.
 
 1. **`import cv2` at top level breaks CI** — Docker lacks `libGL.so.1`;
    use lazy imports inside methods
@@ -112,10 +112,8 @@ configs/
   games/          # Per-game loader configs
   training/       # Per-game YOLO training configs
 scripts/          # CLI tools (train_rl, run_session, capture, debug, etc.)
-tests/            # 693 tests (669 unit + 24 integration)
+tests/            # 703 tests (679 unit + 24 integration)
 documentation/
-  BigRocks/       # Master checklist
-  reference/      # Agent knowledge base (accumulated discoveries)
   specs/          # Canonical specifications
   ROADMAP.md      # 5-phase plan
 docs/             # Sphinx source
@@ -124,7 +122,7 @@ docs/             # Sphinx source
 ## Reference
 
 - `documentation/ROADMAP.md` — what to do next (5-phase plan)
-- `documentation/BigRocks/checklist.md` — detailed task tracking
-- `documentation/reference/agent_knowledge_base.md` — all technical
+- `private/documentation/BigRocks/checklist.md` — detailed task tracking
+- `private/documentation/reference/agent_knowledge_base.md` — all technical
   discoveries from sessions 1-30
 - `documentation/specs/` — canonical specifications
