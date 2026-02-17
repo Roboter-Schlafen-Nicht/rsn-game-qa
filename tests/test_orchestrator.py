@@ -922,6 +922,7 @@ class TestSessionRunnerSetup:
             settle_seconds=8.0,
             window_size=(1280, 1024),
             browser="chrome",
+            headless=False,
         )
 
         # Verify env class received correct arguments

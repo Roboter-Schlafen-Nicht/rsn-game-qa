@@ -110,6 +110,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Disable frame collection for YOLO retraining",
     )
     parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run browser in headless mode (no GUI, Selenium frame capture)",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -139,6 +144,18 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
     )
 
+    # Silence noisy third-party loggers
+    for noisy in (
+        "selenium",
+        "urllib3",
+        "asyncio",
+        "PIL",
+        "ultralytics",
+        "matplotlib",
+        "parso",
+    ):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
     from src.orchestrator.session_runner import SessionRunner
 
     # Build policy_fn from trained model if provided
@@ -164,6 +181,7 @@ def main(argv: list[str] | None = None) -> int:
         frame_capture_interval=args.frame_interval,
         enable_data_collection=not args.no_data_collection,
         policy_fn=policy_fn,
+        headless=args.headless,
     )
 
     report = runner.run()

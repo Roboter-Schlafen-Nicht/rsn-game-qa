@@ -54,6 +54,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
+
+def _json_default(obj: Any) -> Any:
+    """Handle numpy types during JSON serialisation."""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
 
 @dataclass
 class FindingReport:
@@ -293,7 +306,7 @@ class ReportGenerator:
         out_path = self.output_dir / filename
 
         with open(out_path, "w", encoding="utf-8") as fh:
-            json.dump(asdict(self._session), fh, indent=2)
+            json.dump(asdict(self._session), fh, indent=2, default=_json_default)
 
         return out_path
 

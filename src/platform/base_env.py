@@ -647,7 +647,12 @@ class BaseGameEnv(gym.Env, abc.ABC):
         return frame
 
     def _capture_frame_headless(self) -> np.ndarray:
-        """Capture a frame via Selenium screenshot.
+        """Capture a frame via canvas ``toDataURL`` or Selenium screenshot.
+
+        Prefers ``canvas.toDataURL('image/jpeg')`` (~11 ms) over
+        ``get_screenshot_as_png()`` (~85 ms) when a canvas selector is
+        available.  Falls back to full-page screenshot if the canvas
+        capture fails.
 
         Returns
         -------
@@ -669,9 +674,37 @@ class BaseGameEnv(gym.Env, abc.ABC):
                 "cv2 (opencv-python) is required for headless capture"
             ) from exc
 
-        png_bytes = self._driver.get_screenshot_as_png()
-        nparr = np.frombuffer(png_bytes, np.uint8)
-        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        frame = None
+
+        # Fast path: canvas toDataURL (JPEG, ~11ms vs ~85ms for PNG)
+        try:
+            selector = self.canvas_selector()
+        except NotImplementedError:
+            selector = None
+
+        if selector is not None:
+            try:
+                import base64
+
+                data_url = self._driver.execute_script(
+                    "var c = document.getElementById(arguments[0]);"
+                    "if (!c) return null;"
+                    "return c.toDataURL('image/jpeg', 0.8);",
+                    selector,
+                )
+                if data_url is not None:
+                    b64_data = data_url.split(",", 1)[1]
+                    img_bytes = base64.b64decode(b64_data)
+                    nparr = np.frombuffer(img_bytes, np.uint8)
+                    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            except Exception:
+                logger.debug("Canvas toDataURL failed, falling back to screenshot")
+
+        # Fallback: full-page screenshot
+        if frame is None:
+            png_bytes = self._driver.get_screenshot_as_png()
+            nparr = np.frombuffer(png_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if frame is None:
             raise RuntimeError("Failed to decode screenshot PNG to BGR frame")
         self._last_frame = frame

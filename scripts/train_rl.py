@@ -661,15 +661,15 @@ def _setup_logging(
     output_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
-    # Console handler
-    level = logging.DEBUG if verbose else logging.INFO
+    # Console handler — INFO by default, DEBUG with -v
+    console_level = logging.DEBUG if verbose else logging.INFO
     console = logging.StreamHandler(sys.stderr)
-    console.setLevel(level)
+    console.setLevel(console_level)
     console.setFormatter(
         logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s")
     )
 
-    # File handler (line-buffered via flush after each emit)
+    # File handler — always DEBUG for post-mortem analysis
     log_path = output_dir / f"training_{ts}.log"
     file_handler = logging.FileHandler(log_path, encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
@@ -682,6 +682,18 @@ def _setup_logging(
     root.handlers.clear()
     root.addHandler(console)
     root.addHandler(file_handler)
+
+    # Silence noisy third-party loggers on console (still DEBUG in file)
+    for noisy in (
+        "selenium",
+        "urllib3",
+        "asyncio",
+        "PIL",
+        "ultralytics",
+        "matplotlib",
+        "parso",
+    ):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
     # JSONL structured logger
     jsonl_path = output_dir / f"training_{ts}.jsonl"

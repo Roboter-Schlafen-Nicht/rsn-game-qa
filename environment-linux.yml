@@ -1,0 +1,102 @@
+# Linux (WSL2) variant of environment.yml
+# Removes Windows-only packages: pywin32, pydirectinput, wincam
+# Keeps Intel XPU PyTorch for single-GPU WSL2 passthrough
+name: yolo
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - setuptools
+  - wheel
+  - pip:
+      - --index-url https://download.pytorch.org/whl/xpu
+      - --extra-index-url https://pypi.org/simple
+      - absl-py==2.4.0
+      - ale-py==0.11.2
+      - cloudpickle==3.1.2
+      - contourpy==1.3.3
+      - cycler==0.12.1
+      - dpcpp-cpp-rt==2025.3.1
+      - farama-notifications==0.0.4
+      - filelock==3.20.0
+      - fonttools==4.61.1
+      - fsspec==2025.12.0
+      - grpcio==1.78.0
+      - gymnasium==1.2.3
+      - imagehash==4.3.2
+      - intel-cmplr-lib-rt==2025.3.1
+      - intel-cmplr-lib-ur==2025.3.1
+      - intel-cmplr-lic-rt==2025.3.1
+      - intel-opencl-rt==2025.3.1
+      - intel-openmp==2025.3.1
+      - intel-pti==0.15.0
+      - intel-sycl-rt==2025.3.1
+      - kiwisolver==1.4.9
+      - markdown==3.10.1
+      - markdown-it-py==4.0.0
+      - markupsafe==2.1.5
+      - matplotlib==3.10.8
+      - mdurl==0.1.2
+      - mkl==2025.3.0
+      - mpmath==1.3.0
+      - networkx==3.6.1
+      - numpy>=2.3.0,<2.4.0
+      - onemkl-license==2025.3.0
+      - onemkl-sycl-blas==2025.3.0
+      - onemkl-sycl-dft==2025.3.0
+      - onemkl-sycl-lapack==2025.3.0
+      - onemkl-sycl-rng==2025.3.0
+      - onemkl-sycl-sparse==2025.3.0
+      - opencv-python==4.13.0.90
+      - pandas==3.0.0
+      - pillow==12.0.0
+      - polars==1.37.1
+      - protobuf==6.33.5
+      - psutil==7.2.2
+      - pyelftools==0.32
+      - pygame==2.6.1
+      - pygments==2.19.2
+      - pyparsing==3.3.2
+      - python-dateutil==2.9.0.post0
+      - pywavelets==1.9.0
+      - rich==14.3.2
+      - scipy==1.17.0
+      - six==1.17.0
+      - stable-baselines3==2.7.1
+      - sympy==1.14.0
+      - tbb==2022.3.0
+      - tcmlib==1.4.1
+      - tensorboard==2.20.0
+      - tensorboard-data-server==0.7.2
+      - torch==2.10.0+xpu
+      - torchaudio==2.10.0+xpu
+      - torchvision==0.25.0+xpu
+      - triton-xpu==3.6.0
+      - tzdata==2025.3
+      - ultralytics==8.4.14
+      # OpenVINO inference acceleration (Intel CPU/GPU)
+      - openvino>=2025.4
+      - ultralytics-thop==2.0.18
+      - umf==1.0.2
+      - werkzeug==3.1.5
+      # Development / CI
+      - pytest==9.0.2
+      - pytest-cov>=7.0
+      - pytest-timeout>=2.4
+      - ruff==0.11.12
+      # Game loader configuration
+      - pyyaml==6.0.3
+      # Environment variable management
+      - python-dotenv==1.1.0
+      # Image annotation platform (Roboflow upload)
+      - roboflow>=1.1.0
+      # Browser automation (smoke scripts / integration tests)
+      - selenium==4.40.0
+      # Templating (for reporting dashboard)
+      - jinja2==3.1.6
+      # Documentation
+      - sphinx==9.1.0
+      - myst-parser==5.0.0
+      - sphinx-autodoc-typehints==3.6.2
+      - furo==2025.12.19
