@@ -54,7 +54,7 @@ from typing import Any, Optional
 import numpy as np
 from gymnasium import spaces
 
-from .base_env import BaseGameEnv
+from src.platform.base_env import BaseGameEnv
 
 logger = logging.getLogger(__name__)
 

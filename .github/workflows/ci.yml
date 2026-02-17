@@ -113,6 +113,7 @@ jobs:
           python -c "from src.capture import WindowCapture, InputController; print('capture: OK')"
           python -c "from src.oracles import Oracle, CrashOracle, StuckOracle, ScoreAnomalyOracle, VisualGlitchOracle, PerformanceOracle; print('oracles: OK')"
           python -c "from src.env import Breakout71Env; print('env: OK')"
+          python -c "from src.platform import BaseGameEnv, CnnObservationWrapper; print('platform: OK')"
           python -c "from src.perception import YoloDetector; print('perception: OK')"
           python -c "from src.reporting import EpisodeReport, ReportGenerator, DashboardRenderer; print('reporting: OK')"
 

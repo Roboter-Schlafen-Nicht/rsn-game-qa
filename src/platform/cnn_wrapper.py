@@ -1,7 +1,7 @@
-"""CNN observation wrapper for Breakout71Env.
+"""CNN observation wrapper for game environments.
 
-Converts the 8-element feature vector observation from
-:class:`~src.env.breakout71_env.Breakout71Env` into an 84x84
+Converts the feature vector observation from a
+:class:`~src.platform.base_env.BaseGameEnv` subclass into an 84x84
 single-channel (grayscale) image observation suitable for SB3's
 ``CnnPolicy`` (NatureCNN architecture).
 
@@ -58,18 +58,18 @@ CNN_OBS_SIZE: int = 84
 
 
 class CnnObservationWrapper(gym.ObservationWrapper):
-    """Wrap a Breakout71Env to produce 84x84 grayscale image observations.
+    """Wrap a BaseGameEnv to produce 84x84 grayscale image observations.
 
     This is a thin :class:`gymnasium.ObservationWrapper` that replaces the
-    8-element feature vector with a grayscale image derived from the raw
-    game frame already captured by the base environment.
+    feature vector with a grayscale image derived from the raw game frame
+    already captured by the base environment.
 
     Parameters
     ----------
     env : gym.Env
-        The base environment (typically ``Breakout71Env``).  Must produce
-        an ``info`` dict containing a ``"frame"`` key with a BGR
-        ``np.ndarray``.
+        The base environment (a :class:`BaseGameEnv` subclass).  Must
+        produce an ``info`` dict containing a ``"frame"`` key with a
+        BGR ``np.ndarray``.
     obs_size : int
         Target height and width for the square observation image.
         Default is 84.
