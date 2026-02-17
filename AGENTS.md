@@ -379,7 +379,17 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 - **Reward mode as platform-level override** — `--reward-mode` CLI flag works for any game plugin, not per-game config.
 - **"Test Horseshoe" concept** — Platform wraps around the game: Capture → Perception → Policy → Input. Platform Core (BaseGameEnv, RND, CNN, Oracles, Orchestrator, Reporting) at the base. Game Plugin sits at the top providing game-specific glue.
 
-## What's Done (sessions 1-26)
+### BaseGameEnv ABC Extraction (session 27)
+
+- **BaseGameEnv ABC created** — `src/env/base_env.py` with 12 abstract methods + 2 optional hooks. Full `step()`/`reset()`/`close()` lifecycle, modal throttling, late game-over detection, oracle integration, and frame collection all in the base class.
+- **Abstract methods (12):** `game_classes()`, `build_observation()`, `compute_reward()`, `check_termination()`, `apply_action()`, `handle_modals()`, `start_game()`, `canvas_selector()`, `build_info()`, `terminal_reward()`, `on_reset_detections()`, `reset_termination_state()`.
+- **Optional hooks (2+2):** Public: `on_lazy_init()`, `on_reset_complete()`. Internal throttling: `_should_check_modals()`, `_check_late_game_over()`.
+- **`_no_ball_count` double-update bug fixed** — Both `_check_late_game_over()` and `check_termination()` were updating `_no_ball_count`. Fix: `_check_late_game_over()` exclusively owns updates; `check_termination()` only reads.
+- **`_should_check_modals` default changed to `True`** — Copilot review caught that `False` default (never check) is unsafe for new games. Changed to `True` (always check — safe default). Breakout71 overrides to throttle based on ball visibility.
+- **`game_classes()` kept as abstract** — Copilot suggested removing since unused in base class. Kept because it's part of the planned plugin contract for `--game` dynamic loading (PR 4). Added docstring explaining planned use.
+- **Method rename mapping** — `_build_observation` → `build_observation`, `_compute_reward` → `compute_reward`, `_apply_action` → `apply_action`, `_handle_game_state` → `handle_modals`, `_click_canvas` → `start_game`, `_build_info` → `build_info` + `_make_info`.
+
+## What's Done (sessions 1-27)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -406,9 +416,10 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 23. **Session 23** — Episode boundary bug fix + TDD convention: game-over modals no longer silently dismissed mid-episode (merged multiple games into one infinite episode), fixed terminal penalty for modal-occluded frames, TDD convention formalized in AGENTS.md. Copilot review: 4 fixes (PR #51)
 24. **Session 24** — Modal check throttling: skip Selenium HTTP round-trip when ball visible (~100-150ms saved per step), immediate late check on 0→1 ball-miss transition to prevent spurious rewards, deduplicated `_make_env_ready()` test helper, live validation (55 FPS pipeline, ~8 FPS with SB3 overhead), alpha release v0.1.0a1, post-merge admin (PR #49, #51, #52, #53)
 25. **Session 25** — CNN policy pipeline for A/B comparison with MLP: `CnnObservationWrapper` (84x84 grayscale), `--policy cnn|mlp` / `--frame-stack` / `--max-episodes` CLI args, VecFrameStack(4)+VecTransposeImage pipeline, XPU device routing for CNN policy (`xpu:1`), removed oracles from training loop, flipped data collection to opt-in, live validation (MLP 9.6 FPS / CNN 8.4 FPS on xpu:1), Copilot review (4 fixes). 40 new tests (PR #55)
-26. **Session 26** — Selenium-only input & platform architecture planning: removed pydirectinput from env (Selenium ActionChains only), eliminated mouseup pause bug, full codebase audit (~80% already game-agnostic), BaseGameEnv ABC design, three-tier reward strategy spec, platform architecture spec, RND implementation plan, checklist roadmap update (PR #57, docs PR pending)
+26. **Session 26** — Selenium-only input & platform architecture planning: removed pydirectinput from env (Selenium ActionChains only), eliminated mouseup pause bug, full codebase audit (~80% already game-agnostic), BaseGameEnv ABC design, three-tier reward strategy spec, platform architecture spec, RND implementation plan, checklist roadmap update (PR #57, docs PR #58)
+27. **Session 27** — BaseGameEnv ABC extraction (PR #59): created `src/env/base_env.py` with 13 abstract methods + 2 optional hooks, refactored `Breakout71Env` to inherit from it (1200→630 lines), fixed `_no_ball_count` double-update bug, `_should_check_modals` default changed to `True` (safe for new games), 40 new BaseGameEnv tests. Copilot review: 8 comments (4 typos, docstring fix, default fix, game_classes planned use note, PR description counts). 680 tests, 96.67% coverage.
 
-Total: **664 tests** (640 unit + 24 integration), 7 subsystems + training pipeline complete.
+Total: **680 tests** (656 unit + 24 integration), 7 subsystems + training pipeline complete.
 
 ## What's Next
 
