@@ -390,7 +390,15 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 - **`game_classes()` kept as abstract** — Copilot suggested removing since unused in base class. Kept because it's part of the planned plugin contract for `--game` dynamic loading (PR 4). Added docstring explaining planned use.
 - **Method rename mapping** — `_build_observation` → `build_observation`, `_compute_reward` → `compute_reward`, `_apply_action` → `apply_action`, `_handle_game_state` → `handle_modals`, `_click_canvas` → `start_game`, `_build_info` → `build_info` + `_make_info`.
 
-## What's Done (sessions 1-27)
+### Game Plugin Directory (session 29)
+
+- **`games/breakout71/` plugin directory created (PR #63)** — Moved `Breakout71Env`, `Breakout71Loader`, JS modal constants, and YOLO class names from `src/` into `games/breakout71/`.
+- **JS snippet deduplication** — 4 JS constants (`DETECT_STATE_JS`, `CLICK_PERK_JS`, `DISMISS_GAME_OVER_JS`, `DISMISS_MENU_JS`) were duplicated across 3 files with minor variations. Consolidated into single source of truth `games/breakout71/modal_handler.py`.
+- **Circular import fix** — Eager re-exports in `src/game_loader/__init__.py` created a cycle: `src.game_loader.__init__` → `games.breakout71.loader` → `src.game_loader.browser_loader` → `src.game_loader.__init__`. Fixed with lazy `__getattr__` in both `src/env/__init__.py` and `src/game_loader/__init__.py`.
+- **Config files stay in `configs/`** — `load_game_config()` and `load_training_config()` search `configs/games/` and `configs/training/` by default; moving would break ~72 call sites.
+- **Copilot review: 0 comments** — Clean review, 23/24 files reviewed.
+
+## What's Done (sessions 1-29)
 
 1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
 2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
@@ -420,6 +428,7 @@ docs/                     # Sphinx source (conf.py, api/, specs/)
 26. **Session 26** — Selenium-only input & platform architecture planning: removed pydirectinput from env (Selenium ActionChains only), eliminated mouseup pause bug, full codebase audit (~80% already game-agnostic), BaseGameEnv ABC design, three-tier reward strategy spec, platform architecture spec, RND implementation plan, checklist roadmap update (PR #57, docs PR #58)
 27. **Session 27** — BaseGameEnv ABC extraction (PR #59): created `src/env/base_env.py` with 13 abstract methods + 2 optional hooks, refactored `Breakout71Env` to inherit from it (1200→630 lines), fixed `_no_ball_count` double-update bug, `_should_check_modals` default changed to `True` (safe for new games), 40 new BaseGameEnv tests. Copilot review: 8 comments (4 typos, docstring fix, default fix, game_classes planned use note, PR description counts). 680 tests, 96.67% coverage.
 28. **Session 28** — Platform package creation (PR #61): moved `BaseGameEnv` and `CnnObservationWrapper` from `src/env/` to `src/platform/`, backward-compat re-exports in `src/env/__init__.py`, updated all imports (env, scripts, tests, CI, docs), Sphinx autodoc for platform module. Copilot review: 1 comment (docstring accuracy for compat scope). 680 tests, 96.86% coverage.
+29. **Session 29** — Game plugin directory (PR #63): moved `Breakout71Env`, `Breakout71Loader`, JS modal constants, YOLO class names into `games/breakout71/`. Deduplicated JS snippets from 3 files into single-source-of-truth `modal_handler.py`. Fixed circular imports with lazy `__getattr__` re-exports. Config files kept in `configs/`. Copilot review: 0 comments. 680 tests, 96.55% coverage.
 
 Total: **680 tests** (656 unit + 24 integration), 8 subsystems + training pipeline complete.
 

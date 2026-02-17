@@ -177,14 +177,15 @@
   - [x] Define abstract methods: `game_classes()`, `build_observation()`, `compute_reward()`, `check_termination()`, `handle_modals()`, `apply_action()`, `start_game()`, `canvas_selector()` + `build_info()`, `terminal_reward()`, `on_reset_detections()`, `reset_termination_state()`
   - [x] Add `on_lazy_init()` and `on_reset_complete()` hooks
   - [ ] Add `_reward_mode` parameter (yolo|survival|rnd) with platform-level override
-- [ ] Create `games/breakout71/` plugin directory
-  - [ ] `env.py` — `Breakout71Env(BaseGameEnv)` with all Breakout-specific logic
-  - [ ] `loader.py` — moved from `src/game_loader/breakout71_loader.py`
-  - [ ] `modal_handler.py` — JS snippets (`DETECT_STATE_JS`, `CLICK_PERK_JS`, etc.)
-  - [ ] `perception.py` — YOLO class names + detection-to-gamestate mapping
+- [x] Create `games/breakout71/` plugin directory (PR #63 — session 29)
+  - [x] `env.py` — `Breakout71Env(BaseGameEnv)` with all Breakout-specific logic
+  - [x] `loader.py` — moved from `src/game_loader/breakout71_loader.py`
+  - [x] `modal_handler.py` — JS snippets (`DETECT_STATE_JS`, `CLICK_PERK_JS`, etc.) — single source of truth, deduplicated from 3 files
+  - [x] `perception.py` — YOLO class names (`BREAKOUT71_CLASSES`)
   - [ ] `reward.py` — YOLO-based brick-counting reward (optional, for `--reward-mode yolo`)
-  - [ ] `config.yaml` — game config (moved from `configs/games/`)
-  - [ ] `training.yaml` — YOLO training config (moved from `configs/training/`)
+  - [x] Config files kept in `configs/` — consumed by platform-level loaders, not game plugins (~72 call sites depend on current paths)
+  - [x] Backward-compat re-exports in `src/env/` and `src/game_loader/` via lazy `__getattr__` (avoids circular imports)
+  - [x] CI Build Check updated to verify `games.breakout71` imports
 - [x] Move `BaseGameEnv` + `CnnObservationWrapper` → `src/platform/` with backward-compat re-exports (PR #61 — session 28)
 - [ ] Refactor `YoloDetector.detect_to_game_state()` — remove `BREAKOUT71_CLASSES` default, accept class mapping from plugin
 - [ ] Refactor `SessionRunner` — accept any `BaseGameEnv`, remove hardcoded `Breakout71Env` import
