@@ -1,7 +1,7 @@
 Environment Module
 ==================
 
-Gymnasium environments for game QA testing.
+Game-specific Gymnasium environments for QA testing.
 
 .. automodule:: src.env
    :no-members:

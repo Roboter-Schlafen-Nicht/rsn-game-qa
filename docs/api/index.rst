@@ -8,6 +8,7 @@ Auto-generated documentation from source code docstrings and type hints.
 
    capture
    oracles
+   platform
    env
    perception
    reporting

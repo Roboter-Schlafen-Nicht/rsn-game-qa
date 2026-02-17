@@ -15,7 +15,7 @@ import gymnasium as gym
 import numpy as np
 import pytest
 
-from src.env.base_env import BaseGameEnv
+from src.platform.base_env import BaseGameEnv
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +212,7 @@ class TestDefaultHooks:
 class TestStep:
     """Tests for the base step() lifecycle."""
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_step_increments_counter(self, mock_time):
         """step() should increment _step_count."""
         env = _make_ready_env()
@@ -222,7 +222,7 @@ class TestStep:
 
         assert env._step_count == 1
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_step_returns_five_tuple(self, mock_time):
         """step() returns (obs, reward, terminated, truncated, info)."""
         env = _make_ready_env()
@@ -237,7 +237,7 @@ class TestStep:
         assert isinstance(truncated, bool)
         assert isinstance(info, dict)
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_step_normal_not_terminated(self, mock_time):
         """Normal step should not terminate."""
         env = _make_ready_env()
@@ -247,7 +247,7 @@ class TestStep:
         assert terminated is False
         assert truncated is False
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_step_truncation_at_max_steps(self, mock_time):
         """step() truncates when max_steps reached."""
         env = _make_ready_env(max_steps=5)
@@ -257,7 +257,7 @@ class TestStep:
 
         assert truncated is True
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_step_calls_apply_action(self, mock_time):
         """step() calls apply_action with the provided action."""
         env = _make_ready_env()
@@ -266,7 +266,7 @@ class TestStep:
             env.step(_action(0.7))
             mock_apply.assert_called_once()
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_step_game_over_via_mid_modal(self, mock_time):
         """Mid-step game_over modal terminates with terminal_reward."""
         env = _make_ready_env()
@@ -280,7 +280,7 @@ class TestStep:
         assert terminated is True
         assert reward == pytest.approx(-5.0)
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_step_perk_picker_not_terminal(self, mock_time):
         """Mid-step perk_picker modal is handled but not terminal."""
         env = _make_ready_env()
@@ -295,7 +295,7 @@ class TestStep:
         assert terminated is False
         mock_start.assert_called_once()
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_step_late_game_over(self, mock_time):
         """Late game-over detection returns terminal_reward."""
         env = _make_ready_env()
@@ -306,7 +306,7 @@ class TestStep:
         assert terminated is True
         assert reward == pytest.approx(-5.0)
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_step_late_game_over_skips_compute_reward(self, mock_time):
         """When late game-over fires, compute_reward is NOT called."""
         env = _make_ready_env()
@@ -318,14 +318,14 @@ class TestStep:
             env.step(_action())
             mock_cr.assert_not_called()
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_step_info_includes_oracle_findings(self, mock_time):
         """step() info dict contains oracle_findings."""
         env = _make_ready_env()
         _, _, _, _, info = env.step(_action())
         assert "oracle_findings" in info
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_step_skips_modal_check_when_should_returns_false(self, mock_time):
         """When _should_check_modals returns False, handle_modals is not called."""
         env = _make_ready_env()
@@ -341,7 +341,7 @@ class TestStep:
 class TestReset:
     """Tests for the base reset() lifecycle."""
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_reset_returns_obs_and_info(self, mock_time):
         """reset() returns (obs, info) tuple."""
         env = _make_ready_env()
@@ -352,7 +352,7 @@ class TestReset:
         assert obs.shape == (4,)
         assert isinstance(info, dict)
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_reset_resets_step_count(self, mock_time):
         """reset() sets _step_count to 0."""
         env = _make_ready_env()
@@ -362,7 +362,7 @@ class TestReset:
 
         assert env._step_count == 0
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_reset_calls_reset_termination_state(self, mock_time):
         """reset() calls reset_termination_state."""
         env = _make_ready_env()
@@ -372,7 +372,7 @@ class TestReset:
 
         assert env._no_ball_count == 0
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_reset_raises_after_5_invalid_attempts(self, mock_time):
         """reset() raises RuntimeError if on_reset_detections always False."""
         env = _make_ready_env()
@@ -382,7 +382,7 @@ class TestReset:
         with pytest.raises(RuntimeError, match="failed to get valid detections"):
             env.reset()
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_reset_calls_handle_modals_and_start_game(self, mock_time):
         """reset() calls handle_modals and start_game each attempt."""
         env = _make_ready_env()
@@ -395,7 +395,7 @@ class TestReset:
             mock_hm.assert_called()
             mock_sg.assert_called()
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_reset_clears_oracles(self, mock_time):
         """reset() calls clear() then on_reset() on all oracles."""
         env = _make_ready_env()
@@ -408,7 +408,7 @@ class TestReset:
         oracle.clear.assert_called_once()
         oracle.on_reset.assert_called_once()
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_reset_calls_on_reset_complete(self, mock_time):
         """reset() calls on_reset_complete hook."""
         env = _make_ready_env()
@@ -417,7 +417,7 @@ class TestReset:
             env.reset()
             mock_hook.assert_called_once()
 
-    @mock.patch("src.env.base_env.time")
+    @mock.patch("src.platform.base_env.time")
     def test_reset_info_has_frame_and_step(self, mock_time):
         """reset() info dict has frame and step=0."""
         env = _make_ready_env()

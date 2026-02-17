@@ -708,7 +708,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from scripts._smoke_utils import BrowserInstance
     from src.env.breakout71_env import Breakout71Env
-    from src.env.cnn_wrapper import CnnObservationWrapper
+    from src.platform.cnn_wrapper import CnnObservationWrapper
     from src.game_loader import create_loader
     from src.game_loader.config import load_game_config
     from src.orchestrator.data_collector import FrameCollector
