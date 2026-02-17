@@ -187,14 +187,15 @@
   - [x] Backward-compat re-exports in `src/env/` and `src/game_loader/` via lazy `__getattr__` (avoids circular imports)
   - [x] CI Build Check updated to verify `games.breakout71` imports
 - [x] Move `BaseGameEnv` + `CnnObservationWrapper` → `src/platform/` with backward-compat re-exports (PR #61 — session 28)
-- [ ] Refactor `YoloDetector.detect_to_game_state()` — remove `BREAKOUT71_CLASSES` default, accept class mapping from plugin
-- [ ] Refactor `SessionRunner` — accept any `BaseGameEnv`, remove hardcoded `Breakout71Env` import
-- [ ] Refactor `train_rl.py` — add `--game` flag, load plugin dynamically by name
-- [ ] Refactor `run_session.py` — add `--game` flag
-- [ ] Game plugin registry with `register_game()` decorator
-- [ ] CNN as default observation mode, MLP as optional (requires game-specific YOLO)
-- [ ] Update all tests: platform tests vs game-specific tests
-- [ ] Validate: all existing tests pass after refactoring (behaviour-preserving)
+- [x] Refactor `SessionRunner` — accept any `BaseGameEnv`, uses plugin system (PR #65 — session 30)
+- [x] Refactor `train_rl.py` — add `--game` flag, load plugin dynamically by name (PR #65 — session 30)
+- [x] Refactor `run_session.py` — add `--game` flag (PR #65 — session 30)
+- [x] CNN as default observation mode, MLP as optional (requires game-specific YOLO) (PR #55 — session 25)
+- [x] `YoloDetector._DEFAULT_CLASSES` changed to `[]` — plugin provides classes (PR #65 — session 30)
+- [x] Update all tests: platform tests vs game-specific tests (PR #65 — session 30)
+- [x] Validate: all existing tests pass after refactoring — 693 tests, 96.35% coverage (PR #65 — session 30)
+- [ ] Refactor `YoloDetector.detect_to_game_state()` — remove Breakout-specific grouping logic (deprioritized)
+- [ ] Game plugin registry with `register_game()` decorator (deprioritized)
 
 #### 4b. Exploration-driven reward — Tier 1: Survival + RND
 - [ ] Implement `src/platform/rnd_wrapper.py` (VecEnv wrapper)
@@ -229,6 +230,24 @@
 - [ ] Input responsiveness detector (send actions, check state changes)
 - [ ] Ensemble `GameOverDetector` with configurable strategies and per-game weights
 
+### 5. Phase 1: First Real Training & QA Report
+
+> See `documentation/ROADMAP.md` for the full 5-phase plan.
+
+- [ ] Merge PR #65 (`--game` flag and dynamic plugin loading)
+- [ ] Run 200K-step PPO training (CNN policy, portrait, `--max-time 7200`)
+- [ ] Evaluate trained model: 10-episode eval with `run_session.py`
+- [ ] Generate QA report with oracle findings and HTML dashboard
+- [ ] Run 10-episode random baseline for comparison
+- [ ] Analyze results: mean episode length, reward, oracle findings frequency
+- [ ] Document findings in session log
+
+### 6. Documentation restructure (session 30)
+
+- [x] Create `documentation/reference/agent_knowledge_base.md` — all discoveries from sessions 1-29
+- [x] Create `documentation/ROADMAP.md` — 5-phase plan
+- [x] Rewrite `AGENTS.md` — lean ~120-line operational guide (was 449 lines)
+- [x] Update `documentation/BigRocks/checklist.md` — mark done items, add Phase 1 tasks
+
 #### Deferred
-- [ ] Generate QA reports from trained agent episodes
 - [ ] Retrain YOLO with human-reviewed Roboflow annotations
