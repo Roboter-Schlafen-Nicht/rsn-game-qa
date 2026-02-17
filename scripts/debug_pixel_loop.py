@@ -50,11 +50,12 @@ from __future__ import annotations
 import logging
 import sys
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
 
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts._smoke_utils import (
     BrowserInstance,
@@ -870,8 +871,8 @@ def main() -> int:
     # ── Start game server ────────────────────────────────────────────
     from src.game_loader import create_loader, load_game_config
 
-    config_path = args.config or plugin.default_config
-    config = load_game_config(config_path)
+    config_path = Path(args.config if args.config else plugin.default_config)
+    config = load_game_config(config_path.stem, configs_dir=config_path.parent)
     loader = create_loader(config)
 
     if not args.skip_setup:

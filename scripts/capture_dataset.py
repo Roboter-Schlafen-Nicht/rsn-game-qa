@@ -28,8 +28,9 @@ import logging
 import random
 import sys
 import time
+from pathlib import Path
 
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts._smoke_utils import (
     BrowserInstance,
@@ -190,6 +191,8 @@ def _click_to_start(driver, game_element, window_rect):
 
 def main() -> int:
     parser = base_argparser("Capture game frames for YOLO training dataset.")
+    # Override base_argparser's default config so plugin defaults can be used
+    parser.set_defaults(config=None)
     parser.add_argument(
         "--game",
         type=str,
@@ -246,8 +249,8 @@ def main() -> int:
     from src.capture import WindowCapture
 
     plugin = load_game_plugin(args.game)
-    config_path = args.config or plugin.default_config
-    config = load_game_config(config_path)
+    config_path = Path(args.config if args.config else plugin.default_config)
+    config = load_game_config(config_path.stem, configs_dir=config_path.parent)
     loader = create_loader(config)
 
     # ── Start game server ────────────────────────────────────────────
