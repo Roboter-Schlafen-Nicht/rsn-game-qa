@@ -934,9 +934,21 @@ class TestHandleGameState:
 
         assert state == "unknown"
 
-    def test_click_canvas_uses_action_chains(self):
-        """start_game should use ActionChains to click the canvas centre."""
+    def test_start_game_sets_gamestate_via_js(self):
+        """start_game should set gameState.running and ballStickToPuck via JS."""
         driver = _mock_driver()
+        env = Breakout71Env(driver=driver)
+
+        env.start_game()
+
+        driver.execute_script.assert_called_with(
+            "gameState.running = true;gameState.ballStickToPuck = false;"
+        )
+
+    def test_start_game_falls_back_to_action_chains_on_js_error(self):
+        """start_game should try ActionChains click if JS mutation fails."""
+        driver = _mock_driver()
+        driver.execute_script.side_effect = Exception("JS failed")
         env = Breakout71Env(driver=driver)
         env._game_canvas = mock.MagicMock()
 
@@ -952,14 +964,16 @@ class TestHandleGameState:
         mock_chains.click.assert_called_once()
         mock_chains.perform.assert_called_once()
 
-    def test_click_canvas_no_driver(self):
+    def test_start_game_no_driver(self):
         """start_game without driver should be a no-op."""
         env = Breakout71Env()
         env.start_game()  # should not raise
 
-    def test_click_canvas_no_canvas(self):
-        """start_game without game_canvas should be a no-op."""
-        env = Breakout71Env(driver=_mock_driver())
+    def test_start_game_no_canvas_js_fails_gracefully(self):
+        """start_game with JS failure and no canvas should not raise."""
+        driver = _mock_driver()
+        driver.execute_script.side_effect = Exception("JS failed")
+        env = Breakout71Env(driver=driver)
         env._game_canvas = None
         env.start_game()  # should not raise
 
@@ -1686,25 +1700,19 @@ class TestHeadless:
         env._game_canvas = None
         env.apply_action(_action(0.0))  # should not raise
 
-    def test_headless_click_canvas(self):
-        """start_game in headless mode should use ActionChains click."""
+    def test_headless_start_game_uses_js_mutation(self):
+        """start_game in headless mode should set gameState via JS."""
         env = Breakout71Env(headless=True)
         env._driver = mock.MagicMock()
         env._game_canvas = mock.MagicMock()
 
-        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
-        mock_chains_instance = mock.MagicMock()
-        mock_chains_instance.move_to_element.return_value = mock_chains_instance
-        mock_chains_instance.click.return_value = mock_chains_instance
-        mock_ac_module.ActionChains.return_value = mock_chains_instance
-
         env.start_game()
 
-        mock_chains_instance.move_to_element.assert_called_once_with(env._game_canvas)
-        mock_chains_instance.click.assert_called_once()
-        mock_chains_instance.perform.assert_called_once()
+        env._driver.execute_script.assert_called_with(
+            "gameState.running = true;gameState.ballStickToPuck = false;"
+        )
 
-    def test_headless_click_canvas_no_driver(self):
+    def test_headless_start_game_no_driver(self):
         """start_game in headless mode should do nothing without driver."""
         env = Breakout71Env(headless=True)
         env._driver = None
