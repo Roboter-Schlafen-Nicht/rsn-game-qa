@@ -155,15 +155,20 @@ def _create_oracles() -> list[Oracle]:
 class SessionRunner:
     """Full game lifecycle orchestrator.
 
-    Launches the game via a Selenium browser, creates the
-    ``Breakout71Env`` with all 12 oracles, runs N episodes, collects
+    Launches the game via a Selenium browser, creates the game
+    environment with all 12 oracles, runs N episodes, collects
     data for YOLO retraining, and generates structured JSON reports
     with an HTML dashboard.
 
     Parameters
     ----------
-    game_config : str or Path
-        Path to the game YAML config (e.g. ``configs/games/breakout-71.yaml``).
+    game : str
+        Game plugin name (directory under ``games/``, e.g.
+        ``"breakout71"``).  Used to dynamically load the env class,
+        loader class, and derive default config/weights paths.
+    game_config : str or Path or None
+        Path to the game YAML config.  If None, uses the plugin's
+        ``default_config``.
     n_episodes : int
         Number of episodes to run.
     max_steps_per_episode : int
@@ -173,8 +178,9 @@ class SessionRunner:
     browser : str or None
         Browser to use (``"chrome"``, ``"msedge"``, ``"firefox"``).
         If None, auto-selects the first available.
-    yolo_weights : str or Path
-        Path to trained YOLO weights.
+    yolo_weights : str or Path or None
+        Path to trained YOLO weights.  If None, uses the plugin's
+        ``default_weights``.
     frame_capture_interval : int
         Save every Nth frame for data collection.
     enable_data_collection : bool
@@ -183,23 +189,34 @@ class SessionRunner:
 
     def __init__(
         self,
-        game_config: str | Path = "configs/games/breakout-71.yaml",
+        game: str = "breakout71",
+        game_config: str | Path | None = None,
         n_episodes: int = 3,
         max_steps_per_episode: int = 10_000,
         output_dir: str | Path = "output",
         browser: str | None = None,
-        yolo_weights: str | Path = "weights/breakout71/best.pt",
+        yolo_weights: str | Path | None = None,
         frame_capture_interval: int = 30,
         enable_data_collection: bool = True,
     ) -> None:
-        self.game_config_path = Path(game_config)
+        self.game = game
         self.n_episodes = n_episodes
         self.max_steps_per_episode = max_steps_per_episode
         self.output_dir = Path(output_dir)
         self.browser = browser
-        self.yolo_weights = Path(yolo_weights)
         self.frame_capture_interval = frame_capture_interval
         self.enable_data_collection = enable_data_collection
+
+        # Load plugin to resolve defaults
+        from games import load_game_plugin
+
+        self._plugin = load_game_plugin(game)
+        self.game_config_path = Path(
+            game_config if game_config is not None else self._plugin.default_config
+        )
+        self.yolo_weights = Path(
+            yolo_weights if yolo_weights is not None else self._plugin.default_weights
+        )
 
         self._browser_instance = None
         self._env = None
@@ -216,7 +233,7 @@ class SessionRunner:
         """
         report_gen = ReportGenerator(
             output_dir=self.output_dir / "reports",
-            game_name="breakout-71",
+            game_name=self._plugin.game_name,
         )
 
         try:
@@ -266,7 +283,6 @@ class SessionRunner:
         """Launch the game browser and create the environment."""
         # Lazy imports to avoid CI failures
         from scripts._smoke_utils import BrowserInstance
-        from games.breakout71.env import Breakout71Env
         from src.game_loader import create_loader
         from src.game_loader.config import load_game_config
 
@@ -295,9 +311,10 @@ class SessionRunner:
         # Create oracles
         oracles = _create_oracles()
 
-        # Create environment with Selenium driver
+        # Create environment using the plugin's env class
+        EnvClass = self._plugin.env_class
         window_title = config.window_title or "Breakout"
-        self._env = Breakout71Env(
+        self._env = EnvClass(
             window_title=window_title,
             yolo_weights=self.yolo_weights,
             max_steps=self.max_steps_per_episode,

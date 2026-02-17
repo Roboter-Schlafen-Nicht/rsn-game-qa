@@ -561,3 +561,48 @@ class TestHeadlessCapture:
 
         with pytest.raises(RuntimeError, match="driver is None"):
             env._capture_frame_headless()
+
+
+class TestLazyInitGameClasses:
+    """Tests that game_classes() is wired into YoloDetector during _lazy_init."""
+
+    def test_game_classes_passed_to_yolo_detector(self):
+        """_lazy_init passes game_classes() to YoloDetector constructor."""
+        env = StubEnv(headless=True)
+        mock_driver = mock.MagicMock()
+        env._driver = mock_driver
+
+        with mock.patch("src.perception.yolo_detector.YoloDetector") as MockDetector:
+            mock_instance = mock.MagicMock()
+            MockDetector.return_value = mock_instance
+
+            env._lazy_init()
+
+            MockDetector.assert_called_once()
+            call_kwargs = MockDetector.call_args
+            assert call_kwargs.kwargs.get("classes") == ["ball", "paddle", "brick"]
+
+    def test_game_classes_custom_values(self):
+        """A subclass with different game_classes() passes them through."""
+
+        class CustomClassesEnv(StubEnv):
+            def game_classes(self) -> list[str]:
+                return ["enemy", "player", "obstacle", "coin"]
+
+        env = CustomClassesEnv(headless=True)
+        mock_driver = mock.MagicMock()
+        env._driver = mock_driver
+
+        with mock.patch("src.perception.yolo_detector.YoloDetector") as MockDetector:
+            mock_instance = mock.MagicMock()
+            MockDetector.return_value = mock_instance
+
+            env._lazy_init()
+
+            call_kwargs = MockDetector.call_args
+            assert call_kwargs.kwargs.get("classes") == [
+                "enemy",
+                "player",
+                "obstacle",
+                "coin",
+            ]

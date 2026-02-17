@@ -35,8 +35,17 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(description="Debug game-state JS detection")
+    parser.add_argument(
+        "--game",
+        default="breakout71",
+        help="Game plugin name (directory under games/). Default: breakout71",
+    )
     parser.add_argument("--browser", default="chrome")
-    parser.add_argument("--config", default="configs/games/breakout-71.yaml")
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to game config YAML.  If omitted, uses the plugin's default.",
+    )
     parser.add_argument(
         "--auto-dismiss",
         action="store_true",
@@ -44,7 +53,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    config_path = Path(args.config)
+    from games import load_game_plugin
+
+    plugin = load_game_plugin(args.game)
+    config_path = Path(args.config or plugin.default_config)
     config = load_game_config(config_path.stem, configs_dir=config_path.parent)
 
     loader = create_loader(config)

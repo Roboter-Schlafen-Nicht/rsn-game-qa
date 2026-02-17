@@ -361,6 +361,7 @@ class TestLazyInit:
         mock_det.assert_called_once_with(
             weights_path=env.yolo_weights,
             device="cpu",
+            classes=["ball", "brick", "paddle", "powerup", "wall"],
         )
 
     @mock.patch("src.perception.yolo_detector.YoloDetector")

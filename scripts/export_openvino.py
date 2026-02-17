@@ -13,7 +13,7 @@ The exported model is saved alongside the source ``.pt`` file::
 Usage::
 
     python scripts/export_openvino.py
-    python scripts/export_openvino.py --weights weights/breakout71/best.pt
+    python scripts/export_openvino.py --game breakout71
     python scripts/export_openvino.py --weights weights/breakout71/best.pt --half
 """
 
@@ -29,9 +29,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts._smoke_utils import Timer, setup_logging
 
 logger = logging.getLogger(__name__)
-
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_DEFAULT_WEIGHTS = _PROJECT_ROOT / "weights" / "breakout71" / "best.pt"
 
 
 def export_openvino(
@@ -105,10 +102,16 @@ def main() -> int:
         description="Export a YOLO model to OpenVINO format for accelerated inference."
     )
     parser.add_argument(
+        "--game",
+        type=str,
+        default="breakout71",
+        help="Game plugin name (directory under games/). Default: breakout71",
+    )
+    parser.add_argument(
         "--weights",
         type=Path,
-        default=_DEFAULT_WEIGHTS,
-        help="Path to .pt weights file (default: %(default)s)",
+        default=None,
+        help="Path to .pt weights file (default: from game plugin)",
     )
     parser.add_argument(
         "--imgsz",
@@ -130,8 +133,13 @@ def main() -> int:
     args = parser.parse_args()
     setup_logging(args.verbose)
 
+    from games import load_game_plugin
+
+    plugin = load_game_plugin(args.game)
+    weights = args.weights or Path(plugin.default_weights)
+
     export_dir = export_openvino(
-        args.weights,
+        weights,
         imgsz=args.imgsz,
         half=args.half,
     )

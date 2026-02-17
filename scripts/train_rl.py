@@ -1,24 +1,23 @@
 #!/usr/bin/env python
-"""CLI entry point -- PPO training with Stable Baselines3 on Breakout71Env.
+"""CLI entry point -- PPO training with Stable Baselines3 on any game plugin.
 
 Usage::
 
-    python scripts/train_rl.py --config configs/games/breakout-71.yaml \\
-        --timesteps 200000 --browser chrome
+    python scripts/train_rl.py --game breakout71 --timesteps 200000
 
     # CNN policy (pixel-based, uses GPU for policy network):
-    python scripts/train_rl.py --policy cnn --timesteps 200000
+    python scripts/train_rl.py --game breakout71 --policy cnn --timesteps 200000
 
     # Headless mode (no mouse capture, uses Selenium for I/O):
-    python scripts/train_rl.py --headless --timesteps 200000
+    python scripts/train_rl.py --game breakout71 --headless --timesteps 200000
 
     # Portrait mode (768x1024, mobile-style layout):
-    python scripts/train_rl.py --orientation portrait --headless
+    python scripts/train_rl.py --game breakout71 --orientation portrait --headless
 
 Supports two policy types for A/B comparison:
 
-- **mlp** (default): 8-element YOLO feature vector → MlpPolicy (CPU)
-- **cnn**: 84x84 grayscale pixels → NatureCNN → CnnPolicy (GPU)
+- **mlp** (default): 8-element YOLO feature vector -> MlpPolicy (CPU)
+- **cnn**: 84x84 grayscale pixels -> NatureCNN -> CnnPolicy (GPU)
 
 The CNN pipeline stacks 4 consecutive frames (``VecFrameStack``) so the
 policy can infer velocity from motion.  Both pipelines use the same
@@ -29,8 +28,8 @@ real-time; at ~52 FPS native or ~2-3 FPS headless.
 
 All runs produce two log files in ``output/``:
 
-- ``training_<timestamp>.log`` — human-readable, line-buffered
-- ``training_<timestamp>.jsonl`` — structured events (config, step
+- ``training_<timestamp>.log`` -- human-readable, line-buffered
+- ``training_<timestamp>.jsonl`` -- structured events (config, step
   summaries, episode completions, checkpoints, interrupts, final
   summary), line-buffered for crash safety
 """
@@ -124,13 +123,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         Parsed arguments.
     """
     parser = argparse.ArgumentParser(
-        description="Train PPO agent on Breakout 71 with data collection.",
+        description="Train PPO agent on a game plugin with data collection.",
+    )
+    parser.add_argument(
+        "--game",
+        type=str,
+        default="breakout71",
+        help=("Game plugin name (directory under games/). Default: breakout71"),
     )
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/games/breakout-71.yaml",
-        help="Path to game config YAML (default: configs/games/breakout-71.yaml)",
+        default=None,
+        help=(
+            "Path to game config YAML.  If omitted, uses the plugin's default config."
+        ),
     )
     parser.add_argument(
         "--timesteps",
@@ -160,8 +167,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--yolo-weights",
         type=str,
-        default="weights/breakout71/best.pt",
-        help="Path to YOLO weights (default: weights/breakout71/best.pt)",
+        default=None,
+        help=("Path to YOLO weights.  If omitted, uses the plugin's default weights."),
     )
     parser.add_argument(
         "--max-steps",
@@ -363,6 +370,9 @@ class FrameCollectionCallback:
     max_episodes : int or None
         Maximum number of completed episodes.  When reached,
         ``_on_step`` returns ``False`` to cleanly stop ``model.learn()``.
+    game_slug : str
+        Short game identifier used for checkpoint file names
+        (e.g. ``"breakout71"``).
     """
 
     def __init__(
@@ -374,6 +384,7 @@ class FrameCollectionCallback:
         log_interval: int = 100,
         max_time: int | None = None,
         max_episodes: int | None = None,
+        game_slug: str = "breakout71",
     ) -> None:
         # Import at call site to avoid top-level SB3 import in CI
         from stable_baselines3.common.callbacks import BaseCallback
@@ -387,6 +398,7 @@ class FrameCollectionCallback:
         self._log_interval = max(1, log_interval)
         self._max_time = max_time
         self._max_episodes = max_episodes
+        self._game_slug = game_slug
         self._episode_count = 0
         self._episode_rewards: list[float] = []
         self._episode_lengths: list[int] = []
@@ -410,6 +422,7 @@ class FrameCollectionCallback:
         log_interval = self._log_interval
         max_time = self._max_time
         max_episodes = self._max_episodes
+        game_slug = self._game_slug
 
         # We need a reference back so the outer class can read episode_count
         outer = self
@@ -600,7 +613,7 @@ class FrameCollectionCallback:
 
                 # -- Periodic checkpointing -------------------------------
                 if self.num_timesteps - self._last_checkpoint >= checkpoint_interval:
-                    ckpt_path = checkpoint_dir / f"ppo_breakout71_{self.num_timesteps}"
+                    ckpt_path = checkpoint_dir / f"ppo_{game_slug}_{self.num_timesteps}"
                     self.model.save(str(ckpt_path))
                     logger.info(
                         "Checkpoint saved: %s (step %d)",
@@ -683,7 +696,7 @@ def _setup_logging(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run PPO training on Breakout71Env.
+    """Run PPO training on a game plugin environment.
 
     Parameters
     ----------
@@ -707,14 +720,24 @@ def main(argv: list[str] | None = None) -> int:
     from stable_baselines3 import PPO
 
     from scripts._smoke_utils import BrowserInstance
-    from games.breakout71.env import Breakout71Env
+    from games import load_game_plugin
     from src.platform.cnn_wrapper import CnnObservationWrapper
     from src.game_loader import create_loader
     from src.game_loader.config import load_game_config
     from src.orchestrator.data_collector import FrameCollector
 
+    # -- Load game plugin --------------------------------------------------
+    plugin = load_game_plugin(args.game)
+    EnvClass = plugin.env_class
+    game_name = plugin.game_name  # e.g. "breakout-71"
+    game_slug = args.game  # e.g. "breakout71" (directory name, for file paths)
+    logger.info("Game plugin: %s (%s)", game_slug, game_name)
+
+    # -- Resolve config / weights from plugin defaults ---------------------
+    config_path = Path(args.config if args.config else plugin.default_config)
+    yolo_weights = args.yolo_weights if args.yolo_weights else plugin.default_weights
+
     # -- Load game config --------------------------------------------------
-    config_path = Path(args.config)
     config = load_game_config(
         config_path.stem,
         configs_dir=config_path.parent,
@@ -749,13 +772,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # -- Mute game audio ---------------------------------------------------
-    if args.mute and browser_instance.driver is not None:
+    mute_js = getattr(plugin, "mute_js", None)
+    if args.mute and mute_js and browser_instance.driver is not None:
         try:
-            browser_instance.driver.execute_script(
-                'localStorage.setItem("breakout-settings-enable-sound", "false")'
-            )
+            browser_instance.driver.execute_script(mute_js)
             browser_instance.driver.refresh()
-            logger.info("Game audio muted via localStorage")
+            logger.info("Game audio muted via plugin mute_js")
             time.sleep(3)  # let page reload with muted audio
         except Exception as exc:
             logger.warning("Failed to mute game audio: %s", exc)
@@ -764,9 +786,11 @@ def main(argv: list[str] | None = None) -> int:
     tlog.log(
         {
             "event": "config",
+            "game": game_slug,
+            "game_name": game_name,
             "args": {
                 "timesteps": args.timesteps,
-                "config": args.config,
+                "config": str(config_path),
                 "headless": args.headless,
                 "mute": args.mute,
                 "orientation": args.orientation,
@@ -774,7 +798,7 @@ def main(argv: list[str] | None = None) -> int:
                 "device": args.device,
                 "policy": args.policy,
                 "frame_stack": args.frame_stack,
-                "yolo_weights": args.yolo_weights,
+                "yolo_weights": yolo_weights,
                 "max_steps": args.max_steps,
                 "n_steps": args.n_steps,
                 "batch_size": args.batch_size,
@@ -799,11 +823,11 @@ def main(argv: list[str] | None = None) -> int:
     vec_env = None  # track for cleanup
     try:
         # -- Create environment --------------------------------------------
-        window_title = config.window_title or "Breakout"
+        window_title = config.window_title or game_name
 
-        env = Breakout71Env(
+        env = EnvClass(
             window_title=window_title,
-            yolo_weights=args.yolo_weights,
+            yolo_weights=yolo_weights,
             max_steps=args.max_steps,
             driver=browser_instance.driver,
             device=args.device,
@@ -856,6 +880,7 @@ def main(argv: list[str] | None = None) -> int:
             log_interval=args.log_interval,
             max_time=args.max_time,
             max_episodes=args.max_episodes,
+            game_slug=game_slug,
         )
         callback = cb_factory.create()
 
@@ -950,7 +975,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
             # Save partial model
-            partial_path = output_dir / "models" / "ppo_breakout71_interrupted"
+            partial_path = output_dir / "models" / f"ppo_{game_slug}_interrupted"
             partial_path.parent.mkdir(parents=True, exist_ok=True)
             try:
                 model.save(str(partial_path))
@@ -982,7 +1007,7 @@ def main(argv: list[str] | None = None) -> int:
             train_elapsed = time.perf_counter() - train_start
             logger.info("Training complete in %.1f seconds", train_elapsed)
 
-            model_path = output_dir / "models" / "ppo_breakout71_final"
+            model_path = output_dir / "models" / f"ppo_{game_slug}_final"
             model_path.parent.mkdir(parents=True, exist_ok=True)
             model.save(str(model_path))
             logger.info("Final model saved to %s", model_path)

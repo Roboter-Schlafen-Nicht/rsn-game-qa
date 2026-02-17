@@ -456,12 +456,12 @@ class TestPipelineIntegration:
         )
         assert game_config.is_file()
 
-    def test_classes_match_yolo_detector_defaults(self):
-        """Training config classes match YoloDetector.BREAKOUT71_CLASSES."""
-        from src.perception.yolo_detector import YoloDetector
+    def test_classes_match_game_plugin(self):
+        """Training config classes match the game plugin's YOLO class list."""
+        from games.breakout71.perception import BREAKOUT71_CLASSES
 
         cfg = load_training_config("breakout-71")
-        assert cfg["classes"] == YoloDetector.BREAKOUT71_CLASSES
+        assert cfg["classes"] == BREAKOUT71_CLASSES
 
     def test_output_dir_is_gitignored(self):
         """Weights output directory pattern is gitignored (*.pt rule)."""
