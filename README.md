@@ -238,15 +238,16 @@ Config-driven pipeline for training game-specific YOLO object detection models:
 # 1. Capture frames from a running game
 python scripts/capture_dataset.py --frames 500
 
-# 2. Upload to Roboflow for annotation
+# 2. Auto-annotate using color segmentation + frame differencing
+python scripts/auto_annotate.py output/dataset_<timestamp>
+
+# 4. (Optional) Upload to Roboflow for manual review/correction
 python scripts/upload_to_roboflow.py output/dataset_<timestamp>
 
-# 3. Annotate in Roboflow UI, export YOLOv8 format
-
-# 4. Train
+# 5. Train
 python scripts/train_model.py --config breakout-71
 
-# 5. Validate
+# 6. Validate
 python scripts/validate_model.py --config breakout-71 --save-samples 10
 ```
 
