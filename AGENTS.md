@@ -60,6 +60,9 @@ module where the behavioral contract matters more than implementation.
 - See `documentation/ROADMAP.md` for the 5-phase plan
 - See `private/documentation/BigRocks/checklist.md` for detailed task tracking
 
+Note: Paths under `private/` refer to local, gitignored documentation
+and are not expected to resolve in a clean public checkout or on GitHub.
+
 ## Critical Technical Pitfalls
 
 These cause bugs if forgotten. Full knowledge base at
