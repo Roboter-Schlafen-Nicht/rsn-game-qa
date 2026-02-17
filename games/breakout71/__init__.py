@@ -36,3 +36,14 @@ default_weights = "weights/breakout71/best.pt"
 # JS snippet to mute game audio (executed once before training starts).
 # If not present, no mute action is taken.
 mute_js = 'localStorage.setItem("breakout-settings-enable-sound", "false")'
+
+# JS snippet to configure game settings for RL training.
+# Disables mobile-mode (touch-hold UI) and delayed start (3-second countdown)
+# so that a single mouseup event starts the game immediately.
+# Executed once before training starts; requires a page refresh to take effect.
+setup_js = "\n".join(
+    [
+        'localStorage.setItem("breakout-settings-enable-mobile-mode", "false");',
+        'localStorage.setItem("breakout-settings-enable-touch_delayed_start", "false");',
+    ]
+)

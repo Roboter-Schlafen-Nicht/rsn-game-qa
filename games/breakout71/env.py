@@ -541,22 +541,35 @@ class Breakout71Env(BaseGameEnv):
         return state
 
     def start_game(self) -> None:
-        """Click the game canvas centre to start/unpause the game.
+        """Start or unpause the game.
 
-        Uses Selenium ``ActionChains.click()`` in both native and
-        headless modes.
+        Sets ``gameState.running = true`` and
+        ``gameState.ballStickToPuck = false`` via JavaScript.  This
+        is more reliable than dispatching click/mouseup events because
+        the game's ``play()`` function is module-scoped and its
+        ``async applyFullScreenChoice()`` guard can silently block
+        synthetic events in headless Chrome.
+
+        Falls back to ``ActionChains.click()`` if JS execution fails.
         """
-        if self._driver is None or self._game_canvas is None:
+        if self._driver is None:
             return
 
         try:
-            from selenium.webdriver.common.action_chains import ActionChains
+            self._driver.execute_script(
+                "gameState.running = true;gameState.ballStickToPuck = false;"
+            )
+        except Exception:
+            # Fallback: try ActionChains click
+            if self._game_canvas is not None:
+                try:
+                    from selenium.webdriver.common.action_chains import ActionChains
 
-            ActionChains(self._driver).move_to_element(
-                self._game_canvas
-            ).click().perform()
-        except Exception as exc:
-            logger.debug("Canvas click failed: %s", exc)
+                    ActionChains(self._driver).move_to_element(
+                        self._game_canvas
+                    ).click().perform()
+                except Exception as exc:
+                    logger.debug("Canvas click failed: %s", exc)
 
     def build_info(self, detections: dict[str, Any]) -> dict[str, Any]:
         """Build the game-specific portion of the info dict.

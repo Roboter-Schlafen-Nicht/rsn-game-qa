@@ -785,14 +785,25 @@ def main(argv: list[str] | None = None) -> int:
 
     # -- Mute game audio ---------------------------------------------------
     mute_js = getattr(plugin, "mute_js", None)
+    setup_js = getattr(plugin, "setup_js", None)
+    needs_refresh = False
     if args.mute and mute_js and browser_instance.driver is not None:
         try:
             browser_instance.driver.execute_script(mute_js)
-            browser_instance.driver.refresh()
+            needs_refresh = True
             logger.info("Game audio muted via plugin mute_js")
-            time.sleep(3)  # let page reload with muted audio
         except Exception as exc:
             logger.warning("Failed to mute game audio: %s", exc)
+    if setup_js and browser_instance.driver is not None:
+        try:
+            browser_instance.driver.execute_script(setup_js)
+            needs_refresh = True
+            logger.info("Game settings configured via plugin setup_js")
+        except Exception as exc:
+            logger.warning("Failed to apply game setup_js: %s", exc)
+    if needs_refresh:
+        browser_instance.driver.refresh()
+        time.sleep(3)  # let page reload with new settings
 
     # -- Log config event --------------------------------------------------
     tlog.log(

@@ -94,6 +94,15 @@ class TestLoadGamePlugin:
         # mute_js is optional — its presence shouldn't matter for loading
         assert hasattr(plugin, "mute_js")
 
+    def test_breakout71_has_setup_js(self):
+        """Breakout71 plugin should define setup_js for RL training settings."""
+        plugin = load_game_plugin("breakout71")
+
+        assert hasattr(plugin, "setup_js")
+        setup_js = plugin.setup_js
+        assert "mobile-mode" in setup_js
+        assert "touch_delayed_start" in setup_js
+
 
 class TestGetEnvClass:
     """Tests for get_env_class()."""
