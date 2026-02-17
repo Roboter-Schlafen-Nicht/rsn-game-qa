@@ -197,10 +197,10 @@ class TestMakeInfo:
 class TestDefaultHooks:
     """Default _should_check_modals and _check_late_game_over."""
 
-    def test_should_check_modals_default_false(self):
-        """Default _should_check_modals returns False."""
+    def test_should_check_modals_default_true(self):
+        """Default _should_check_modals returns True (always check)."""
         env = StubEnv()
-        assert env._should_check_modals() is False
+        assert env._should_check_modals() is True
 
     def test_check_late_game_over_default_false(self):
         """Default _check_late_game_over returns False."""

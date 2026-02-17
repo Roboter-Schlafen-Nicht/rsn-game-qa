@@ -120,6 +120,9 @@ class BaseGameEnv(gym.Env, abc.ABC):
     def game_classes(self) -> list[str]:
         """Return the YOLO class names for this game.
 
+        Used by the platform to configure the YOLO detector when
+        dynamically loading game plugins (``--game`` flag).
+
         Returns
         -------
         list[str]
@@ -511,16 +514,17 @@ class BaseGameEnv(gym.Env, abc.ABC):
     def _should_check_modals(self) -> bool:
         """Return True if a modal check is warranted this step.
 
-        The default returns False (no throttling — always check).
+        The default returns True (always check — safe for new games).
         Subclasses should override to skip expensive Selenium HTTP
-        round-trips when game state indicates normal gameplay.
+        round-trips when game state indicates normal gameplay
+        (e.g., only check when ball is missing).
 
         Returns
         -------
         bool
-            True to check for modals this step.
+            True to check for modals this step, False to skip.
         """
-        return False
+        return True
 
     def _check_late_game_over(self, detections: dict[str, Any]) -> bool:
         """Check for game-over on the 0→1 transition of a missing object.

@@ -1773,7 +1773,7 @@ class TestModalCheckThrottling:
         return _make_env_ready(bricks_count=bricks_count)
 
     @mock.patch("src.env.breakout71_env.time")
-    def test_step_skipshandle_modals_when_ball_detected(self, mock_time):
+    def test_step_skips_handle_modals_when_ball_detected(self, mock_time):
         """step() should NOT call handle_modals when _no_ball_count == 0.
 
         This is the key optimization: during normal gameplay with the ball
@@ -1787,7 +1787,7 @@ class TestModalCheckThrottling:
             mock_hgs.assert_not_called()
 
     @mock.patch("src.env.breakout71_env.time")
-    def test_step_callshandle_modals_when_ball_missing(self, mock_time):
+    def test_step_calls_handle_modals_when_ball_missing(self, mock_time):
         """step() should call handle_modals when _no_ball_count > 0.
 
         When the ball has been missing for one or more frames, we check
@@ -1831,7 +1831,7 @@ class TestModalCheckThrottling:
             mock_hgs.assert_called_once()
 
     @mock.patch("src.env.breakout71_env.time")
-    def test_step_skipshandle_modals_on_first_step_after_reset(self, mock_time):
+    def test_step_skips_handle_modals_on_first_step_after_reset(self, mock_time):
         """The first step after reset (ball visible) should NOT call
         handle_modals — no unnecessary Selenium overhead.
         """
@@ -1845,7 +1845,7 @@ class TestModalCheckThrottling:
             mock_hgs.assert_not_called()
 
     @mock.patch("src.env.breakout71_env.time")
-    def test_step_callshandle_modals_at_threshold_boundary(self, mock_time):
+    def test_step_calls_handle_modals_at_threshold_boundary(self, mock_time):
         """step() should call handle_modals when _no_ball_count
         is exactly 1 (just crossed from 0).
         """
