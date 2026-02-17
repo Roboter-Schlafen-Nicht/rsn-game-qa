@@ -1,448 +1,129 @@
 # RSN Game QA — Agent Instructions
 
-RL-driven autonomous game testing platform. First target: **Breakout 71** (browser-based TypeScript canvas game at `F:\work\breakout71-testbed`).
+RL-driven autonomous game testing platform. First target: **Breakout 71**
+(browser-based TypeScript canvas game at `F:\work\breakout71-testbed`).
 
-## Workflow
+## Role & Workflow
 
+- **Agent leads the project** — execute, don't ask for permission. Read
+  `documentation/ROADMAP.md` for the current phase, pick the next task,
+  do it.
 - Work on feature branches from `main` (pattern: `feature/...`, `docs/...`)
-- Implement → commit → push → create PR → **request review from Copilot** → evaluate review, create issues if needed → merge with `--delete-branch` → delete local branch → **post-merge admin** (update `documentation/BigRocks/checklist.md`, create session log in `documentation/sessions/`, update `AGENTS.md`)
-- **Post-merge admin is checklist-only** — no Copilot review needed; commit, push, PR, merge directly
-- Pre-commit hook runs the full CI pipeline via `act` (Docker-based GitHub Actions). **This can take 5+ minutes.** Use `timeout` of 600000ms for commit commands; check `git log` afterward to verify.
+- Implement -> commit -> push -> create PR -> **request review from Copilot**
+  -> evaluate review, create issues if needed -> merge with `--delete-branch`
+  -> delete local branch -> **post-merge admin** (update checklist, create
+  session log, update AGENTS.md if needed)
+- **Post-merge admin is checklist-only** — no Copilot review needed
+- Pre-commit hook runs CI via `act` (Docker). **Takes 5+ minutes.** Use
+  `timeout` of 600000ms for commit commands; check `git log` afterward.
 
 ## Conventions
 
 - Python 3.12, conda env `yolo`
-- NumPy-style docstrings, ruff for lint/format, pytest for tests, Sphinx (Furo theme) for docs
-- `conda run -n yolo` for Python commands (frequently times out — use direct paths like `C:/Users/human/miniconda3/envs/yolo/Scripts/ruff.exe` for ruff, or generous timeouts)
-- CI has 4 jobs: Lint (ruff check + format), Test (pytest), Build Check (verify imports), Build Docs (Sphinx -W)
+- NumPy-style docstrings, ruff for lint/format, pytest for tests, Sphinx
+  (Furo theme) for docs
+- Use direct paths for tools:
+  `C:/Users/human/miniconda3/envs/yolo/Scripts/ruff.exe` for ruff
+- CI has 4 jobs: Lint, Test, Build Check, Build Docs
 - Always run `ruff format` before committing
-- Commit messages: imperative mood with type prefix (`feat:`, `fix:`, `ci:`, `docs:`)
-- Docs: canonical specs in `documentation/specs/`, thin `{include}` wrappers in `docs/specs/`, API autodoc in `docs/api/`
+- Commit messages: imperative mood with type prefix (`feat:`, `fix:`, `ci:`,
+  `docs:`)
 - Delete feature branches after merging
 - Update README test count after adding tests
 
-## Test-Driven Development (TDD)
+## TDD Convention
 
-**Applies to:** `src/env/`, `src/orchestrator/`, and any module where the
-behavioral contract matters more than the implementation details.
+**Applies to:** `src/env/`, `src/orchestrator/`, `src/platform/`, and any
+module where the behavioral contract matters more than implementation.
 
-**Motivation:** Session 23 — the episode boundary bug (PR #51) was a
-fundamental behavioral flaw where `step()` silently dismissed game-over
-modals instead of terminating the episode. It survived 6+ sessions
-undetected because tests were written *after* the implementation, confirming
-what the code *does* rather than specifying what it *should do*. TDD would
-have forced the question "what should `step()` return when the game is
-over?" before a single line of implementation was written.
+| Change type | TDD required? |
+|---|---|
+| Public method or behavioral change to `step()`, `reset()`, `close()` | **Yes** |
+| New game state transition | **Yes** |
+| Reward function changes | **Yes** |
+| Observation field changes | **Yes** |
+| Orchestrator lifecycle behavior | **Yes** |
+| Internal refactoring (same behavior) | No — existing tests must pass |
+| Scripts, utilities, exploratory work | No |
 
-### When TDD is required
+**Process:** Write test names as specs (with `pytest.skip`) -> fill bodies
+(red) -> implement (green) -> refactor. Naming:
+`test_{method}_{expected_behavior}_when_{condition}`.
 
-| Change type | TDD required? | Rationale |
-|---|---|---|
-| New public method or behavioral change to `step()`, `reset()`, `close()` | **Yes** | These define the env contract with SB3/Gymnasium |
-| New game state transition (e.g., perk picker handling, level clear) | **Yes** | State machine edges are exactly where bugs hide |
-| Reward function changes | **Yes** | Reward is the RL training signal — wrong rewards silently corrupt training |
-| New observation fields or changes to observation semantics | **Yes** | SB3 learns from observations — silent changes break training |
-| New orchestrator lifecycle behavior (SessionRunner, FrameCollector) | **Yes** | Multi-component coordination is fragile |
-| Internal refactoring (same behavior, new structure) | No — but existing tests must pass | Tests protect the contract during refactoring |
-| Scripts (`scripts/*.py`) | No | CLI scripts are integration-level; test after |
-| Pure utility functions (math helpers, config parsing) | No — test-after is fine | Low risk, obvious contracts |
-| Exploratory/research work (new libraries, game mechanics) | No | Spec not yet known |
+## Current State
 
-### How to do TDD in this project
+- **693 tests**, 96% coverage, 8 subsystems complete
+- **Architecture done:** BaseGameEnv ABC, game plugin system (`games/`),
+  `--game` flag, CNN/MLP observation modes, dynamic plugin loading
+- **No real training results yet** — Phase 1 in roadmap
+- See `documentation/ROADMAP.md` for the 5-phase plan
+- See `documentation/BigRocks/checklist.md` for detailed task tracking
 
-**Step 1: Write the behavioral spec as test names (no bodies yet)**
+## Critical Technical Pitfalls
 
-Before touching the implementation, create test functions with descriptive
-names that specify what the system *should do*. Use `pytest.skip("TDD: not
-yet implemented")` as the body. This is the design phase — the test names
-are the spec.
+These cause bugs if forgotten. Full knowledge base at
+`documentation/reference/agent_knowledge_base.md`.
 
-```python
-# tests/test_env.py — added BEFORE implementation
-
-class TestStepEpisodeBoundaries:
-    """Specify episode termination and continuation contracts."""
-
-    def test_step_returns_terminated_true_when_game_over_modal_detected(self, env):
-        pytest.skip("TDD: not yet implemented")
-
-    def test_step_does_not_dismiss_game_over_modal(self, env):
-        pytest.skip("TDD: not yet implemented")
-
-    def test_step_still_increments_step_count_on_game_over(self, env):
-        pytest.skip("TDD: not yet implemented")
-
-    def test_step_handles_perk_picker_without_terminating(self, env):
-        pytest.skip("TDD: not yet implemented")
-
-    def test_reset_dismisses_game_over_modal_before_new_episode(self, env):
-        pytest.skip("TDD: not yet implemented")
-```
-
-**Step 2: Fill in test bodies — make them fail**
-
-Write the assertions. Run them. They must fail (red). If they pass, either
-the test is wrong or the feature already exists — investigate before
-continuing.
-
-```python
-def test_step_returns_terminated_true_when_game_over_modal_detected(self, env):
-    env._driver.execute_script.return_value = {"state": "game_over", "details": {}}
-    _, _, terminated, _, _ = env.step(np.array([0.0]))
-    assert terminated is True
-```
-
-**Step 3: Implement the minimum code to pass**
-
-Write the simplest implementation that makes the failing test(s) pass. Do
-not add behavior that isn't covered by a test.
-
-**Step 4: Refactor with confidence**
-
-The tests are the safety net. Clean up the implementation without changing
-behavior — tests must stay green.
-
-### Review checklist
-
-When reviewing a PR that touches TDD-scoped modules, verify:
-
-- [ ] Test names were written before the implementation (check commit order
-      or commit message mentions "TDD: add specs for ...")
-- [ ] Tests cover the behavioral contract, not implementation details
-      (e.g., "returns terminated=True" not "calls execute_script twice")
-- [ ] No test was written to retroactively justify existing behavior without
-      the author first confirming the behavior is correct
-- [ ] Edge cases have tests (missing detections, modal during step, rapid
-      state transitions)
-
-### Naming convention
-
-TDD spec tests use the pattern:
-
-```
-test_{method}_{expected_behavior}_when_{condition}
-```
-
-Examples:
-- `test_step_returns_terminated_true_when_game_over_detected`
-- `test_reset_dismisses_game_over_modal_before_starting`
-- `test_compute_reward_gives_negative_five_when_game_over`
-- `test_build_observation_defaults_ball_to_center_when_not_detected`
-
-### What TDD does NOT replace
-
-- **Live validation with the real game** — TDD tests use mocks. They verify
-  behavioral contracts, not integration. Always validate live before merging
-  env changes (see "CRITICAL" note in Workflow).
-- **Copilot code review** — TDD catches contract violations; review catches
-  design issues, naming, performance, security.
-- **Integration tests** — `tests/test_integration.py` runs against real
-  browsers. TDD unit tests are faster and more focused but don't replace
-  end-to-end validation.
-
-## Key Discoveries
-
-- **Sphinx `-W` builds**: dataclass entries in RST need `:no-index:` to avoid duplicate warnings
-- **Severity convention**: `"critical"` / `"warning"` / `"info"` throughout oracles
-- **`pydirectinput` in `autodoc_mock_imports`** (`docs/conf.py`)
-- **pywin32 + pydirectinput ARE installed** in conda env — tests simulating "missing" must use `importlib.reload` with `sys.modules` patched to `None`
-- **Windows `NUL` file artifact**: `> NUL` redirect can create a literal file; delete with `rm -f NUL`
-- **GitHub self-approval not allowed** — use Copilot as reviewer
-- **Copilot code review is web-UI only** — `gh pr edit --add-reviewer copilot`, `gh pr create --reviewer copilot`, and `gh api .../requested_reviewers` all silently fail. Must request Copilot review manually via the GitHub web UI (PR page → Reviewers dropdown → select "Copilot"). The `gh agent-task` CLI commands are for the Copilot *coding agent*, not the code reviewer. Allow several minutes for Copilot to post its review after requesting.
-- **`git pull` times out** — use `git fetch origin main && git reset --hard origin/main`
-- **`gh pr merge` times out** but often succeeds — verify with `gh pr view N --json state,mergedAt`
-- LSP unresolved import errors (cv2, gymnasium, pydirectinput, etc.) are pre-existing and harmless
-- **`import cv2` at module top level breaks CI** — Docker container lacks `libGL.so.1`; must use lazy imports inside methods
-- **Firefox subprocess cleanup impossible** — Firefox hands off to a separate main process; Selenium WebDriver solves this
-- **Firefox first-run issues** — Fresh profile triggers Welcome tab; `-width`/`-height` CLI flags don't exist (Firefox interprets `1280` as a URL). Use Selenium Options API instead.
-- **`BitBlt` all-black for Chromium** — GPU-accelerated compositing prevents capture; use `PrintWindow` with `PW_RENDERFULLCONTENT` (flag=2)
-- **Selenium 4.40.0 has built-in Selenium Manager** — handles driver binaries automatically; no `webdriver-manager` needed
-- **`selenium` is imported lazily** inside `BrowserInstance.__init__` only — no CI impact
-
-### YOLO Training Pipeline (session 9)
-
-- **`scripts/` needs `__init__.py`** — Without it, `from scripts.train_model import ...` fails in CI
-- **ultralytics import triggers cv2 → libGL.so.1 failure in CI Docker** — Move all input validation BEFORE `from ultralytics import YOLO` import
-- **`torch` import is local in `resolve_device()`** — Must mock via `mock.patch.dict("sys.modules", {"torch": mock_torch})`; moved after early return so explicit device selection doesn't require torch
-- **Windows path backslashes in test assertions** — Use generic match strings like `"does not exist"` instead of literal paths in `pytest.raises(match=...)`
-- **`roboflow` package uses `>=1.1.0`** — Pinned as minimum version in `environment.yml`
-- **`python-dotenv==1.1.0`** — Added to `environment.yml` pip dependencies
-- **`argparse` `action="store_true"` + `default=True` is a no-op** — Use `--no-X` with `action="store_false"` + `dest="X"` instead
-
-### Data Collection & Auto-Annotation (session 10)
-
-- **Selenium `execute_script()` IIFE bug** — Must use `return (function() { ... })();` — outer `return` required for Selenium to capture IIFE return value. Without it, returns `null`.
-- **Browser chrome ~130px** — Tab bar + URL bar + "Chrome is being controlled" banner at top of captured frames. Must account for when mapping game coordinates.
-- **21 palette colors → 11 HSV groups** — `palette.json` defines 21 brick colors; mapped to 11 HSV detection ranges (blue, yellow, red, orange, green, cyan, purple, pink, beige, white, gray). Adjacent same-color bricks merge — grid-splitting logic handles this.
-- **Ball particle trail** — Ball emits multiple white fragments. Solution: dilate to merge nearby blobs, use `_find_ball_head()` to locate the most circular sub-contour within the merged blob.
-- **UI false positives** — "Level 1/7" button, "$0/$10" score, coin counter icon all trigger false detections. Eliminated via UI mask zones + frame differencing.
-- **White/gray brick detection** — Must restrict to "brick zone" (upper 65% of game area) to avoid false-positiving on paddle, ball, or background.
-- **Game zone boundaries** — Columns ~324 to ~956 (632px wide) at 1280x1024. Coins/ball must be within these boundaries.
-- **Individual bricks ~89x89 pixels** at 1280x1024. Client area = 1264x1016 pixels.
-- **Random bot dies quickly** — Never clears level 1, so dataset is 93.7% gameplay + 6.3% game-over (no perk picker states)
-- **Game state detection via DOM** — `document.body.classList.contains('has-alert-open')` for modal detection, `#popup` for content, `#close-modale` for dismissible modals
-
-### Breakout 71 Game Mechanics (session 8 — source study)
-
-- **Scoring is coin-based, not brick-based** — breaking bricks spawns coins that fly with physics; catching coins with the paddle adds to the score. Combo system multiplies coin value. Combo resets if ball returns to paddle without hitting a brick.
-- **No traditional lives** — the `extra_life` perk (max 7 levels) acts as expendable rescues. When last ball is lost with `extra_life > 0`, ball is rescued. When `extra_life == 0` and all balls lost → game over.
-- **Multi-ball is a perk** — `multiball` perk spawns additional balls. Losing one ball isn't game over unless ALL are lost.
-- **Level system** — 7 + `extra_levels` levels per run. Between levels: perk selection screen (`openUpgradesPicker()`). ~60+ perks available. `chill` perk = infinite levels.
-- **No explicit state machine** — uses boolean flags: `running`, `isGameOver`, `ballStickToPuck`
-- **Input** — mouse position sets paddle directly; keyboard `ArrowLeft`/`ArrowRight` move incrementally (`gameZoneWidth/50` per tick, 3x with Shift); `Space` toggles play/pause
-- **Android version** — thin Kotlin WebView wrapper loading the same compiled `index.html`. 100% identical game logic. Only differences: touch input (hold-to-play), portrait lock, video/save export via Android intents.
-- **Canvas** — `#game` element, fills `innerWidth x innerHeight` (x pixelRatio). Game zone width = `brickWidth * gridSize`, centered horizontally.
-- **Level completion** — when `remainingBricks === 0 && !hasPendingBricks`, either instant win (no coins) or 5s delay (`winAt` timer) for coin collection.
-- **Ball physics** — speed normalizes toward `baseSpeed * sqrt(2)` each tick; multiple sub-steps per frame to prevent tunneling; bounce angle depends on paddle hit position and `concave_puck` perk.
-- **YOLO class `"powerup"` maps to coins** in the perception subsystem.
-
-### XPU YOLO Training (session 12)
-
-- **Ultralytics 8.4.14 XPU support requires 3 monkey patches** in `_patch_ultralytics_xpu()`:
-  - `select_device()` — rejects `"xpu"` as invalid CUDA device; must intercept before CUDA validation. Patch all import sites (torch_utils, trainer, validator, predictor, exporter).
-  - `GradScaler("cuda")` — `_setup_train()` hard-codes CUDA; must replace with `GradScaler("xpu")` after original setup.
-  - `_get_memory()` — falls through to `torch.cuda.memory_reserved()` returning 0; must add XPU branch.
-- **XPU patches must be idempotent** — `_applied` flag prevents re-wrapping on multiple calls (Copilot review)
-- **`pip install ultralytics` overwrites XPU torch** — ultralytics pulls CPU-only torch from PyPI; must reinstall XPU torch after every ultralytics install
-- **4 additional ultralytics XPU issues** (training works without): `_clear_memory()`, `autocast()`, `check_amp()`, OOM handler — all hard-code CUDA
-- **Posted on ultralytics #16930** — detailed comment with all 7 XPU fixes: https://github.com/ultralytics/ultralytics/issues/16930#issuecomment-3905263741
-- **Training results** — 100 epochs on XPU (~23 min, ~14s/epoch). Best model epoch 91. mAP50=0.679, mAP50-95=0.578. brick=0.995, paddle=0.976, ball=0.922, powerup=0.502, wall=0.000.
-- **mAP threshold lowered to 0.65** from 0.80 for initial auto-annotated dataset. Raise after human-reviewed annotations.
-- **`prepare_dataset.py`** — restructures flat dataset into YOLO train/val format. Val ratio validation and train set non-empty guard added per Copilot review.
-- **Config `dataset_path` should be `null`** — prepared dataset is under gitignored `output/`; users override via CLI or edit locally (Copilot review)
-- **Default device is `cpu`** — user found CPU fastest for training on this hardware
-
-### Annotation Pipeline Improvements (session 11)
-
-- **Ball-in-brick false positive** — White/gray bricks (~79x79px, circularity ~0.81) merge into giant blobs during dilation. `_find_ball_head` then picks a brick sub-contour as the "ball head." Fix: pass `brick_detections` to `_detect_ball()` and zero out brick bounding boxes (with 4px padding) from the white mask before dilation.
-- **`_find_ball_head` scoring** — Changed from `circularity * area` to `circularity² * area` to prevent large elongated trail blobs from outscoring the smaller but circular ball.
-- **Paddle zone exclusion killed near-paddle balls** — Fixed bottom-15% cut (`y > 0.85 * img_h`) masked out balls near the paddle. Fix: `_detect_ball` now accepts `paddle_detections` and masks only the paddle's bounding box (6px padding). Fallback when no paddle detected: conservative 5% bottom cut. Ball detection went from 288/297 to 297/297 (100%).
-- **`_detect_game_zone` left-wall bug** — Returned `left=0` because browser chrome columns 0-7 had brightness ~32, above the relative threshold. Fix: primarily detect wall peaks (brightness > 200), fallback skips first/last 10 columns.
-- **Roboflow annotation upload** — `project.single_upload(annotation_path=..., annotation_labelmap=...)` works for YOLO `.txt` pre-labels. `search_all()` returns a generator of batches (lists of dicts), not a flat list.
-- **`classes.txt` convention** — `auto_annotate.py` now writes `labels/classes.txt` (standard YOLO class-name file). `upload_to_roboflow.py` reads it via `_build_labelmap()` with YAML config fallback.
-
-### Integration & E2E + RL Scaffold (session 13)
-
-- **CI Docker libGL fix for cv2.imwrite** — FrameCollector and FindingBridge tests call `cv2.imwrite()` which fails in CI Docker (missing `libGL.so.1`). Fixed with `autouse` fixture `_mock_cv2_imwrite` that injects a mock cv2 module creating 0-byte files.
-- **test_raises_without_weights fragile** — Test assumed no weights file existed, but `weights/breakout71/best.pt` exists locally from training. Fixed by overriding `cfg["output_dir"]` to `tmp_path`.
-- **pytest-cov configured** — coverage runs automatically on `src/` only (scripts excluded). Config in `pyproject.toml` under `[tool.pytest.ini_options]` addopts, `[tool.coverage.run]`, `[tool.coverage.report]`. 96% coverage.
-- **Env bug: close/reset lifecycle** — `close()` didn't reset `_initialized` → crash if `reset()` called after `close()`. Fixed.
-- **Env bug: fragile reset timing** — 500ms sleep after Space assumes instant game restart. Fixed with retry loop.
-- **Env bug: _bricks_total corruption** — If first frame after reset shows transition screen (0 bricks), `_bricks_total` becomes 1. Fixed with retry logic guarded by `self._initialized`.
-- **Env bug: reset() ball retry** — Now raises RuntimeError if ball not detected after 5 retries (Copilot review fix).
-- **SB3 2.7.1 compatible** — PPO with `MlpPolicy`, `Discrete(3)` action, `Box(8,)` obs, `DummyVecEnv` wrapper. Hyperparams: `n_steps=2048, batch_size=64, n_epochs=10, gamma=0.99, lr=3e-4, clip_range=0.2, ent_coef=0.01`.
-- **Hybrid data generation** — During RL training, capture every Nth frame (default 30) via FrameCollectionCallback. Batch auto-annotate after session. Human reviews on Roboflow before YOLO retraining.
-- **Empty ReportGenerator removed from train_rl.py** — Copilot review caught instantiation with no episodes added. Removed entirely.
-- **`coins_norm` and `score_norm` hardcoded 0.0** — 2 of 8 observation dimensions carry no info. SB3 will learn to ignore them.
-- **Real-time training bottleneck** — Env runs at ~30 FPS with `time.sleep(1/30)` per step. 200k steps ≈ 1.85 hours.
-
-### Selenium-Based Env Control (session 14)
-
-- **pydirectinput keyboard control doesn't work** — The game uses **mouse position** to control the paddle directly; keyboard arrows move incrementally (`gameZoneWidth/50` per tick) — too slow for RL. `Space` via pydirectinput didn't reliably start the game either.
-- **Env refactored from pydirectinput to Selenium** — `Breakout71Env` now accepts a Selenium `WebDriver` via `driver=` parameter. Paddle control uses `ActionChains` mouse movement on the `#game` canvas. Modal handling (game over, perk picker, menu) uses `driver.execute_script()` with JS snippets from `capture_dataset.py`.
-- **`InputController` no longer used by env** — `_input` attribute replaced with `_driver`, `_game_canvas`, `_canvas_dims`. The `src/capture/input_controller.py` module still exists for other use cases but env doesn't import it.
-- **`train_rl.py` needs GameLoader** — Original version only launched `BrowserInstance` (Selenium) without starting the Parcel dev server. Fixed by adding `create_loader(config)` → `loader.setup()` → `loader.start()` before browser launch, and `loader.stop()` in teardown.
-- **JS game state detection snippets** — `DETECT_STATE_JS` returns `"gameplay"`, `"game_over"`, `"perk_picker"`, or `"menu"` via DOM inspection (`document.body.classList.contains('has-alert-open')`, `#popup` content). `CLICK_PERK_JS` picks first available perk, `DISMISS_GAME_OVER_JS` clicks `#close-modale`, `DISMISS_MENU_JS` clicks `#game`.
-- **`close()` does NOT close the WebDriver** — Caller owns the driver lifecycle (typically `BrowserInstance`). Env only nulls its `_game_canvas` and `_canvas_dims` references.
-- **Canvas element lookup** — `_lazy_init()` finds `#game` canvas via `driver.find_element(By.ID, "game")`, falls back to `body` if not found. Canvas dimensions read via `element.size`.
-- **`pydirectinput` still in conda env and `autodoc_mock_imports`** — Not removed since `src/capture/input_controller.py` still uses it. Just no longer imported by env.
-- **`_apply_action()` must track absolute paddle position** — Selenium `move_to_element_with_offset` positions the mouse at an offset from the element's *centre*, not from current position. Using a fixed ±step_size causes the paddle to oscillate between two positions instead of moving incrementally. Fix: track `_paddle_target_x` (pixels from canvas left edge) and convert to centre-relative offset for each call.
-- **`step()` must handle modals mid-episode** — Without modal handling in `step()`, the game-over/perk-picker modal overlay blocks YOLO detection, causing `_no_ball_count` to reach threshold and the episode to terminate incorrectly. Fix: call `_handle_game_state()` in `step()` before frame capture.
-
-### First RL Training Attempt & Action Space Redesign (session 15)
-
-- **Pipeline validated** — GameLoader → Selenium → YOLO → Env → PPO loop runs end-to-end. Game-over modals are dismissed correctly.
-- **Discrete(3) action space is wrong for this game** — The game uses mouse position (continuous) to control the paddle directly. `Discrete(3)` with fixed increments produces jerky, rarely-moving paddle because: (a) ~33% NOOP, (b) LEFT/RIGHT cancel out with random policy, (c) step_size=10% canvas width = ~128px discrete jumps.
-- **Decision: switch to continuous action space** — `Box(low=-1, high=1, shape=(1,))` where the action value maps to absolute paddle position. SB3 PPO with `MlpPolicy` auto-detects continuous vs discrete from the action space.
-- **JS `puckPosition` injection** — Instead of Selenium ActionChains mouse events, set paddle position directly via `driver.execute_script()`. The game's `setMousePos()` just does `puckPosition = Math.round(x)` with no transformation. More reliable than synthetic mouse events.
-- **Game mouse input pipeline** — `mousemove` on `#game` canvas → `e.clientX * getPixelRatio()` → `setMousePos()` → `puckPosition = Math.round(x)` → `normalizeGameState()` clamps to game zone. No pointer lock by default. `getPixelRatio()` returns 1 on standard displays.
-- **`puckPosition` coordinate system** — Canvas pixels from left edge. Game zone centered with `offsetX`. Clamp bounds: `offsetX + puckWidth/2` to `offsetX + gameZoneWidth - puckWidth/2`.
-
-### Continuous Action Space & Coverage (session 16)
-
-- **Continuous action space implemented** — `Discrete(3)` → `Box(-1, 1, shape=(1,), dtype=float32)`. Action value linearly maps to absolute paddle pixel position via `SET_PUCK_POSITION_JS`. Removed `_paddle_target_x`, replaced with `_game_zone_left`/`_game_zone_right` queried from JS globals (`offsetX`, `gameZoneWidth`, `puckWidth`).
-- **`DashboardRenderer` bug in `session_runner.py`** — `run()` called `DashboardRenderer(output_dir=...)` but the constructor only accepts `template_dir`/`template_name`. Also called `.render()` (returns HTML string) instead of `.render_to_file()`. Fixed to use `DashboardRenderer()` + `render_to_file()`.
-- **Coverage threshold enforced** — Added `fail_under = 80` to `[tool.coverage.report]` in `pyproject.toml`. All source files now ≥82% coverage.
-- **`session_runner.py` coverage: 79% → 98%** — Added 8 new tests: `_setup()` with mocked lazy imports (4 tests), `_cleanup()` loader branch (2 tests), `run()` data collection finalize + dashboard generation (2 tests). Only uncovered: exception handler in dashboard try/except.
-- **`_setup()` testing pattern** — Must mock 4 lazy imports: `scripts._smoke_utils.BrowserInstance`, `src.env.breakout71_env.Breakout71Env`, `src.game_loader.create_loader`, `src.game_loader.config.load_game_config`. The imports happen inside `_setup()` so patches must target the original module paths.
-- **`scripts/train_rl.py` unchanged** — SB3 PPO auto-detects continuous `Box` action space; no code changes needed.
-- **`scripts/capture_dataset.py` unchanged** — Random bot uses its own ActionChains; separate concern from env action space.
-
-### Pixel-Based Debug Loop (session 19)
-
-- **Architecture decision: pixel-based only** — As a QA platform product, we won't always have game source code. The universal interface is pixels in, mouse/keyboard out. YOLO for observations, pydirectinput for input, JS injection only for modal handling (DOM overlays).
-- **Game `mouseup` pauses** — `mouseup` on `#game` canvas while `running=true` pauses the game (game.ts:247-256). Must click only once to start, then use `moveTo` only.
-- **`ballStickToPuck=true` at start** — Ball sticks to paddle and follows it until first click. Key insight for safe phase 2 testing (pre-start phases).
-- **YOLO CPU performance** — ~130-190ms per frame inference on CPU (~5-7 FPS). GPU/XPU will easily exceed 30 FPS.
-- **Selenium modal handling throttling** — Calling `_ensure_gameplay` every frame drops FPS from ~7 to ~4 due to HTTP round-trip (~100ms). Throttling to every 2s restores FPS.
-- **Phase 2 paddle tracking accuracy** — Edge positions (0.20, 0.80) have ~0.11 error due to game zone clamping; center positions (0.35, 0.50, 0.65) have near-perfect accuracy (~0.006 error).
-- **Copilot review: 7 fixes** — Inverted `modal_recoveries` logic (phases 3 & 4), pixel clamping in `_norm_to_screen`, retry resilience in `_ensure_gameplay`, double YOLO inference in phase 2, docstring accuracy (FPS threshold, output path).
-
-### XPU Auto-Detection & OpenVINO Research (session 20)
-
-- **`resolve_device()` canonical implementation** — Module-level function in `src/perception/yolo_detector.py` (lines 28-54). Priority: xpu > cuda > cpu. `"auto"` triggers detection; explicit strings pass through unchanged.
-- **`YoloDetector` default changed to `"auto"`** — Copilot review caught `device="xpu"` hard-coded default; changed to `device="auto"` with `resolve_device()` called inside `__init__`.
-- **All scripts/configs updated** — `debug_pixel_loop.py`, `train_rl.py`, `train_model.py`, `configs/training/breakout-71.yaml` all default to `"auto"` instead of `"cpu"`.
-- **SB3 PPO doesn't support XPU** — `train_rl.py` maps `"xpu"` → `"cpu"` for the policy network.
-- **OpenVINO research** — Intel toolkit converting PyTorch/ONNX to optimized IR. Ultralytics benchmarks on Arc A770: YOLO11n 16.29ms (PyTorch) → 4.84ms (OpenVINO FP32) → 3.34ms (INT8). ~5x speedup. Inference-only (no training). `model.export(format="openvino")` then `YOLO("model_openvino_model/")`. No XPU monkey patches needed for inference.
-- **DXGI Desktop Duplication research** — DXcam library: 238 FPS at 2560x1440 vs PrintWindow ~30 FPS. Captures entire monitor (not window-specific). Returns numpy arrays directly. Requires real GPU/display for CI.
-- **Combined projection** — OpenVINO + DXcam together: ~10-15ms/frame (60-100 FPS) vs current ~140ms/frame (6-8 FPS).
-- **XPU vs CPU benchmark** — Intel Arc A770: XPU 6-8 FPS vs CPU 5 FPS (+30-60% improvement, but OpenVINO will be much better).
-
-### OpenVINO Inference & wincam Fast Capture (session 21)
-
-- **OpenVINO export paradigm** — `YOLO("best.pt").export(format="openvino")` creates `best_openvino_model/` directory. Load with `YOLO("best_openvino_model/")`. Inference-only (no training).
-- **Ultralytics OpenVINO GPU routing** — Requires `device="intel:<OV_DEVICE>"` prefix (e.g., `"intel:GPU.0"`). Without prefix, OpenVINO defaults to CPU. `"intel:GPU"` (without index) fails validation and falls back to AUTO (which picks CPU).
-- **`_resolve_openvino_device()`** — Queries `ov.Core().available_devices` at runtime, finds first `"GPU.N"` match, returns `"intel:GPU.0"`. Available devices on dev machine: `['CPU', 'GPU.0', 'GPU.1']`.
-- **OpenVINO warmup issue** — Ultralytics runs internal warmup on CPU, then recompiles for GPU.0 on first real call. Fix: explicit warmup inference in `load()` with correct `device` kwarg.
-- **`pydirectinput.PAUSE` bottleneck** — Default `PAUSE = 0.1` adds 100ms sleep to every input call. Fix: `pydirectinput.PAUSE = 0` in `input_controller.py` and `debug_pixel_loop.py`. Result: 46ms → 0.3ms per input.
-- **wincam library** — Direct3D11-based screen capture (<1ms async frame reads). Singleton constraint (1 DXCamera at a time). No CI/headless support (requires GPU + display). Falls back to `WindowCapture` in CI.
-- **wincam dependency conflict** — Pulls `opencv-contrib-python` which conflicts with `opencv-python`. Fixed by reinstalling.
-- **openvino 2025.4.1 requires `numpy<2.4.0`** — Both `environment.yml` AND `ci.yml` must use `numpy>=2.3.0,<2.4.0`.
-- **52 FPS end-to-end** — Capture 4.4ms (wincam) + YOLO 14.4ms (OpenVINO GPU.0) + Input 0.1ms (pydirectinput) = ~19ms/frame.
-- **Multi-GPU strategy** — Dedicate GPU.0 to YOLO inference, GPU.1 to RL policy/other compute.
-- **`step()` frame-rate throttle removed** — `time.sleep(1/30)` in `Breakout71Env.step()` was unnecessary bottleneck; removed entirely.
+1. **`import cv2` at top level breaks CI** — Docker lacks `libGL.so.1`;
+   use lazy imports inside methods
+2. **Copilot review is web-UI only** — CLI commands silently fail; must
+   request via GitHub web UI (PR page -> Reviewers -> Copilot)
+3. **`git pull` times out** — use
+   `git fetch origin main && git reset --hard origin/main`
+4. **`gh pr merge` times out** but often succeeds — verify with
+   `gh pr view N --json state,mergedAt`
+5. **Selenium `execute_script()` IIFE** — must use
+   `return (function() { ... })();` for return value
+6. **Game `mouseup` pauses gameplay** — click once to start, then
+   `moveTo` only
+7. **`_no_ball_count` ownership** — `_check_late_game_over()` exclusively
+   owns updates; `check_termination()` only reads
+8. **Episode boundary** — `step()` passes `dismiss_game_over=False`;
+   `reset()` passes `True`
+9. **Terminal penalty** — game-over uses fixed `-5.01`, not YOLO-computed
+   reward (modal occludes game state)
+10. **OpenVINO GPU routing** — requires `device="intel:GPU.0"` prefix;
+    without it defaults to CPU
+11. **`pip install ultralytics` overwrites XPU torch** — must reinstall
+    XPU torch after
+12. **Pixel-based only** — no JS injection for game state. Exception:
+    Selenium JS for modal handling and one-time settings (mute)
+13. **Keep BOTH `.pt` and OpenVINO models** — `.pt` is source of truth
+14. **CNN is default observation mode** — game-agnostic, no YOLO needed.
+    MLP is optional (requires game-specific YOLO model)
+15. **wincam singleton** — only 1 DXCamera at a time; no CI/headless support
 
 ## Project Structure
 
 ```
 src/
-  game_loader/    # DONE — YAML config, factory, loaders (82 tests)
-  reporting/      # DONE — JSON reports, HTML dashboard (26 tests)
-  capture/        # DONE — BitBlt window capture, wincam fast capture, pydirectinput input (37 tests)
-  perception/     # DONE — YoloDetector, breakout_capture (41 tests)
-  oracles/        # DONE — 12 oracles with on_step detection (132 tests)
-  env/            # DONE — Breakout71Env gymnasium wrapper (146 tests)
-  platform/       # DONE — BaseGameEnv ABC, CnnObservationWrapper (game-agnostic)
-  orchestrator/   # DONE — FrameCollector, SessionRunner (55 tests)
+  platform/       # BaseGameEnv ABC, CnnObservationWrapper (game-agnostic)
+  game_loader/    # YAML config, factory, loaders
+  reporting/      # JSON reports, HTML dashboard
+  capture/        # BitBlt window capture, wincam, pydirectinput input
+  perception/     # YoloDetector, breakout_capture
+  oracles/        # 12 oracles with on_step detection
+  env/            # Backward-compat re-exports (actual envs in games/)
+  orchestrator/   # FrameCollector, SessionRunner
+games/
+  breakout71/     # Breakout71Env, loader, modal handler, YOLO classes
 configs/
-  games/                  # Per-game loader configs (breakout-71.yaml)
-  training/               # Per-game YOLO training configs (breakout-71.yaml)
-tests/
-  conftest.py             # Integration test fixtures (Selenium browser parameterization)
-  test_integration.py     # 12 integration tests × 2 browsers
-  test_training_pipeline.py  # 49 training pipeline tests
-  test_orchestrator.py    # 55 orchestrator tests (FrameCollector, SessionRunner)
-scripts/
-  _smoke_utils.py         # BrowserInstance (Selenium), get_available_browsers(), utilities
-  smoke_launch.py         # Game launch + proof screenshot
-  smoke_capture.py        # Multi-frame capture verification
-  smoke_oracle.py         # Oracle run + JSON report
-  capture_dataset.py      # Frame capture with random bot + game state detection
-  auto_annotate.py        # OpenCV auto-annotation (HSV segmentation, frame differencing)
-  upload_to_roboflow.py   # Roboflow API upload with resume support
-  train_model.py            # Config-driven YOLO training (with XPU monkey patches)
-  validate_model.py         # mAP threshold validation (with XPU support)
-  prepare_dataset.py        # Restructure flat dataset into YOLO train/val format
-  run_session.py            # CLI for N-episode QA evaluation runs
-  train_rl.py               # CLI for PPO training with SB3
-  debug_game_state.py       # Diagnostic script for JS game state detection
-  debug_pixel_loop.py       # 4-phase pixel-based pipeline validation (capture→YOLO→pydirectinput)
+  games/          # Per-game loader configs
+  training/       # Per-game YOLO training configs
+scripts/          # CLI tools (train_rl, run_session, capture, debug, etc.)
+tests/            # 693 tests (669 unit + 24 integration)
 documentation/
-  BigRocks/checklist.md   # Master checklist — the source of truth for what's done and what's next
-  specs/                  # Canonical spec files
-  sessions/               # Session logs (private, gitignored — never commit)
-docs/                     # Sphinx source (conf.py, api/, specs/)
+  BigRocks/       # Master checklist
+  reference/      # Agent knowledge base (accumulated discoveries)
+  specs/          # Canonical specifications
+  ROADMAP.md      # 5-phase plan
+docs/             # Sphinx source
 ```
 
-### RL Training Features (session 22)
+## Reference
 
-- **`--no-mute` flag** — Game audio muted by default via `localStorage.setItem("breakout-settings-enable-sound", "false")` + browser refresh. `--no-mute` disables.
-- **`--headless` mode** — Captures frames via `driver.get_screenshot_as_png()` instead of `PrintWindow`/wincam. Actions via Selenium `ActionChains` instead of `pydirectinput`. ~2.3 FPS due to Selenium screenshot overhead (~400ms/call).
-- **`--orientation portrait|landscape` + `--window-size WxH`** — Portrait 768x1024 is the new default (game is inherently portrait). `resolve_window_size()` parses `WxH` strings with validation.
-- **Rich structured logging (`TrainingLogger`)** — JSONL event log + human-readable console log + `training_summary.json`. Events: `training_start`, `episode_end`, `frame_captured`, `training_stop`, `training_summary`. Includes `training_stop_reason` attribute.
-- **`--max-time SECONDS`** — Clean shutdown via SB3 `BaseCallback`. Sets `stop_reason` to `"max_time_reached"` or `"completed"`.
-- **`--landscape` shorthand** — Equivalent to `--orientation landscape`.
-- **Lazy import mocking pattern** — `pydirectinput` and `win32gui` imported lazily inside functions; `mock.patch.dict(sys.modules, {...})` intercepts the lazy import.
-- **Headless `_capture_frame_headless` defensive checks** — Driver None check, cv2 ImportError handling, PNG decode failure handling.
-- **BrowserInstance `_SUPPORTED_BROWSERS`** — Uses `"edge"` not `"msedge"`.
-- **Validation runs** — Non-headless: 990 steps, 3 episodes, 32 frames, ~5.5 FPS. Headless: 316 steps, 10 frames, ~2.3 FPS.
-
-### Modal Check Throttling & Episode Boundary Fix (sessions 23-24)
-
-- **Episode boundary bug** — `step()` called `_handle_game_state()` which dismissed game-over modals before frame capture. Multiple game lives merged into one infinite episode. Fixed: `step()` passes `dismiss_game_over=False`, `reset()` passes `True`.
-- **Terminal penalty for modal-occluded frames** — Game-over early-return uses fixed `-5.01` instead of computing reward from YOLO detections (which see modal overlay, not game state).
-- **Modal check throttling** — Only check for modals when `_no_ball_count > 0` (ball already missing). Saves ~100-150ms Selenium HTTP round-trip per step during normal gameplay.
-- **Late check on 0→1 ball-miss transition** — On the frame the ball first disappears, do an immediate modal check. Catches game-over modals appearing in the same frame the ball vanishes, preventing spurious positive rewards from modal-occluded brick-delta.
-- **Pipeline timing breakdown** — Capture 3.3ms (wincam) + YOLO 13.9ms (OpenVINO GPU.0) + Input 0.4ms (pydirectinput) = ~18ms/frame = 55.5 FPS raw pipeline. SB3 PPO overhead reduces to ~8-10 FPS.
-- **TDD convention** — Required for `src/env/`, `src/orchestrator/`, and behavioral contract modules. Write test names as specs first, fill bodies (red), implement (green), refactor.
-
-### Selenium-Only Input & Platform Architecture Planning (session 26)
-
-- **Selenium-only input (PR #57)** — Removed `pydirectinput` from env entirely. All input via Selenium `ActionChains` (mouse move, click). Eliminated `mouseup` pause bug where game paused on every mouse release. pydirectinput module still exists in `src/capture/input_controller.py` for non-env use cases.
-- **~80% of codebase already game-agnostic** — Full audit: all 12 oracles, capture, game loader ABC, reporting, data collector, CNN wrapper need zero changes. Game-specific code concentrated in `breakout71_env.py`, `breakout71_loader.py`, `session_runner.py` (hardcoded import), `train_rl.py` (hardcoded env), `yolo_detector.py` (`BREAKOUT71_CLASSES` default).
-- **BaseGameEnv ABC designed** — Abstract methods: `game_classes()`, `build_observation()`, `compute_reward()`, `check_termination()`, `handle_modals()`, `apply_action()`, `start_game()`, `canvas_selector()`. Optional hooks: `on_lazy_init()`, `on_reset_complete()`.
-- **Plugin location: `games/` (top-level)** — Games are not part of the platform package. Minimal plugin ~40 lines for a new game.
-- **Three-tier reward strategy** — Tier 1: survival + RND intrinsic novelty (game-agnostic, needs only game-over detection). Tier 2: + OCR score delta. Tier 3: + oracle-guided exploration bonus.
-- **RND implementation plan** — `VecEnvWrapper` adding intrinsic bonus to reward. Fixed random CNN target (3 conv → 512-dim), trainable predictor (same backbone + deeper head, MSE loss). Non-episodic intrinsic rewards with running variance normalization. Most valuable for CNN (pixel space); limited benefit for MLP (8-dim).
-- **No official SB3 RND library** — Must implement in-house. Best approach: single value head with combined extrinsic + intrinsic reward.
-- **CNN is default observation mode** — Game-agnostic (84x84 grayscale, no YOLO needed). MLP is optional plugin feature requiring game-specific YOLO model.
-- **Reward mode as platform-level override** — `--reward-mode` CLI flag works for any game plugin, not per-game config.
-- **"Test Horseshoe" concept** — Platform wraps around the game: Capture → Perception → Policy → Input. Platform Core (BaseGameEnv, RND, CNN, Oracles, Orchestrator, Reporting) at the base. Game Plugin sits at the top providing game-specific glue.
-
-### BaseGameEnv ABC Extraction (session 27)
-
-- **BaseGameEnv ABC created** — `src/env/base_env.py` with 12 abstract methods + 2 optional hooks. Full `step()`/`reset()`/`close()` lifecycle, modal throttling, late game-over detection, oracle integration, and frame collection all in the base class.
-- **Abstract methods (12):** `game_classes()`, `build_observation()`, `compute_reward()`, `check_termination()`, `apply_action()`, `handle_modals()`, `start_game()`, `canvas_selector()`, `build_info()`, `terminal_reward()`, `on_reset_detections()`, `reset_termination_state()`.
-- **Optional hooks (2+2):** Public: `on_lazy_init()`, `on_reset_complete()`. Internal throttling: `_should_check_modals()`, `_check_late_game_over()`.
-- **`_no_ball_count` double-update bug fixed** — Both `_check_late_game_over()` and `check_termination()` were updating `_no_ball_count`. Fix: `_check_late_game_over()` exclusively owns updates; `check_termination()` only reads.
-- **`_should_check_modals` default changed to `True`** — Copilot review caught that `False` default (never check) is unsafe for new games. Changed to `True` (always check — safe default). Breakout71 overrides to throttle based on ball visibility.
-- **`game_classes()` kept as abstract** — Copilot suggested removing since unused in base class. Kept because it's part of the planned plugin contract for `--game` dynamic loading (PR 4). Added docstring explaining planned use.
-- **Method rename mapping** — `_build_observation` → `build_observation`, `_compute_reward` → `compute_reward`, `_apply_action` → `apply_action`, `_handle_game_state` → `handle_modals`, `_click_canvas` → `start_game`, `_build_info` → `build_info` + `_make_info`.
-
-### Game Plugin Directory (session 29)
-
-- **`games/breakout71/` plugin directory created (PR #63)** — Moved `Breakout71Env`, `Breakout71Loader`, JS modal constants, and YOLO class names from `src/` into `games/breakout71/`.
-- **JS snippet deduplication** — 4 JS constants (`DETECT_STATE_JS`, `CLICK_PERK_JS`, `DISMISS_GAME_OVER_JS`, `DISMISS_MENU_JS`) were duplicated across 3 files with minor variations. Consolidated into single source of truth `games/breakout71/modal_handler.py`.
-- **Circular import fix** — Eager re-exports in `src/game_loader/__init__.py` created a cycle: `src.game_loader.__init__` → `games.breakout71.loader` → `src.game_loader.browser_loader` → `src.game_loader.__init__`. Fixed with lazy `__getattr__` in both `src/env/__init__.py` and `src/game_loader/__init__.py`.
-- **Config files stay in `configs/`** — `load_game_config()` and `load_training_config()` search `configs/games/` and `configs/training/` by default; moving would break ~72 call sites.
-- **Copilot review: 0 comments** — Clean review, 23/24 files reviewed.
-
-## What's Done (sessions 1-29)
-
-1. **Session 1** — Perplexity research (capture, input, RL, market analysis)
-2. **Session 2** — Project scaffolding, game loader subsystem, CI pipeline (PR #4, #6)
-3. **Session 3** — Reporting subsystem (PR #7, #8)
-4. **Session 4** — Capture & Input subsystem (PR #9, #10, #11)
-5. **Session 5** — Perception subsystem (PR #12)
-6. **Session 6** — Oracle `on_step` detection logic, 12 oracles (PR #13)
-7. **Session 7** — Smoke scripts, integration tests, Selenium browser management (PR #15)
-8. **Session 8** — Game source study, revised env design, Breakout71Env v1 implementation (PR #17)
-9. **Session 9** — Config-driven YOLO training pipeline: capture, upload, train, validate (PR #19)
-10. **Session 10** — Data collection pipeline: 300-frame capture with game state detection, auto-annotation with OpenCV (PR #21)
-11. **Session 11** — Annotation pipeline improvements: ball-in-brick fix, paddle-zone fix, game-zone wall detection, Roboflow annotation upload, 100% ball detection (PR #23)
-12. **Session 12** — XPU YOLO training: 3 ultralytics monkey patches, dataset preparation, 100-epoch training (mAP50=0.679), open-source contribution to ultralytics #16930 (PR #26)
-13. **Session 13** — Integration & E2E + RL scaffold: orchestrator (FrameCollector, SessionRunner), run_session.py, train_rl.py (SB3 PPO), 6 env bug fixes, legacy code cleanup, pytest-cov (96% coverage) (PR #28)
-14. **Session 14** — Selenium-based env control: replaced pydirectinput with Selenium ActionChains for paddle control and JS execution for modal handling, GameLoader integration in train_rl.py, Copilot review fixes (public JS constants, body fallback handling) (PR #30)
-15. **Session 15** — First RL training attempt: pipeline validated end-to-end, diagnosed Discrete(3) action space as wrong for continuous paddle control, decided to switch to Box(-1,1) continuous action with JS puckPosition injection (no PR — interrupted before implementation)
-16. **Session 16** — Continuous action space & coverage: Box(-1,1) with JS puckPosition injection, robust _query_game_zone, DashboardRenderer fix, coverage enforcement (fail_under=80), 21 new tests (PR #32)
-17. **Session 17** — Deep source code analysis & game spec: read all 11 critical testbed source files, TypeDoc generation (PR #34), comprehensive game technical specification covering ~80 GameState fields, 63 perks, physics, scoring, combo, level progression, Selenium integration points (PR #35)
-18. **Session 18** — Player behavior specification: abstracted technical spec into player-perspective behavioral contracts (80+ B-IDs), covering observable states, actions, cause-effect behaviors, and RL training implications (PR #37)
-19. **Session 19** — Pixel-based debug loop: 4-phase validation script (capture→YOLO→pydirectinput→modal handling), validated live — Phase 1 (static detection), Phase 2 (paddle tracking, max error 0.119), Phase 3 (100% ball detection), Phase 4 (gameplay loop, FPS=4 on CPU YOLO). Copilot review: 7 fixes (inverted modal logic, pixel clamping, retry resilience, double inference, docstrings) (PR #39)
-20. **Session 20** — XPU auto-detection: `resolve_device()` function (xpu>cuda>cpu priority), all scripts/configs default to `"auto"`, OpenVINO & DXGI Desktop Duplication research (PR #43)
-21. **Session 21** — OpenVINO inference acceleration + wincam fast capture: `.pt` → OpenVINO IR export script, auto device routing (`intel:GPU.0`), warmup fix, `WinCamCapture` via Direct3D11 (<1ms async reads), `pydirectinput.PAUSE=0` (46ms→0.3ms), removed `step()` throttle, 52 FPS end-to-end. 2 Copilot review rounds (10 comments addressed). 45 new tests (PR #45)
-22. **Session 22** — RL training features: mute control, headless mode, portrait/landscape orientation, rich structured logging (TrainingLogger), max-time clean shutdown, continuous action space validated end-to-end. Copilot review: 7 fixes. 7 new tests (PR #47)
-23. **Session 23** — Episode boundary bug fix + TDD convention: game-over modals no longer silently dismissed mid-episode (merged multiple games into one infinite episode), fixed terminal penalty for modal-occluded frames, TDD convention formalized in AGENTS.md. Copilot review: 4 fixes (PR #51)
-24. **Session 24** — Modal check throttling: skip Selenium HTTP round-trip when ball visible (~100-150ms saved per step), immediate late check on 0→1 ball-miss transition to prevent spurious rewards, deduplicated `_make_env_ready()` test helper, live validation (55 FPS pipeline, ~8 FPS with SB3 overhead), alpha release v0.1.0a1, post-merge admin (PR #49, #51, #52, #53)
-25. **Session 25** — CNN policy pipeline for A/B comparison with MLP: `CnnObservationWrapper` (84x84 grayscale), `--policy cnn|mlp` / `--frame-stack` / `--max-episodes` CLI args, VecFrameStack(4)+VecTransposeImage pipeline, XPU device routing for CNN policy (`xpu:1`), removed oracles from training loop, flipped data collection to opt-in, live validation (MLP 9.6 FPS / CNN 8.4 FPS on xpu:1), Copilot review (4 fixes). 40 new tests (PR #55)
-26. **Session 26** — Selenium-only input & platform architecture planning: removed pydirectinput from env (Selenium ActionChains only), eliminated mouseup pause bug, full codebase audit (~80% already game-agnostic), BaseGameEnv ABC design, three-tier reward strategy spec, platform architecture spec, RND implementation plan, checklist roadmap update (PR #57, docs PR #58)
-27. **Session 27** — BaseGameEnv ABC extraction (PR #59): created `src/env/base_env.py` with 13 abstract methods + 2 optional hooks, refactored `Breakout71Env` to inherit from it (1200→630 lines), fixed `_no_ball_count` double-update bug, `_should_check_modals` default changed to `True` (safe for new games), 40 new BaseGameEnv tests. Copilot review: 8 comments (4 typos, docstring fix, default fix, game_classes planned use note, PR description counts). 680 tests, 96.67% coverage.
-28. **Session 28** — Platform package creation (PR #61): moved `BaseGameEnv` and `CnnObservationWrapper` from `src/env/` to `src/platform/`, backward-compat re-exports in `src/env/__init__.py`, updated all imports (env, scripts, tests, CI, docs), Sphinx autodoc for platform module. Copilot review: 1 comment (docstring accuracy for compat scope). 680 tests, 96.86% coverage.
-29. **Session 29** — Game plugin directory (PR #63): moved `Breakout71Env`, `Breakout71Loader`, JS modal constants, YOLO class names into `games/breakout71/`. Deduplicated JS snippets from 3 files into single-source-of-truth `modal_handler.py`. Fixed circular imports with lazy `__getattr__` re-exports. Config files kept in `configs/`. Copilot review: 0 comments. 680 tests, 96.55% coverage.
-
-Total: **680 tests** (656 unit + 24 integration), 8 subsystems + training pipeline complete.
-
-## What's Next
-
-Read `documentation/BigRocks/checklist.md` for the full breakdown. In order:
-
-1. **Platform Architecture & Exploration-Driven Reward** — BaseGameEnv ABC, game plugin separation, RND intrinsic reward, game-over generalization (see checklist section 4)
-2. **RL Training & Iteration** — run first real PPO training, evaluate vs random baseline, iterate on reward shaping, retrain YOLO with human-reviewed annotations
-
-## Reference Files
-
-When starting a new feature, read these first:
-- `documentation/BigRocks/checklist.md` — what to do next and detailed subtasks
-- The relevant spec in `documentation/specs/`
-- The existing stub in `src/` for the subsystem being implemented
-- A completed subsystem (e.g., `src/capture/`) for pattern reference
+- `documentation/ROADMAP.md` — what to do next (5-phase plan)
+- `documentation/BigRocks/checklist.md` — detailed task tracking
+- `documentation/reference/agent_knowledge_base.md` — all technical
+  discoveries from sessions 1-30
+- `documentation/specs/` — canonical specifications
