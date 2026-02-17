@@ -1608,3 +1608,200 @@ class TestSessionRunnerRun:
         # The dashboard renderer writes an HTML file
         html_files = list(reports_dir.glob("*.html"))
         assert len(html_files) >= 1
+
+
+# ===========================================================================
+# CNN Policy Support Tests
+# ===========================================================================
+
+
+class TestRunSessionCNNPolicyCLI:
+    """Tests for --policy and --frame-stack CLI flags in run_session.py."""
+
+    def test_policy_arg_default_mlp(self):
+        """--policy defaults to 'mlp'."""
+        from scripts.run_session import parse_args
+
+        args = parse_args([])
+        assert args.policy == "mlp"
+
+    def test_policy_arg_cnn(self):
+        """--policy accepts 'cnn'."""
+        from scripts.run_session import parse_args
+
+        args = parse_args(["--policy", "cnn"])
+        assert args.policy == "cnn"
+
+    def test_policy_arg_invalid_rejected(self):
+        """Invalid --policy value is rejected."""
+        from scripts.run_session import parse_args
+
+        with pytest.raises(SystemExit):
+            parse_args(["--policy", "rnn"])
+
+    def test_frame_stack_default(self):
+        """--frame-stack defaults to 4."""
+        from scripts.run_session import parse_args
+
+        args = parse_args([])
+        assert args.frame_stack == 4
+
+    def test_frame_stack_custom(self):
+        """--frame-stack accepts custom values."""
+        from scripts.run_session import parse_args
+
+        args = parse_args(["--frame-stack", "8"])
+        assert args.frame_stack == 8
+
+
+class TestSessionRunnerCNNPolicy:
+    """Tests for SessionRunner CNN policy wrapping support."""
+
+    def test_default_policy_is_mlp(self):
+        """SessionRunner defaults to policy='mlp'."""
+        runner = SessionRunner()
+        assert runner.policy == "mlp"
+
+    def test_accepts_cnn_policy(self):
+        """SessionRunner accepts policy='cnn'."""
+        runner = SessionRunner(policy="cnn")
+        assert runner.policy == "cnn"
+
+    def test_default_frame_stack(self):
+        """SessionRunner defaults to frame_stack=4."""
+        runner = SessionRunner()
+        assert runner.frame_stack == 4
+
+    def test_custom_frame_stack(self):
+        """SessionRunner accepts custom frame_stack."""
+        runner = SessionRunner(frame_stack=8)
+        assert runner.frame_stack == 8
+
+    def test_cnn_policy_wraps_env_in_setup(self):
+        """When policy='cnn', _setup wraps self._env with CnnEvalWrapper."""
+        runner = SessionRunner(
+            policy="cnn",
+            frame_stack=4,
+            n_episodes=1,
+            enable_data_collection=False,
+        )
+
+        # Create a mock env to inject
+        mock_env = mock.MagicMock()
+        mock_env.action_space = mock.MagicMock()
+        mock_env.observation_space = mock.MagicMock()
+        mock_env._oracles = []
+
+        # Patch _setup to only do the CNN wrapping part
+        original_env = mock_env
+
+        with mock.patch("src.platform.cnn_wrapper.CnnEvalWrapper") as MockWrapper:
+            mock_wrapped = mock.MagicMock()
+            MockWrapper.return_value = mock_wrapped
+
+            # Simulate _setup having created the raw env, then apply CNN wrapping
+            runner._env = mock_env
+            runner._wrap_env_for_cnn()
+
+            MockWrapper.assert_called_once_with(original_env, frame_stack=4)
+            assert runner._env is mock_wrapped
+
+    def test_mlp_policy_does_not_wrap_env(self):
+        """When policy='mlp', _setup does NOT wrap the env."""
+        runner = SessionRunner(
+            policy="mlp",
+            n_episodes=1,
+            enable_data_collection=False,
+        )
+
+        mock_env = mock.MagicMock()
+        runner._env = mock_env
+        runner._wrap_env_for_cnn()  # should be a no-op
+
+        assert runner._env is mock_env
+
+    def test_episode_accesses_oracles_through_unwrapped(self):
+        """_run_episode accesses oracles via unwrapped env when CNN-wrapped."""
+        runner = SessionRunner(
+            policy="cnn",
+            frame_stack=4,
+            n_episodes=1,
+            enable_data_collection=False,
+        )
+
+        # Create mock base env with oracles
+        mock_oracle = mock.MagicMock()
+        mock_oracle.get_findings.return_value = []
+
+        mock_base_env = mock.MagicMock()
+        mock_base_env._oracles = [mock_oracle]
+        mock_base_env.step_count = 0
+
+        # Create a mock wrapper that delegates unwrapped
+        mock_wrapped_env = mock.MagicMock()
+        mock_wrapped_env.action_space = mock.MagicMock()
+        mock_wrapped_env.action_space.sample.return_value = np.array(
+            [0.0], dtype=np.float32
+        )
+
+        obs = np.zeros((4, 84, 84), dtype=np.uint8)
+        info = {"frame": None, "detections": {}, "step": 0}
+        mock_wrapped_env.reset.return_value = (obs, info)
+
+        call_count = 0
+
+        def step_fn(action):
+            nonlocal call_count
+            call_count += 1
+            mock_base_env.step_count = call_count
+            return obs, 1.0, call_count >= 2, False, info
+
+        mock_wrapped_env.step.side_effect = step_fn
+
+        # The wrapped env's unwrapped should point to base
+        mock_wrapped_env.unwrapped = mock_base_env
+
+        runner._env = mock_wrapped_env
+        runner._raw_env = mock_base_env
+
+        runner._run_episode(0)
+
+        # Oracle findings should have been gathered
+        mock_oracle.get_findings.assert_called_once()
+
+    def test_main_passes_policy_and_frame_stack(self):
+        """main() passes --policy and --frame-stack to SessionRunner."""
+        from scripts.run_session import main
+
+        with mock.patch(
+            "src.orchestrator.session_runner.SessionRunner",
+        ) as MockRunner:
+            mock_runner_instance = mock.MagicMock()
+            mock_report = mock.MagicMock()
+            mock_report.summary = {
+                "total_episodes": 1,
+                "total_findings": 0,
+                "critical_findings": 0,
+                "warning_findings": 0,
+                "info_findings": 0,
+                "episodes_failed": 0,
+                "mean_episode_reward": 0.0,
+                "mean_episode_length": 0.0,
+            }
+            mock_runner_instance.run.return_value = mock_report
+            MockRunner.return_value = mock_runner_instance
+
+            main(
+                [
+                    "--policy",
+                    "cnn",
+                    "--frame-stack",
+                    "8",
+                    "--episodes",
+                    "1",
+                ]
+            )
+
+            call_kwargs = MockRunner.call_args[1]
+            assert call_kwargs["policy"] == "cnn"
+            assert call_kwargs["frame_stack"] == 8

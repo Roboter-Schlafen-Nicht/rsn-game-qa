@@ -195,6 +195,15 @@ class SessionRunner:
     headless : bool
         If True, launch the browser in headless mode and use
         Selenium-based frame capture instead of Win32 APIs.
+    policy : str
+        Observation policy type: ``"mlp"`` (default) or ``"cnn"``.
+        When ``"cnn"``, the environment is wrapped with
+        :class:`~src.platform.cnn_wrapper.CnnEvalWrapper` to produce
+        stacked grayscale image observations matching the training
+        pipeline.
+    frame_stack : int
+        Number of frames to stack when ``policy="cnn"``.  Default is 4.
+        Ignored when ``policy="mlp"``.
     """
 
     def __init__(
@@ -210,6 +219,8 @@ class SessionRunner:
         enable_data_collection: bool = True,
         policy_fn: Callable[[Any], Any] | None = None,
         headless: bool = False,
+        policy: str = "mlp",
+        frame_stack: int = 4,
     ) -> None:
         self.game = game
         self.n_episodes = n_episodes
@@ -220,6 +231,8 @@ class SessionRunner:
         self.enable_data_collection = enable_data_collection
         self.policy_fn = policy_fn
         self.headless = headless
+        self.policy = policy
+        self.frame_stack = frame_stack
 
         # Load plugin to resolve defaults
         from games import load_game_plugin
@@ -234,6 +247,7 @@ class SessionRunner:
 
         self._browser_instance = None
         self._env = None
+        self._raw_env = None  # Unwrapped env for oracle/step_count access
         self._collector: FrameCollector | None = None
         self._loader = None
 
@@ -387,6 +401,31 @@ class SessionRunner:
             self.n_episodes,
         )
 
+        # Apply CNN wrapping if requested
+        self._wrap_env_for_cnn()
+
+    def _wrap_env_for_cnn(self) -> None:
+        """Wrap the environment for CNN policy evaluation if configured.
+
+        When ``self.policy == "cnn"``, wraps ``self._env`` with
+        :class:`~src.platform.cnn_wrapper.CnnEvalWrapper`.  Stores the
+        original unwrapped env in ``self._raw_env`` for oracle access.
+
+        When ``self.policy == "mlp"``, this is a no-op.
+        """
+        if self.policy != "cnn":
+            return
+
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        self._raw_env = self._env
+        self._env = CnnEvalWrapper(self._env, frame_stack=self.frame_stack)
+        logger.info(
+            "CNN eval wrapper applied: frame_stack=%d, obs_space=%s",
+            self.frame_stack,
+            self._env.observation_space.shape,
+        )
+
     def _run_episode(self, episode_id: int) -> EpisodeReport:
         """Run a single episode and return its report.
 
@@ -401,6 +440,8 @@ class SessionRunner:
             The completed episode report.
         """
         env = self._env
+        # Use raw (unwrapped) env for oracle/step_count when CNN-wrapped
+        raw_env = self._raw_env if self._raw_env is not None else env
         screenshots_dir = self.output_dir / "screenshots" / f"episode_{episode_id}"
 
         obs, info = env.reset()
@@ -431,13 +472,13 @@ class SessionRunner:
             if self._collector is not None and info.get("frame") is not None:
                 self._collector.save_frame(
                     frame=info["frame"],
-                    step=env.step_count,
+                    step=raw_env.step_count,
                     episode_id=episode_id,
                 )
 
-        # Gather oracle findings
+        # Gather oracle findings from raw env (oracles live on base env)
         findings: list[FindingReport] = []
-        for oracle in env._oracles:
+        for oracle in raw_env._oracles:
             for finding in oracle.get_findings():
                 findings.append(_finding_to_report(finding, screenshots_dir))
 
@@ -445,7 +486,7 @@ class SessionRunner:
 
         return EpisodeReport(
             episode_id=episode_id,
-            steps=env.step_count,
+            steps=raw_env.step_count,
             total_reward=total_reward,
             terminated=terminated,
             truncated=truncated,

@@ -1,23 +1,21 @@
-"""CNN observation wrapper for game environments.
+"""CNN observation wrappers for game environments.
 
-Converts the feature vector observation from a
-:class:`~src.platform.base_env.BaseGameEnv` subclass into an 84x84
-single-channel (grayscale) image observation suitable for SB3's
-``CnnPolicy`` (NatureCNN architecture).
+Provides two wrappers for converting MLP observations to CNN-compatible
+image observations:
 
-The raw game frame captured each step is available in
-``info["frame"]`` from the base environment.  This wrapper intercepts
-it, resizes to 84x84, converts to grayscale, and returns it as the
-observation.
+``CnnObservationWrapper``
+    Training wrapper — converts to 84x84 grayscale single-channel image.
+    Used with SB3's ``DummyVecEnv → VecFrameStack → VecTransposeImage``
+    pipeline during training.
 
-**YOLO inference is unchanged** in the base environment — it still
-runs every frame to compute reward, termination, and oracle checks.
-Only the observation *returned to the policy* changes from a feature
-vector to a pixel image.  This ensures a fair A/B comparison with
-``MlpPolicy``: same reward signal, same episode boundaries, only
-the policy input differs.
+``CnnEvalWrapper``
+    Evaluation wrapper — combines grayscale conversion, frame stacking,
+    and CHW transpose in a single Gymnasium wrapper.  Produces the same
+    observation shape ``(N, 84, 84)`` as the training pipeline without
+    requiring VecEnv wrapping.  Preserves access to ``env.unwrapped``
+    for oracle findings and step count.
 
-Usage with SB3::
+Training usage::
 
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack, VecTransposeImage
@@ -31,18 +29,31 @@ Usage with SB3::
 
     model = PPO("CnnPolicy", vec_env, device="xpu:1")
 
+Evaluation usage::
+
+    from src.platform.cnn_wrapper import CnnEvalWrapper
+
+    base_env = Breakout71Env(...)
+    eval_env = CnnEvalWrapper(base_env, frame_stack=4)
+
+    model = PPO.load("ppo_breakout71.zip")
+    obs, info = eval_env.reset()
+    action, _ = model.predict(obs, deterministic=True)
+    obs, reward, terminated, truncated, info = eval_env.step(action)
+
 Notes
 -----
-- Frame stacking is handled externally by ``VecFrameStack``, not here.
+- Frame stacking is handled externally by ``VecFrameStack`` (training)
+  or internally by ``CnnEvalWrapper`` (evaluation).
 - ``VecTransposeImage`` converts HWC → CHW for PyTorch's NatureCNN.
-- The wrapper passes through reward, terminated, truncated, and info
-  unchanged.  The original 8-element obs is available in
-  ``info["mlp_obs"]`` for logging or debugging.
+- Both wrappers pass through reward, terminated, truncated, and info
+  unchanged.  The original MLP obs is available in ``info["mlp_obs"]``.
 """
 
 from __future__ import annotations
 
 import logging
+from collections import deque
 from typing import Any, Optional
 
 import gymnasium as gym
@@ -230,3 +241,170 @@ def _frame_to_obs(frame: np.ndarray, obs_size: int) -> np.ndarray:
 
     # Add channel dimension: (H, W) -> (H, W, 1)
     return resized[:, :, np.newaxis]
+
+
+class CnnEvalWrapper(gym.Wrapper):
+    """Gymnasium wrapper for evaluating CNN-trained models.
+
+    Combines grayscale conversion, frame stacking, and HWC→CHW
+    transpose into a single wrapper that produces observations
+    matching the training pipeline's output:
+    ``CnnObservationWrapper → DummyVecEnv → VecFrameStack → VecTransposeImage``.
+
+    Unlike the training pipeline, this wrapper does NOT require
+    VecEnv wrapping.  It operates at the Gymnasium level, preserving
+    access to ``env.unwrapped`` for oracle findings and step counts.
+
+    Parameters
+    ----------
+    env : gym.Env
+        The base environment (a :class:`BaseGameEnv` subclass).  Must
+        produce an ``info`` dict containing a ``"frame"`` key with a
+        BGR ``np.ndarray``.
+    frame_stack : int
+        Number of frames to stack.  Default is 4.
+    obs_size : int
+        Target height and width for the square observation image.
+        Default is 84.
+
+    Attributes
+    ----------
+    observation_space : gym.spaces.Box
+        ``Box(0, 255, (frame_stack, obs_size, obs_size), uint8)`` —
+        CHW stacked grayscale frames.
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        frame_stack: int = 4,
+        obs_size: int = CNN_OBS_SIZE,
+    ) -> None:
+        super().__init__(env)
+        self._frame_stack = frame_stack
+        self._obs_size = obs_size
+
+        # Frame buffer: deque of grayscale (H, W) arrays
+        self._frames: deque[np.ndarray] = deque(maxlen=frame_stack)
+
+        # Override observation space: CHW uint8 image stack
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(frame_stack, obs_size, obs_size),
+            dtype=np.uint8,
+        )
+
+        logger.info(
+            "CnnEvalWrapper: obs_size=%d, frame_stack=%d, space=%s",
+            obs_size,
+            frame_stack,
+            self.observation_space.shape,
+        )
+
+    def _frame_to_grayscale(self, frame: np.ndarray | None) -> np.ndarray:
+        """Convert a raw BGR frame to a grayscale (H, W) array.
+
+        Parameters
+        ----------
+        frame : np.ndarray or None
+            BGR image from the game window.  If None, returns a black
+            frame.
+
+        Returns
+        -------
+        np.ndarray
+            Grayscale image of shape ``(obs_size, obs_size)``,
+            dtype ``uint8``.
+        """
+        if frame is None:
+            return np.zeros((self._obs_size, self._obs_size), dtype=np.uint8)
+
+        # Reuse _frame_to_obs and squeeze out the channel dim
+        obs_hwc = _frame_to_obs(frame, self._obs_size)  # (H, W, 1)
+        return obs_hwc[:, :, 0]  # (H, W)
+
+    def _get_stacked_obs(self) -> np.ndarray:
+        """Stack buffered frames into a CHW array.
+
+        Returns
+        -------
+        np.ndarray
+            Stacked observation of shape ``(frame_stack, obs_size, obs_size)``,
+            dtype ``uint8``.
+        """
+        return np.stack(list(self._frames), axis=0)  # (N, H, W) = CHW
+
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[dict[str, Any]] = None,
+    ) -> tuple[np.ndarray, dict[str, Any]]:
+        """Reset the environment and return a stacked CHW observation.
+
+        The frame stack is initialised by repeating the first frame
+        ``frame_stack`` times, matching ``VecFrameStack`` reset behaviour.
+
+        Parameters
+        ----------
+        seed : int, optional
+            Random seed for reproducibility.
+        options : dict, optional
+            Additional reset options.
+
+        Returns
+        -------
+        obs : np.ndarray
+            Stacked CHW observation of shape
+            ``(frame_stack, obs_size, obs_size)``.
+        info : dict
+            Info dict from the base environment, with added
+            ``"mlp_obs"`` key containing the original observation.
+        """
+        mlp_obs, info = self.env.reset(seed=seed, options=options)
+
+        # Extract frame and convert to grayscale
+        frame = info.get("frame")
+        gray = self._frame_to_grayscale(frame)
+
+        # Fill the frame stack with the initial frame
+        self._frames.clear()
+        for _ in range(self._frame_stack):
+            self._frames.append(gray)
+
+        info["mlp_obs"] = mlp_obs
+        return self._get_stacked_obs(), info
+
+    def step(
+        self, action: np.ndarray
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        """Take a step and return a stacked CHW observation.
+
+        Parameters
+        ----------
+        action : np.ndarray
+            Action to pass to the base environment.
+
+        Returns
+        -------
+        obs : np.ndarray
+            Stacked CHW observation.
+        reward : float
+            Reward from the base environment (unchanged).
+        terminated : bool
+            Termination flag (unchanged).
+        truncated : bool
+            Truncation flag (unchanged).
+        info : dict
+            Info dict with added ``"mlp_obs"`` key.
+        """
+        mlp_obs, reward, terminated, truncated, info = self.env.step(action)
+
+        # Extract frame and push onto stack
+        frame = info.get("frame")
+        gray = self._frame_to_grayscale(frame)
+        self._frames.append(gray)
+
+        info["mlp_obs"] = mlp_obs
+        return self._get_stacked_obs(), reward, terminated, truncated, info

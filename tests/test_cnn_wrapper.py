@@ -459,3 +459,329 @@ class TestFrameProcessingEdgeCases:
 
         assert obs.shape == (84, 84, 1)
         assert obs.dtype == np.uint8
+
+
+# ===========================================================================
+# CnnEvalWrapper Tests
+# ===========================================================================
+
+
+class TestCnnEvalWrapperConstruction:
+    """Tests for CnnEvalWrapper constructor and observation space."""
+
+    def test_observation_space_shape_default_stack(self):
+        """CnnEvalWrapper produces (4, 84, 84) observation space by default."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env)
+
+        assert env.observation_space.shape == (4, 84, 84)
+
+    def test_observation_space_dtype(self):
+        """CnnEvalWrapper observation space has uint8 dtype."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env)
+
+        assert env.observation_space.dtype == np.uint8
+
+    def test_observation_space_bounds(self):
+        """CnnEvalWrapper observation space has [0, 255] bounds."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env)
+
+        assert env.observation_space.low.min() == 0
+        assert env.observation_space.high.max() == 255
+
+    def test_custom_frame_stack_size(self):
+        """CnnEvalWrapper accepts custom frame_stack parameter."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, frame_stack=8)
+
+        assert env.observation_space.shape == (8, 84, 84)
+
+    def test_custom_obs_size(self):
+        """CnnEvalWrapper accepts custom obs_size parameter."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, obs_size=64, frame_stack=4)
+
+        assert env.observation_space.shape == (4, 64, 64)
+
+    def test_action_space_passthrough(self):
+        """CnnEvalWrapper does not modify the action space."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env)
+
+        assert env.action_space == base_env.action_space
+
+    def test_unwrapped_access(self):
+        """CnnEvalWrapper.unwrapped returns the base environment."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env)
+
+        assert env.unwrapped is base_env
+
+
+class TestCnnEvalWrapperReset:
+    """Tests for CnnEvalWrapper.reset() behavior."""
+
+    def test_reset_returns_correct_shape(self):
+        """reset() returns observation with shape (N, 84, 84)."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, frame_stack=4)
+
+        # Mock the base env reset to return a valid obs + frame
+        frame = _frame(color=(128, 128, 128))
+        mlp_obs = np.zeros(8, dtype=np.float32)
+        base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
+
+        obs, info = env.reset()
+
+        assert obs.shape == (4, 84, 84)
+        assert obs.dtype == np.uint8
+
+    def test_reset_initializes_stack_with_same_frame(self):
+        """reset() fills the entire frame stack with the initial frame."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, frame_stack=4)
+
+        frame = _frame(color=(100, 100, 100))
+        mlp_obs = np.zeros(8, dtype=np.float32)
+        base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
+
+        obs, info = env.reset()
+
+        # All 4 channels should be identical (same frame repeated)
+        for i in range(1, 4):
+            np.testing.assert_array_equal(obs[0], obs[i])
+
+    def test_reset_preserves_info_dict(self):
+        """reset() passes through the info dict from the base env."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, frame_stack=4)
+
+        frame = _frame()
+        base_env.reset = mock.MagicMock(
+            return_value=(np.zeros(8, dtype=np.float32), {"frame": frame, "custom": 42})
+        )
+
+        _, info = env.reset()
+
+        assert info["custom"] == 42
+
+    def test_reset_stores_mlp_obs_in_info(self):
+        """reset() stores the original MLP observation in info['mlp_obs']."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, frame_stack=4)
+
+        mlp_obs = np.arange(8, dtype=np.float32)
+        frame = _frame()
+        base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
+
+        _, info = env.reset()
+
+        np.testing.assert_array_equal(info["mlp_obs"], mlp_obs)
+
+
+class TestCnnEvalWrapperStep:
+    """Tests for CnnEvalWrapper.step() behavior."""
+
+    def test_step_returns_correct_shape(self):
+        """step() returns observation with shape (N, 84, 84)."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, frame_stack=4)
+
+        frame = _frame(color=(128, 128, 128))
+        mlp_obs = np.zeros(8, dtype=np.float32)
+
+        base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
+        base_env.step = mock.MagicMock(
+            return_value=(mlp_obs, 1.0, False, False, {"frame": frame})
+        )
+
+        env.reset()
+        obs, reward, terminated, truncated, info = env.step(np.array([0.0]))
+
+        assert obs.shape == (4, 84, 84)
+        assert obs.dtype == np.uint8
+
+    def test_step_preserves_reward(self):
+        """step() passes through reward unchanged."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, frame_stack=4)
+
+        frame = _frame()
+        mlp_obs = np.zeros(8, dtype=np.float32)
+
+        base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
+        base_env.step = mock.MagicMock(
+            return_value=(mlp_obs, 3.14, False, False, {"frame": frame})
+        )
+
+        env.reset()
+        _, reward, _, _, _ = env.step(np.array([0.0]))
+
+        assert reward == 3.14
+
+    def test_step_preserves_terminated_truncated(self):
+        """step() passes through terminated and truncated flags."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, frame_stack=4)
+
+        frame = _frame()
+        mlp_obs = np.zeros(8, dtype=np.float32)
+
+        base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
+        base_env.step = mock.MagicMock(
+            return_value=(mlp_obs, 0.0, True, False, {"frame": frame})
+        )
+
+        env.reset()
+        _, _, terminated, truncated, _ = env.step(np.array([0.0]))
+
+        assert terminated is True
+        assert truncated is False
+
+    def test_step_updates_frame_stack(self):
+        """step() pushes a new frame onto the stack, shifting older frames."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, frame_stack=4)
+
+        frame_reset = _frame(color=(50, 50, 50))
+        frame_step1 = _frame(color=(100, 100, 100))
+        frame_step2 = _frame(color=(200, 200, 200))
+        mlp_obs = np.zeros(8, dtype=np.float32)
+
+        base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame_reset}))
+
+        env.reset()
+
+        # Step 1 with different frame
+        base_env.step = mock.MagicMock(
+            return_value=(mlp_obs, 0.0, False, False, {"frame": frame_step1})
+        )
+        obs1, _, _, _, _ = env.step(np.array([0.0]))
+
+        # Oldest 3 channels should be reset frame, newest should be step1 frame
+        # Channel order: [oldest, ..., newest]
+        assert not np.array_equal(obs1[0], obs1[3])
+
+        # Step 2 with another different frame
+        base_env.step = mock.MagicMock(
+            return_value=(mlp_obs, 0.0, False, False, {"frame": frame_step2})
+        )
+        obs2, _, _, _, _ = env.step(np.array([0.0]))
+
+        # Now channel 3 should be step2, and channel 2 should be step1
+        assert not np.array_equal(obs2[2], obs2[3])
+
+    def test_step_stores_mlp_obs_in_info(self):
+        """step() stores the original MLP observation in info['mlp_obs']."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, frame_stack=4)
+
+        frame = _frame()
+        mlp_obs = np.arange(8, dtype=np.float32)
+
+        base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
+        base_env.step = mock.MagicMock(
+            return_value=(mlp_obs, 0.0, False, False, {"frame": frame})
+        )
+
+        env.reset()
+        _, _, _, _, info = env.step(np.array([0.0]))
+
+        np.testing.assert_array_equal(info["mlp_obs"], mlp_obs)
+
+    def test_no_frame_produces_black_channel(self):
+        """When info has no 'frame', step() uses a black frame for that channel."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, frame_stack=4)
+
+        frame = _frame(color=(128, 128, 128))
+        mlp_obs = np.zeros(8, dtype=np.float32)
+
+        base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
+        base_env.step = mock.MagicMock(
+            return_value=(mlp_obs, 0.0, False, False, {"frame": None})
+        )
+
+        env.reset()
+        obs, _, _, _, _ = env.step(np.array([0.0]))
+
+        # Most recent channel (index 3) should be all zeros (black)
+        assert obs[3].sum() == 0
+
+
+class TestCnnEvalWrapperMatchesTraining:
+    """Ensure CnnEvalWrapper produces the same shape as the training pipeline.
+
+    The training pipeline uses:
+        CnnObservationWrapper -> DummyVecEnv -> VecFrameStack(4) -> VecTransposeImage
+
+    which produces observation space (4, 84, 84) and actual obs (1, 4, 84, 84).
+    CnnEvalWrapper should produce (4, 84, 84) without the batch dimension.
+    """
+
+    def test_obs_space_matches_training_pipeline(self):
+        """CnnEvalWrapper obs space matches VecFrameStack+VecTransposeImage."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        eval_env = CnnEvalWrapper(base_env, frame_stack=4)
+
+        # Training pipeline produces (4, 84, 84) -- same as eval
+        assert eval_env.observation_space.shape == (4, 84, 84)
+
+    def test_obs_within_observation_space(self):
+        """Observations from step/reset are within the declared space."""
+        from src.platform.cnn_wrapper import CnnEvalWrapper
+
+        base_env = Breakout71Env()
+        env = CnnEvalWrapper(base_env, frame_stack=4)
+
+        frame = _frame(color=(128, 128, 128))
+        mlp_obs = np.zeros(8, dtype=np.float32)
+
+        base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
+        base_env.step = mock.MagicMock(
+            return_value=(mlp_obs, 0.0, False, False, {"frame": frame})
+        )
+
+        obs, _ = env.reset()
+        assert env.observation_space.contains(obs)
+
+        obs2, _, _, _, _ = env.step(np.array([0.0]))
+        assert env.observation_space.contains(obs2)

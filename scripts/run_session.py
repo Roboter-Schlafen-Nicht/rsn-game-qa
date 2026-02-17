@@ -7,9 +7,14 @@ Supports both random policy (default) and trained model evaluation::
     python scripts/run_session.py --game breakout71 \\
         --episodes 3 --max-steps 10000 --browser chrome
 
-    # Evaluate a trained PPO model:
+    # Evaluate a trained MLP model:
     python scripts/run_session.py --game breakout71 \\
         --model models/ppo_breakout71.zip --episodes 10
+
+    # Evaluate a trained CNN model:
+    python scripts/run_session.py --game breakout71 \\
+        --model models/ppo_breakout71_cnn.zip --episodes 10 \\
+        --policy cnn --frame-stack 4
 
     # Override config / weights (optional):
     python scripts/run_session.py --game breakout71 \\
@@ -115,6 +120,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Run browser in headless mode (no GUI, Selenium frame capture)",
     )
     parser.add_argument(
+        "--policy",
+        type=str,
+        default="mlp",
+        choices=["mlp", "cnn"],
+        help=(
+            "Observation policy type.  'mlp' (default) uses the raw feature "
+            "vector; 'cnn' wraps the env to produce stacked grayscale image "
+            "observations matching the CNN training pipeline."
+        ),
+    )
+    parser.add_argument(
+        "--frame-stack",
+        type=int,
+        default=4,
+        help=(
+            "Number of frames to stack when --policy=cnn (default: 4).  "
+            "Ignored when --policy=mlp."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -182,6 +207,8 @@ def main(argv: list[str] | None = None) -> int:
         enable_data_collection=not args.no_data_collection,
         policy_fn=policy_fn,
         headless=args.headless,
+        policy=args.policy,
+        frame_stack=args.frame_stack,
     )
 
     report = runner.run()
