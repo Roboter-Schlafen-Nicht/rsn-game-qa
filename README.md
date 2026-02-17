@@ -42,23 +42,27 @@ The system uses a two-layer design:
 
 ```
 src/
+  platform/             BaseGameEnv ABC, CnnObservationWrapper (game-agnostic)
   capture/              Window capture (GDI) + input controller (pydirectinput)
-  env/                  Gymnasium environments (Breakout71Env)
+  env/                  Backward-compat re-exports for game environments
   game_loader/          Configurable game loading (browser dev server lifecycle)
   oracles/              Bug-detection oracles (crash, stuck, score, visual, perf, physics, boundary, state, episode_length, temporal, reward, soak)
   orchestrator/         Session orchestration (FrameCollector, SessionRunner)
   perception/           YOLO detector wrapper + Breakout 71 capture helpers
   reporting/            Episode/session reports + Jinja2 HTML dashboard
+games/
+  breakout71/           Breakout 71 game plugin (env, loader, modal handler, perception)
 configs/
   games/                Game loader YAML configs (breakout-71.yaml, ...)
   training/             YOLO training configs per game (breakout-71.yaml, ...)
 scripts/                YOLO training, dataset capture, upload, smoke tests, RL training
-tests/                  pytest suite (680 unit + 24 integration tests)
+tests/                  pytest suite (669 unit + 24 integration tests)
 docs/                   Sphinx docs (Furo theme, MyST Markdown)
 documentation/
   specs/                Design specs for env, oracles, capture, reporting, game loader
-  sessions/             Development session notes
-  business/             2026 plan
+  BigRocks/             Master checklist and task tracking
+  reference/            Agent knowledge base (technical discoveries)
+  ROADMAP.md            5-phase development plan
 ```
 
 ## Hardware
@@ -115,7 +119,7 @@ GitHub Actions runs on every push to `main` or `big-rock-*` branches and on PRs 
 | Job | What it does |
 |-----|-------------|
 | **Lint** | `ruff check` + `ruff format --check` |
-| **Test** | `pytest -m "not integration"` (680 passed) |
+| **Test** | `pytest -m "not integration"` (669 passed) |
 | **Build Check** | Verifies all module imports succeed |
 | **Build Docs** | Sphinx HTML build with `-W` (warnings as errors) |
 

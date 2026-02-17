@@ -17,7 +17,7 @@ evaluating it, and generating a QA report with real oracle findings.
 
 | Task | Details |
 |---|---|
-| Merge PR #65 | `--game` flag and dynamic plugin loading |
+| Merge PR #65 | `--game` flag and dynamic plugin loading — **DONE** |
 | Run 200K-step PPO training | CNN policy, portrait mode, `--max-time 7200` |
 | Run 10-episode evaluation | `run_session.py --game breakout71 --episodes 10` |
 | Generate QA report | Oracle findings, episode metrics, HTML dashboard |
