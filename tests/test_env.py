@@ -673,82 +673,79 @@ class TestComputeReward:
 
 
 class TestApplyAction:
-    """Tests for apply_action via Selenium ActionChains."""
+    """Tests for apply_action via JS mousemove dispatch."""
 
-    def _make_env_for_action(self, *, canvas_w=1280, canvas_h=1024):
+    def _make_env_for_action(self, *, canvas_w=1280, canvas_h=1024, rect=(0, 0)):
         """Create an env with canvas set up for action tests."""
         driver = _mock_driver()
         env = Breakout71Env(driver=driver)
         env._game_canvas = mock.MagicMock()
         env._canvas_size = (canvas_w, canvas_h)
+        env._canvas_rect = rect
         return env
 
-    def test_centre_action_maps_to_zero_offset(self):
-        """Action 0.0 (centre) should produce x_offset=0."""
-        env = self._make_env_for_action()
-        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
-        mock_chains = mock.MagicMock()
-        mock_chains.move_to_element_with_offset.return_value = mock_chains
-        mock_ac_module.ActionChains.return_value = mock_chains
+    def test_centre_action_maps_to_centre_clientx(self):
+        """Action 0.0 (centre) should produce clientX at canvas centre."""
+        env = self._make_env_for_action(canvas_w=1000, rect=(0, 0))
 
         env.apply_action(_action(0.0))
 
-        args, _ = mock_chains.move_to_element_with_offset.call_args
-        assert args[0] is env._game_canvas
-        assert args[1] == 0  # x_offset for centre
-        assert args[2] == int(1024 * 0.4)  # y_offset
+        env._driver.execute_script.assert_called_once()
+        args = env._driver.execute_script.call_args[0]
+        # clientX = rect_left + (0 + 1) / 2 * 1000 = 500
+        assert args[2] == 500.0  # clientX
 
     def test_left_edge_action(self):
-        """Action -1.0 should produce x_offset = -canvas_w/2."""
-        env = self._make_env_for_action(canvas_w=1000)
-        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
-        mock_chains = mock.MagicMock()
-        mock_chains.move_to_element_with_offset.return_value = mock_chains
-        mock_ac_module.ActionChains.return_value = mock_chains
+        """Action -1.0 should produce clientX at canvas left edge."""
+        env = self._make_env_for_action(canvas_w=1000, rect=(0, 0))
 
         env.apply_action(_action(-1.0))
 
-        args, _ = mock_chains.move_to_element_with_offset.call_args
-        assert args[1] == -500  # -1.0 * (1000/2)
+        args = env._driver.execute_script.call_args[0]
+        # clientX = 0 + (-1 + 1) / 2 * 1000 = 0
+        assert args[2] == 0.0  # clientX
 
     def test_right_edge_action(self):
-        """Action +1.0 should produce x_offset = +canvas_w/2."""
-        env = self._make_env_for_action(canvas_w=1000)
-        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
-        mock_chains = mock.MagicMock()
-        mock_chains.move_to_element_with_offset.return_value = mock_chains
-        mock_ac_module.ActionChains.return_value = mock_chains
+        """Action +1.0 should produce clientX at canvas right edge."""
+        env = self._make_env_for_action(canvas_w=1000, rect=(0, 0))
 
         env.apply_action(_action(1.0))
 
-        args, _ = mock_chains.move_to_element_with_offset.call_args
-        assert args[1] == 500  # +1.0 * (1000/2)
+        args = env._driver.execute_script.call_args[0]
+        # clientX = 0 + (1 + 1) / 2 * 1000 = 1000
+        assert args[2] == 1000.0  # clientX
 
     def test_action_clamped_to_bounds(self):
         """Action values outside [-1, 1] should be clipped."""
-        env = self._make_env_for_action(canvas_w=1000)
-        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
-        mock_chains = mock.MagicMock()
-        mock_chains.move_to_element_with_offset.return_value = mock_chains
-        mock_ac_module.ActionChains.return_value = mock_chains
+        env = self._make_env_for_action(canvas_w=1000, rect=(0, 0))
 
         env.apply_action(_action(2.0))
 
-        args, _ = mock_chains.move_to_element_with_offset.call_args
-        assert args[1] == 500  # clipped to +1.0 -> 500
+        args = env._driver.execute_script.call_args[0]
+        # clipped to +1.0 -> clientX = 1000
+        assert args[2] == 1000.0
 
     def test_quarter_position(self):
-        """Action -0.5 should map to 25% from left = -250 offset on 1000px canvas."""
-        env = self._make_env_for_action(canvas_w=1000)
-        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
-        mock_chains = mock.MagicMock()
-        mock_chains.move_to_element_with_offset.return_value = mock_chains
-        mock_ac_module.ActionChains.return_value = mock_chains
+        """Action -0.5 should map to 25% from left on 1000px canvas."""
+        env = self._make_env_for_action(canvas_w=1000, rect=(0, 0))
 
         env.apply_action(_action(-0.5))
 
-        args, _ = mock_chains.move_to_element_with_offset.call_args
-        assert args[1] == -250  # -0.5 * (1000/2)
+        args = env._driver.execute_script.call_args[0]
+        # clientX = 0 + (-0.5 + 1) / 2 * 1000 = 250
+        assert args[2] == 250.0
+
+    def test_canvas_rect_offset_applied(self):
+        """Canvas rect left/top should offset the clientX/clientY."""
+        env = self._make_env_for_action(canvas_w=1000, canvas_h=800, rect=(100, 50))
+
+        env.apply_action(_action(0.0))
+
+        args = env._driver.execute_script.call_args[0]
+        # clientX = 100 + (0 + 1) / 2 * 1000 = 600
+        assert args[2] == 600.0
+        # clientY = 50 + 0.9 * 800 = 770
+        assert args[3] == 770.0
 
     def test_no_driver_is_noop(self):
         """Without driver, apply_action should be a no-op."""
@@ -770,23 +767,18 @@ class TestApplyAction:
 
     def test_action_scalar_input(self):
         """Scalar action (0-d array or float) is normalised to (1,)."""
-        env = self._make_env_for_action(canvas_w=1000)
-        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
-        mock_chains = mock.MagicMock()
-        mock_chains.move_to_element_with_offset.return_value = mock_chains
-        mock_ac_module.ActionChains.return_value = mock_chains
+        env = self._make_env_for_action(canvas_w=1000, rect=(0, 0))
 
         # 0-d numpy array
         env.apply_action(np.float32(0.0))
-        args, _ = mock_chains.move_to_element_with_offset.call_args
-        assert args[1] == 0  # centre
+        args = env._driver.execute_script.call_args[0]
+        assert args[2] == 500.0  # centre
 
         # Plain Python float
-        mock_chains.reset_mock()
-        mock_chains.move_to_element_with_offset.return_value = mock_chains
+        env._driver.reset_mock()
         env.apply_action(0.0)
-        args, _ = mock_chains.move_to_element_with_offset.call_args
-        assert args[1] == 0  # centre
+        args = env._driver.execute_script.call_args[0]
+        assert args[2] == 500.0  # centre
 
     def test_action_wrong_size_raises(self):
         """Action with size != 1 should raise ValueError."""
@@ -796,29 +788,40 @@ class TestApplyAction:
             env.apply_action(np.array([0.1, 0.2], dtype=np.float32))
 
     def test_y_position_is_paddle_row(self):
-        """Y offset should be 0.4 * canvas_h (i.e. 90% from top, relative to centre)."""
-        env = self._make_env_for_action(canvas_h=1000)
-        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
-        mock_chains = mock.MagicMock()
-        mock_chains.move_to_element_with_offset.return_value = mock_chains
-        mock_ac_module.ActionChains.return_value = mock_chains
+        """clientY should be at 90% of canvas height."""
+        env = self._make_env_for_action(canvas_h=1000, rect=(0, 0))
 
         env.apply_action(_action(0.0))
 
-        args, _ = mock_chains.move_to_element_with_offset.call_args
-        assert args[2] == int(1000 * 0.4)  # y_offset = 400
+        args = env._driver.execute_script.call_args[0]
+        # clientY = 0 + 0.9 * 1000 = 900
+        assert args[3] == 900.0
 
-    def test_perform_called(self):
-        """ActionChains.perform() should be called to execute the action."""
+    def test_execute_script_called(self):
+        """driver.execute_script should be called with MOVE_MOUSE_JS."""
         env = self._make_env_for_action()
-        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
-        mock_chains = mock.MagicMock()
-        mock_chains.move_to_element_with_offset.return_value = mock_chains
-        mock_ac_module.ActionChains.return_value = mock_chains
 
         env.apply_action(_action(0.0))
 
-        mock_chains.perform.assert_called_once()
+        env._driver.execute_script.assert_called_once()
+        args = env._driver.execute_script.call_args[0]
+        # First arg is the JS snippet
+        assert "mousemove" in args[0]
+        # Second arg is the canvas selector
+        assert args[1] == "game"
+
+    def test_fallback_without_canvas_rect(self):
+        """Without _canvas_rect, should use (0, 0) as origin."""
+        env = self._make_env_for_action(canvas_w=1000, canvas_h=800)
+        env._canvas_rect = None
+
+        env.apply_action(_action(0.0))
+
+        args = env._driver.execute_script.call_args[0]
+        # clientX = (0 + 1) / 2 * 1000 = 500 (no rect offset)
+        assert args[2] == 500.0
+        # clientY = 0.9 * 800 = 720
+        assert args[3] == 720.0
 
 
 # -- Game State Handling -------------------------------------------------------
@@ -1639,48 +1642,36 @@ class TestHeadless:
             with pytest.raises(RuntimeError, match="Failed to decode"):
                 env._capture_frame_headless()
 
-    def test_headless_apply_action_uses_action_chains(self):
-        """apply_action in headless mode should use ActionChains."""
+    def test_headless_apply_action_uses_js_mousemove(self):
+        """apply_action in headless mode should use execute_script for mousemove."""
         env = Breakout71Env(headless=True)
         env._driver = mock.MagicMock()
         env._game_canvas = mock.MagicMock()
         env._canvas_size = (1280, 1024)
-
-        # The lazy import reads from sys.modules["selenium...action_chains"]
-        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
-        mock_chains_instance = mock.MagicMock()
-        mock_chains_instance.move_to_element_with_offset.return_value = (
-            mock_chains_instance
-        )
-        mock_ac_module.ActionChains.return_value = mock_chains_instance
+        env._canvas_rect = (0, 0)
 
         env.apply_action(_action(0.5))
 
-        mock_ac_module.ActionChains.assert_called_with(env._driver)
-        mock_chains_instance.move_to_element_with_offset.assert_called_once()
-        mock_chains_instance.perform.assert_called_once()
+        env._driver.execute_script.assert_called_once()
+        args = env._driver.execute_script.call_args[0]
+        assert "mousemove" in args[0]
+        assert args[1] == "game"  # canvas selector
 
     def test_headless_apply_action_maps_position(self):
-        """apply_action should map [-1,1] to pixel offsets from centre."""
+        """apply_action should map [-1,1] to clientX in viewport coords."""
         env = Breakout71Env(headless=True)
         env._driver = mock.MagicMock()
         env._game_canvas = mock.MagicMock()
         env._canvas_size = (1000, 800)
-
-        mock_ac_module = sys.modules["selenium.webdriver.common.action_chains"]
-        mock_chains_instance = mock.MagicMock()
-        mock_chains_instance.move_to_element_with_offset.return_value = (
-            mock_chains_instance
-        )
-        mock_ac_module.ActionChains.return_value = mock_chains_instance
+        env._canvas_rect = (0, 0)
 
         env.apply_action(_action(-1.0))
 
-        # x_offset should be -1.0 * (1000/2) = -500
-        args, kwargs = mock_chains_instance.move_to_element_with_offset.call_args
-        assert args[0] is env._game_canvas
-        assert args[1] == -500  # x_offset
-        assert args[2] == int(800 * 0.4)  # y_offset
+        args = env._driver.execute_script.call_args[0]
+        # clientX = 0 + (-1 + 1) / 2 * 1000 = 0
+        assert args[2] == 0.0  # clientX (left edge)
+        # clientY = 0 + 0.9 * 800 = 720
+        assert args[3] == 720.0  # clientY
 
     def test_headless_apply_action_no_driver(self):
         """apply_action in headless mode should do nothing without driver."""

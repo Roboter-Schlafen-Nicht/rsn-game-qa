@@ -193,23 +193,48 @@ def get_available_browsers() -> list[str]:
     """
     _BROWSER_PATHS: dict[str, list[str]] = {
         "chrome": [
+            # Windows
             r"C:\Program Files\Google\Chrome\Application\chrome.exe",
             r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            # Linux
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
         ],
         "edge": [
+            # Windows
             r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
             r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            # Linux
+            "/usr/bin/microsoft-edge",
+            "/usr/bin/microsoft-edge-stable",
         ],
         "firefox": [
+            # Windows
             r"C:\Program Files\Mozilla Firefox\firefox.exe",
+            # Linux
+            "/usr/bin/firefox",
         ],
     }
     available: list[str] = []
     for name in _SUPPORTED_BROWSERS:
+        # Check known paths first
         for p in _BROWSER_PATHS.get(name, []):
             if Path(p).is_file():
                 available.append(name)
                 break
+        else:
+            # Fall back to shutil.which() for PATH-based detection
+            import shutil
+
+            cmd = {
+                "chrome": "google-chrome",
+                "edge": "microsoft-edge",
+                "firefox": "firefox",
+            }.get(name, name)
+            if shutil.which(cmd):
+                available.append(name)
     return available
 
 
@@ -292,6 +317,8 @@ class BrowserInstance:
             if headless:
                 opts.add_argument("--headless=new")
                 opts.add_argument("--disable-gpu")
+                opts.add_argument("--no-sandbox")
+                opts.add_argument("--disable-dev-shm-usage")
             self._driver = webdriver.Chrome(options=opts)
 
         elif self.name == "edge":

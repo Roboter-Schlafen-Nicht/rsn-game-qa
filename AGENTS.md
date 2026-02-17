@@ -30,7 +30,6 @@ RL-driven autonomous game testing platform. First target: **Breakout 71**
 - Commit messages: imperative mood with type prefix (`feat:`, `fix:`, `ci:`,
   `docs:`)
 - Delete feature branches after merging
-- Update README test count after adding tests
 
 ## TDD Convention
 
@@ -53,7 +52,7 @@ module where the behavioral contract matters more than implementation.
 
 ## Current State
 
-- **703 tests**, 96% coverage, 8 subsystems complete
+- **Tests pass**, 96% coverage, 8 subsystems complete
 - **Architecture done:** BaseGameEnv ABC, game plugin system (`games/`),
   `--game` flag, CNN/MLP observation modes, dynamic plugin loading
 - **No real training results yet** — Phase 1 in roadmap
@@ -115,7 +114,7 @@ configs/
   games/          # Per-game loader configs
   training/       # Per-game YOLO training configs
 scripts/          # CLI tools (train_rl, run_session, capture, debug, etc.)
-tests/            # 703 tests (679 unit + 24 integration)
+tests/            # Unit + integration tests
 documentation/
   specs/          # Canonical specifications
   ROADMAP.md      # 5-phase plan

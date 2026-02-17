@@ -192,6 +192,9 @@ class SessionRunner:
         When None (default), uses random sampling via
         ``env.action_space.sample()``.  Pass a trained model's predict
         function to evaluate a learned policy.
+    headless : bool
+        If True, launch the browser in headless mode and use
+        Selenium-based frame capture instead of Win32 APIs.
     """
 
     def __init__(
@@ -206,6 +209,7 @@ class SessionRunner:
         frame_capture_interval: int = 30,
         enable_data_collection: bool = True,
         policy_fn: Callable[[Any], Any] | None = None,
+        headless: bool = False,
     ) -> None:
         self.game = game
         self.n_episodes = n_episodes
@@ -215,6 +219,7 @@ class SessionRunner:
         self.frame_capture_interval = frame_capture_interval
         self.enable_data_collection = enable_data_collection
         self.policy_fn = policy_fn
+        self.headless = headless
 
         # Load plugin to resolve defaults
         from games import load_game_plugin
@@ -315,6 +320,7 @@ class SessionRunner:
             settle_seconds=8.0,
             window_size=window_size,
             browser=self.browser,
+            headless=self.headless,
         )
 
         # Create oracles
@@ -329,6 +335,7 @@ class SessionRunner:
             max_steps=self.max_steps_per_episode,
             oracles=oracles,
             driver=self._browser_instance.driver,
+            headless=self.headless,
         )
 
         # Create frame collector

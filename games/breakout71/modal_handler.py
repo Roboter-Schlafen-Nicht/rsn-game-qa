@@ -1,8 +1,9 @@
-"""JavaScript snippets for Breakout 71 DOM modal handling.
+"""JavaScript snippets for Breakout 71 DOM interaction.
 
 Single source of truth for the JS code injected via Selenium
 ``execute_script()`` to detect and dismiss game modals (game-over,
-perk picker, menu).  All scripts and the environment import from here.
+perk picker, menu) and to dispatch input events.  All scripts and
+the environment import from here.
 
 These are the *only* JS injection points in the platform -- all
 observation and control is otherwise pixel-based.
@@ -136,5 +137,27 @@ return (function() {
     document.dispatchEvent(
         new KeyboardEvent('keydown', {key: 'Escape', code: 'Escape'}));
     return {action: "escape_key"};
+})();
+"""
+
+# ---------------------------------------------------------------------------
+# Input -- dispatch mousemove event via JS (avoids ActionChains HTTP
+# round-trip which costs ~270ms per call)
+# ---------------------------------------------------------------------------
+
+MOVE_MOUSE_JS = """
+return (function() {
+    var canvas = document.getElementById(arguments[0]);
+    if (!canvas) return {ok: false, error: "canvas not found"};
+    var clientX = arguments[1];
+    var clientY = arguments[2];
+    var evt = new MouseEvent('mousemove', {
+        clientX: clientX,
+        clientY: clientY,
+        bubbles: true,
+        cancelable: true
+    });
+    canvas.dispatchEvent(evt);
+    return {ok: true};
 })();
 """

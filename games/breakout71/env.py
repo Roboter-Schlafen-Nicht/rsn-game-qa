@@ -59,6 +59,7 @@ from games.breakout71.modal_handler import (
     DETECT_STATE_JS,
     DISMISS_GAME_OVER_JS,
     DISMISS_MENU_JS,
+    MOVE_MOUSE_JS,
 )
 from src.platform.base_env import BaseGameEnv
 
@@ -171,6 +172,9 @@ class Breakout71Env(BaseGameEnv):
         self._bricks_total: int | None = None  # set on first reset
         self._prev_bricks_norm: float = 1.0
 
+        # Canvas bounding rect (left, top) for JS mousemove dispatch
+        self._canvas_rect: tuple[float, float] | None = None
+
         # Termination counters
         self._no_ball_count: int = 0
         self._no_bricks_count: int = 0
@@ -178,6 +182,36 @@ class Breakout71Env(BaseGameEnv):
     # ------------------------------------------------------------------
     # Abstract method implementations
     # ------------------------------------------------------------------
+
+    def on_lazy_init(self) -> None:
+        """Cache the canvas bounding rect for JS mousemove dispatch."""
+        self._update_canvas_rect()
+
+    def _update_canvas_rect(self) -> None:
+        """Query the canvas bounding rect from the DOM.
+
+        Caches ``(left, top)`` in viewport coordinates for use by
+        ``apply_action()``.  Falls back to ``(0, 0)`` on error.
+        """
+        if self._driver is None:
+            return
+        try:
+            rect = self._driver.execute_script(
+                "var c = document.getElementById(arguments[0]);"
+                "if (!c) return null;"
+                "var r = c.getBoundingClientRect();"
+                "return {left: r.left, top: r.top};",
+                self.canvas_selector(),
+            )
+            if rect is not None:
+                self._canvas_rect = (rect["left"], rect["top"])
+                logger.info(
+                    "Canvas rect: left=%.1f, top=%.1f",
+                    self._canvas_rect[0],
+                    self._canvas_rect[1],
+                )
+        except Exception as exc:
+            logger.debug("Failed to get canvas rect: %s", exc)
 
     def game_classes(self) -> list[str]:
         """Return Breakout 71 YOLO class names.
@@ -364,15 +398,16 @@ class Breakout71Env(BaseGameEnv):
         return terminated, level_cleared
 
     def apply_action(self, action: "np.ndarray") -> None:
-        """Send the chosen action to the game via Selenium ActionChains.
+        """Send the chosen action to the game via JavaScript mousemove.
 
-        Maps the continuous ``[-1, 1]`` action to a pixel offset from
-        the canvas centre and moves the mouse there using
-        ``ActionChains.move_to_element_with_offset()``.  The Y position
-        is fixed at 90% of canvas height (relative to centre).
+        Dispatches a synthetic ``mousemove`` event on the game canvas
+        with the correct ``clientX`` value.  The game reads
+        ``e.clientX`` directly from mousemove events to set the paddle
+        position.
 
-        This method is used in both native and headless modes — all
-        input goes through Selenium to avoid OS-level mouse events.
+        This uses ``driver.execute_script()`` (~5 ms) instead of
+        Selenium ``ActionChains`` (~270 ms) for a ~50× speedup on the
+        action dispatch path.
 
         Parameters
         ----------
@@ -395,20 +430,27 @@ class Breakout71Env(BaseGameEnv):
         value = float(np.clip(action[0], -1.0, 1.0))
         canvas_w, canvas_h = self._canvas_size
 
-        # Selenium 4's move_to_element_with_offset uses the element's
-        # CENTRE as origin (changed from top-left in Selenium 3).
-        # x_offset from centre: value * half-width
-        x_offset = int(value * (canvas_w / 2))
-
-        # y_offset from centre: 90% of height → 0.4 * height from centre
-        y_offset = int(canvas_h * 0.4)
+        # Convert [-1, 1] to clientX in viewport coordinates.
+        # The canvas left edge is at _canvas_rect.left; we need the
+        # absolute viewport pixel.  Use the cached rect or fall back
+        # to element-centre-based offset.
+        if self._canvas_rect is not None:
+            # clientX = rect.left + (value + 1) / 2 * rect.width
+            client_x = self._canvas_rect[0] + (value + 1.0) / 2.0 * canvas_w
+            # clientY at 90% of canvas height
+            client_y = self._canvas_rect[1] + 0.9 * canvas_h
+        else:
+            # Fallback: assume canvas starts at (0, 0)
+            client_x = (value + 1.0) / 2.0 * canvas_w
+            client_y = 0.9 * canvas_h
 
         try:
-            from selenium.webdriver.common.action_chains import ActionChains
-
-            ActionChains(self._driver).move_to_element_with_offset(
-                self._game_canvas, x_offset, y_offset
-            ).perform()
+            self._driver.execute_script(
+                MOVE_MOUSE_JS,
+                self.canvas_selector(),
+                client_x,
+                client_y,
+            )
         except Exception as exc:
             logger.debug("Action failed: %s", exc)
 
