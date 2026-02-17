@@ -100,8 +100,19 @@ return (function() {
 
 DISMISS_GAME_OVER_JS = """
 return (function() {
+    // Prefer window.restart() (our automation hook) which correctly
+    // re-assigns window.gameState to the module-scoped object.
+    // Clicking the DOM restart button triggers the internal restart()
+    // which leaves window.gameState pointing at a stale temporary.
+    if (typeof window.restart === 'function') {
+        // Close modal first so the DOM is clean
+        var closeBtn = document.getElementById('close-modale');
+        if (closeBtn) closeBtn.click();
+        window.restart({});
+        return {action: "window_restart", text: ""};
+    }
+    // Fallback: click DOM restart button (original behavior)
     var popup = document.getElementById('popup');
-    var closeBtn = document.getElementById('close-modale');
     if (popup) {
         var buttons = popup.querySelectorAll('button');
         for (var i = 0; i < buttons.length; i++) {
@@ -115,8 +126,9 @@ return (function() {
             }
         }
     }
-    if (closeBtn) {
-        closeBtn.click();
+    var closeBtnFallback = document.getElementById('close-modale');
+    if (closeBtnFallback) {
+        closeBtnFallback.click();
         return {action: "close_button", text: ""};
     }
     return {action: "none", text: ""};
