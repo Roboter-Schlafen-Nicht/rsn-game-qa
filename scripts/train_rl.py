@@ -246,6 +246,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Number of frames to stack for CNN policy (default: 4)",
     )
 
+    # -- Resume from checkpoint --------------------------------------------
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Resume training from a saved model/checkpoint (.zip).  "
+            "Loads the model weights and optimizer state.  The --timesteps "
+            "value is the TOTAL target (not additional), so set it to the "
+            "original target (e.g. 200000) to complete a partial run."
+        ),
+    )
+
     # -- PPO hyperparameters -----------------------------------------------
     parser.add_argument("--n-steps", type=int, default=2048, help="PPO n_steps")
     parser.add_argument("--batch-size", type=int, default=64, help="PPO batch_size")
@@ -967,26 +981,47 @@ def main(argv: list[str] | None = None) -> int:
                     args.device,
                 )
 
-        model = PPO(
-            sb3_policy,
-            train_env,
-            n_steps=args.n_steps,
-            batch_size=args.batch_size,
-            n_epochs=args.n_epochs,
-            gamma=args.gamma,
-            learning_rate=args.lr,
-            clip_range=args.clip_range,
-            ent_coef=args.ent_coef,
-            device=sb3_device,
-            verbose=1,
-        )
+        if args.resume:
+            resume_path = Path(args.resume)
+            if not resume_path.exists():
+                # Try appending .zip if not present
+                if resume_path.with_suffix(".zip").exists():
+                    resume_path = resume_path.with_suffix(".zip")
+                else:
+                    logger.error("Resume path not found: %s", resume_path)
+                    return 1
+            logger.info("Resuming training from checkpoint: %s", resume_path)
+            model = PPO.load(
+                str(resume_path),
+                env=train_env,
+                device=sb3_device,
+            )
+            logger.info(
+                "Loaded model: %d timesteps completed previously",
+                model.num_timesteps,
+            )
+        else:
+            model = PPO(
+                sb3_policy,
+                train_env,
+                n_steps=args.n_steps,
+                batch_size=args.batch_size,
+                n_epochs=args.n_epochs,
+                gamma=args.gamma,
+                learning_rate=args.lr,
+                clip_range=args.clip_range,
+                ent_coef=args.ent_coef,
+                device=sb3_device,
+                verbose=1,
+            )
 
         logger.info(
-            "Starting PPO training: %d timesteps, policy=%s, device=%s (sb3=%s)",
+            "Starting PPO training: %d timesteps, policy=%s, device=%s (sb3=%s)%s",
             args.timesteps,
             sb3_policy,
             args.device,
             sb3_device,
+            f", resumed from {args.resume}" if args.resume else "",
         )
         train_start = time.perf_counter()
         train_elapsed = 0.0
@@ -1000,6 +1035,7 @@ def main(argv: list[str] | None = None) -> int:
                 total_timesteps=args.timesteps,
                 callback=callback,
                 progress_bar=True,
+                reset_num_timesteps=not bool(args.resume),
             )
         except KeyboardInterrupt:
             interrupted = True

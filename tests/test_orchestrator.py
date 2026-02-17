@@ -792,6 +792,20 @@ class TestTrainRLCLI:
         assert args.ent_coef == 0.05
         assert args.device == "cuda"
 
+    def test_resume_default_none(self):
+        """--resume defaults to None."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args([])
+        assert args.resume is None
+
+    def test_resume_custom_path(self):
+        """--resume accepts a path string."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args(["--resume", "output/checkpoints/ppo_breakout71_50000.zip"])
+        assert args.resume == "output/checkpoints/ppo_breakout71_50000.zip"
+
 
 # ===========================================================================
 # FrameCollectionCallback Tests
