@@ -551,6 +551,18 @@ class TestGameOverDetector:
         assert freeze.name in sc
         assert isinstance(sc[freeze.name], float)
 
+    def test_get_confidence_returns_same_as_strategy_confidences(self):
+        """get_confidence() returns the same dict as strategy_confidences."""
+        from src.platform.game_over_detector import (
+            GameOverDetector,
+            ScreenFreezeStrategy,
+        )
+
+        freeze = ScreenFreezeStrategy()
+        detector = GameOverDetector(strategies=[freeze])
+        detector.update(_make_frame())
+        assert detector.get_confidence() == detector.strategy_confidences
+
     def test_weights_normalized_when_not_summing_to_one(self):
         """Weights are auto-normalized if they don't sum to 1.0."""
         from src.platform.game_over_detector import (
