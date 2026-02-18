@@ -1073,6 +1073,23 @@ class TestGameOverDetectorStepIntegration:
         assert reward == env._SURVIVAL_TERMINAL_REWARD
 
     @mock.patch("src.platform.base_env.time")
+    def test_step_applies_terminal_reward_on_detector_game_over_yolo_mode(
+        self, mock_time
+    ):
+        """When detector signals game-over in yolo mode, reward uses terminal_reward()."""
+        detector = mock.MagicMock()
+        detector.update.return_value = True
+        detector.get_confidence.return_value = {"screen_freeze": 0.9}
+        env = _make_ready_env(game_over_detector=detector)
+        assert env.reward_mode == "yolo"
+
+        obs, reward, terminated, truncated, info = env.step(_action())
+
+        assert terminated is True
+        assert reward == env.terminal_reward()
+        assert "game_over_detector" in info
+
+    @mock.patch("src.platform.base_env.time")
     def test_step_without_detector_behaves_normally(self, mock_time):
         """When no detector is provided, step() works as before."""
         env = _make_ready_env()  # no game_over_detector

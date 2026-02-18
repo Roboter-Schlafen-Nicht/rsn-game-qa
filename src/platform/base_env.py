@@ -369,7 +369,9 @@ class BaseGameEnv(gym.Env, abc.ABC):
         return reward
 
     _SURVIVAL_TERMINAL_REWARD: float = -5.0 - 0.01
-    """Terminal penalty for survival mode (game-over via modal)."""
+    """Terminal penalty for survival mode when a forced termination is
+    detected (modal-based game-over, pixel-based detector, or late
+    game-over via ball disappearance)."""
 
     # ------------------------------------------------------------------
     # Gymnasium lifecycle — generic implementation
@@ -461,6 +463,46 @@ class BaseGameEnv(gym.Env, abc.ABC):
 
         return obs, info
 
+    def _make_terminal_transition(
+        self,
+        obs: np.ndarray,
+        detections: dict[str, Any],
+        *,
+        extra_info: dict[str, Any] | None = None,
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        """Build the 5-tuple for a forced (non-gameplay) termination.
+
+        Shared by modal game-over, pixel-based detector, and late
+        game-over paths to avoid code duplication.
+
+        Parameters
+        ----------
+        obs : np.ndarray
+            Current observation.
+        detections : dict[str, Any]
+            Current YOLO detections.
+        extra_info : dict[str, Any], optional
+            Additional keys to merge into the ``info`` dict (e.g.
+            ``game_over_detector`` confidence).
+
+        Returns
+        -------
+        tuple
+            ``(obs, reward, terminated=True, truncated, info)``
+        """
+        self._step_count += 1
+        truncated = self._step_count >= self.max_steps
+        if self.reward_mode == "survival":
+            reward = self._SURVIVAL_TERMINAL_REWARD
+        else:
+            reward = self.terminal_reward()
+        info = self._make_info(detections)
+        if extra_info is not None:
+            info.update(extra_info)
+        findings = self._run_oracles(obs, reward, True, truncated, info)
+        info["oracle_findings"] = findings
+        return obs, reward, True, truncated, info
+
     def step(
         self, action: np.ndarray
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
@@ -496,16 +538,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
             frame = self._capture_frame()
             detections = self._detect_objects(frame)
             obs = self.build_observation(detections)
-            self._step_count += 1
-            truncated = self._step_count >= self.max_steps
-            if self.reward_mode == "survival":
-                reward = self._SURVIVAL_TERMINAL_REWARD
-            else:
-                reward = self.terminal_reward()
-            info = self._make_info(detections)
-            findings = self._run_oracles(obs, reward, True, truncated, info)
-            info["oracle_findings"] = findings
-            return obs, reward, True, truncated, info
+            return self._make_terminal_transition(obs, detections)
 
         # Handle non-terminal modals (perk picker, menu)
         if mid_state in ("perk_picker", "menu"):
@@ -525,32 +558,21 @@ class BaseGameEnv(gym.Env, abc.ABC):
         if self._game_over_detector is not None:
             detector_fired = self._game_over_detector.update(frame)
             if detector_fired:
-                self._step_count += 1
-                truncated = self._step_count >= self.max_steps
-                if self.reward_mode == "survival":
-                    reward = self._SURVIVAL_TERMINAL_REWARD
-                else:
-                    reward = self.terminal_reward()
-                info = self._make_info(detections)
-                info["game_over_detector"] = self._game_over_detector.get_confidence()
-                findings = self._run_oracles(obs, reward, True, truncated, info)
-                info["oracle_findings"] = findings
-                return obs, reward, True, truncated, info
+                return self._make_terminal_transition(
+                    obs,
+                    detections,
+                    extra_info={
+                        "game_over_detector": (
+                            self._game_over_detector.get_confidence()
+                        ),
+                    },
+                )
 
         # Let subclass check for late game-over (e.g. ball just
         # disappeared → immediate modal check)
         late_game_over = self._check_late_game_over(detections)
         if late_game_over:
-            self._step_count += 1
-            truncated = self._step_count >= self.max_steps
-            if self.reward_mode == "survival":
-                reward = self._SURVIVAL_TERMINAL_REWARD
-            else:
-                reward = self.terminal_reward()
-            info = self._make_info(detections)
-            findings = self._run_oracles(obs, reward, True, truncated, info)
-            info["oracle_findings"] = findings
-            return obs, reward, True, truncated, info
+            return self._make_terminal_transition(obs, detections)
 
         # Increment step counter
         self._step_count += 1
