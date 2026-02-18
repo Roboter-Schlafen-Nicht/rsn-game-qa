@@ -38,8 +38,16 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-import torch
-import torch.nn as nn
+
+try:
+    import torch
+    import torch.nn as nn
+except ImportError:  # pragma: no cover
+    # Allow ``import src.platform`` without torch installed (CI/docs).
+    # Actual RND usage raises a clear error at construction time.
+    torch = None  # type: ignore[assignment]
+    nn = None  # type: ignore[assignment]
+
 from stable_baselines3.common.vec_env import VecEnv, VecEnvWrapper
 
 
@@ -286,14 +294,19 @@ class RNDRewardWrapper(VecEnvWrapper):
         self.int_coeff = int_coeff
         self.ext_coeff = ext_coeff
         self.embedding_dim = embedding_dim
+        if not (0.0 < update_proportion <= 1.0):
+            raise ValueError(
+                f"update_proportion must be in (0.0, 1.0], got {update_proportion}"
+            )
         self.update_proportion = update_proportion
         self.device = torch.device(device)
 
         # Infer observation shape from the VecEnv
         obs_shape = venv.observation_space.shape
-        assert obs_shape is not None and len(obs_shape) == 3, (
-            f"RNDRewardWrapper requires 3D (CHW) observations, got {obs_shape}"
-        )
+        if obs_shape is None or len(obs_shape) != 3:
+            raise ValueError(
+                f"RNDRewardWrapper requires 3D (CHW) observations, got {obs_shape}"
+            )
 
         # Build networks
         self.target_network = RNDTargetNetwork(
@@ -349,8 +362,19 @@ class RNDRewardWrapper(VecEnvWrapper):
         obs_for_rms = obs.mean(axis=1)  # (n_envs, H, W) — average over channels
         self.obs_rms.update(obs_for_rms)
 
-        # Compute intrinsic reward
-        intrinsic_reward = self._compute_intrinsic_reward(obs)
+        # Normalise observations once for both reward computation and training
+        obs_tensor = self._normalise_obs(obs)
+
+        # Compute target embeddings (shared across reward and update)
+        with torch.no_grad():
+            target_embed = self.target_network(obs_tensor)
+
+        # Compute intrinsic reward using detached predictor output
+        with torch.no_grad():
+            predicted_embed_reward = self.predictor_network(obs_tensor)
+        intrinsic_reward = (
+            ((target_embed - predicted_embed_reward) ** 2).mean(dim=1).cpu().numpy()
+        )
 
         # Normalise intrinsic reward using non-episodic discounted return
         self._int_return = self._int_return * self._gamma_int + intrinsic_reward
@@ -363,8 +387,8 @@ class RNDRewardWrapper(VecEnvWrapper):
             self.ext_coeff * extrinsic_reward + self.int_coeff * normalised_intrinsic
         )
 
-        # Update predictor network
-        self._update_predictor(obs)
+        # Update predictor network (subsample, single forward pass)
+        self._update_predictor_with_targets(obs_tensor, target_embed)
 
         # Store raw intrinsic reward in info for logging
         for i, info in enumerate(infos):
@@ -386,14 +410,14 @@ class RNDRewardWrapper(VecEnvWrapper):
         torch.Tensor
             Normalised observations on ``self.device``.
         """
-        obs = obs.astype(np.float32)
+        obs = obs.astype(np.float32, copy=False)
         # Normalise per pixel: subtract mean, divide by std
         # obs_rms tracks (H, W); broadcast over (batch, C, H, W)
         mean = self.obs_rms.mean.astype(np.float32)
         std = np.sqrt(self.obs_rms.var + 1e-8).astype(np.float32)
         normalised = (obs - mean) / std
         normalised = np.clip(normalised, -5.0, 5.0)
-        return torch.tensor(normalised, dtype=torch.float32, device=self.device)
+        return torch.from_numpy(normalised).to(self.device)
 
     @torch.no_grad()
     def _compute_intrinsic_reward(self, obs: np.ndarray) -> np.ndarray:
@@ -440,6 +464,38 @@ class RNDRewardWrapper(VecEnvWrapper):
 
         predicted_embed = self.predictor_network(obs_tensor)
         loss = ((target_embed - predicted_embed) ** 2).mean()
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+    def _update_predictor_with_targets(
+        self,
+        obs_tensor: torch.Tensor,
+        target_embed: torch.Tensor,
+    ) -> None:
+        """Train the predictor using pre-computed normalised obs and targets.
+
+        Avoids redundant forward passes when called from ``step_wait()``,
+        which already computed target embeddings for the intrinsic reward.
+
+        Parameters
+        ----------
+        obs_tensor : torch.Tensor
+            Already-normalised observations on ``self.device``.
+        target_embed : torch.Tensor
+            Pre-computed target embeddings (detached).
+        """
+        n = obs_tensor.shape[0]
+        n_update = max(1, int(n * self.update_proportion))
+
+        # Random subsample
+        indices = np.random.choice(n, size=n_update, replace=False)
+        obs_batch = obs_tensor[indices]
+        target_batch = target_embed[indices]
+
+        predicted_embed = self.predictor_network(obs_batch)
+        loss = ((target_batch - predicted_embed) ** 2).mean()
 
         self.optimizer.zero_grad()
         loss.backward()

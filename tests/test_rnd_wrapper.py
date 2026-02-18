@@ -31,7 +31,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv  # noqa: E402
 # Helper: simple image env for testing
 # ---------------------------------------------------------------------------
 class _DummyImageEnv(gym.Env):
-    """Minimal gym env that returns 84x84x1 uint8 observations."""
+    """Minimal gym env that returns CHW float32 observations (default 1x84x84)."""
 
     def __init__(self, obs_shape: tuple[int, ...] = (1, 84, 84)):
         super().__init__()
@@ -448,6 +448,32 @@ class TestRNDRewardWrapper:
         venv = _make_vec_env(n_envs=4)
         wrapper = RNDRewardWrapper(venv, update_proportion=0.5)
         assert wrapper.update_proportion == 0.5
+
+    def test_update_proportion_rejects_zero(self, RNDRewardWrapper):
+        """update_proportion <= 0 raises ValueError."""
+        venv = _make_vec_env()
+        with pytest.raises(ValueError, match="update_proportion"):
+            RNDRewardWrapper(venv, update_proportion=0.0)
+
+    def test_update_proportion_rejects_negative(self, RNDRewardWrapper):
+        """update_proportion < 0 raises ValueError."""
+        venv = _make_vec_env()
+        with pytest.raises(ValueError, match="update_proportion"):
+            RNDRewardWrapper(venv, update_proportion=-0.5)
+
+    def test_update_proportion_rejects_above_one(self, RNDRewardWrapper):
+        """update_proportion > 1.0 raises ValueError."""
+        venv = _make_vec_env()
+        with pytest.raises(ValueError, match="update_proportion"):
+            RNDRewardWrapper(venv, update_proportion=1.5)
+
+    def test_rejects_non_3d_observations(self, RNDRewardWrapper):
+        """Non-3D observation space raises ValueError (not assert)."""
+        # Create a 1D observation env
+        env = gym.make("CartPole-v1")
+        venv = DummyVecEnv([lambda: env])
+        with pytest.raises(ValueError, match="3D.*CHW"):
+            RNDRewardWrapper(venv)
 
     def test_close_delegates(self, RNDRewardWrapper):
         """close() delegates to wrapped environment."""

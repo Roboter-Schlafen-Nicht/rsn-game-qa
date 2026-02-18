@@ -254,8 +254,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["yolo", "survival", "rnd"],
         help=(
             "Reward signal strategy.  'yolo' uses YOLO-based brick/score "
-            "deltas (noisy).  'survival' uses +0.01 per step, -5.0 on game "
-            "over, +5.0 on level clear (clean gradient).  'rnd' uses survival "
+            "deltas (noisy).  'survival' uses +0.01 per step, -5.01 on game "
+            "over (modal-based terminal penalty).  'rnd' uses survival "
             "reward + RND intrinsic novelty bonus for exploration-driven QA.  "
             "Default: survival."
         ),
@@ -930,7 +930,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.reward_mode == "rnd":
                 from src.platform.rnd_wrapper import RNDRewardWrapper
 
-                vec_env = RNDRewardWrapper(vec_env, device="cpu")
+                vec_env = RNDRewardWrapper(vec_env, device=args.device)
                 logger.info(
                     "CNN pipeline: CnnObservationWrapper → DummyVecEnv → "
                     "VecFrameStack(%d) → VecTransposeImage → RNDRewardWrapper",
