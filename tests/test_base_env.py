@@ -1012,3 +1012,176 @@ class TestSurvivalResetDetections:
         assert obs is not None
         # Should have tried 2 times (found valid on 2nd attempt)
         assert env._detector.detect_to_game_state.call_count == 2
+
+
+# ===========================================================================
+# GameOverDetector integration with step() and reset()
+# ===========================================================================
+
+
+class TestGameOverDetectorStepIntegration:
+    """GameOverDetector.update() is called in step() and terminates when triggered."""
+
+    @mock.patch("src.platform.base_env.time")
+    def test_step_calls_detector_update_with_captured_frame(self, mock_time):
+        """step() calls game_over_detector.update(frame) after frame capture."""
+        detector = mock.MagicMock()
+        detector.update.return_value = False
+        env = _make_ready_env(game_over_detector=detector)
+
+        env.step(_action())
+
+        detector.update.assert_called_once()
+        # The argument should be a numpy array (the captured frame)
+        call_args = detector.update.call_args
+        assert isinstance(call_args[0][0], np.ndarray)
+
+    @mock.patch("src.platform.base_env.time")
+    def test_step_terminates_when_detector_signals_game_over(self, mock_time):
+        """step() returns terminated=True when detector.update() returns True."""
+        detector = mock.MagicMock()
+        detector.update.return_value = True
+        detector.get_confidence.return_value = {"screen_freeze": 0.9}
+        env = _make_ready_env(game_over_detector=detector)
+
+        obs, reward, terminated, truncated, info = env.step(_action())
+
+        assert terminated is True
+
+    @mock.patch("src.platform.base_env.time")
+    def test_step_does_not_terminate_when_detector_returns_false(self, mock_time):
+        """step() returns terminated=False when detector.update() returns False."""
+        detector = mock.MagicMock()
+        detector.update.return_value = False
+        env = _make_ready_env(game_over_detector=detector)
+
+        obs, reward, terminated, truncated, info = env.step(_action())
+
+        assert terminated is False
+
+    @mock.patch("src.platform.base_env.time")
+    def test_step_applies_terminal_reward_on_detector_game_over(self, mock_time):
+        """When detector signals game-over, reward uses terminal penalty."""
+        detector = mock.MagicMock()
+        detector.update.return_value = True
+        detector.get_confidence.return_value = {"screen_freeze": 0.9}
+        env = _make_ready_env(reward_mode="survival", game_over_detector=detector)
+
+        obs, reward, terminated, truncated, info = env.step(_action())
+
+        assert terminated is True
+        assert reward == env._SURVIVAL_TERMINAL_REWARD
+
+    @mock.patch("src.platform.base_env.time")
+    def test_step_applies_terminal_reward_on_detector_game_over_yolo_mode(
+        self, mock_time
+    ):
+        """When detector signals game-over in yolo mode, reward uses terminal_reward()."""
+        detector = mock.MagicMock()
+        detector.update.return_value = True
+        detector.get_confidence.return_value = {"screen_freeze": 0.9}
+        env = _make_ready_env(game_over_detector=detector)
+        assert env.reward_mode == "yolo"
+
+        obs, reward, terminated, truncated, info = env.step(_action())
+
+        assert terminated is True
+        assert reward == env.terminal_reward()
+        assert "game_over_detector" in info
+
+    @mock.patch("src.platform.base_env.time")
+    def test_step_without_detector_behaves_normally(self, mock_time):
+        """When no detector is provided, step() works as before."""
+        env = _make_ready_env()  # no game_over_detector
+        assert env._game_over_detector is None
+
+        obs, reward, terminated, truncated, info = env.step(_action())
+
+        assert terminated is False
+        assert isinstance(obs, np.ndarray)
+
+    @mock.patch("src.platform.base_env.time")
+    def test_step_detector_info_includes_confidence(self, mock_time):
+        """When detector signals game-over, info includes detector confidence."""
+        detector = mock.MagicMock()
+        detector.update.return_value = True
+        detector.get_confidence.return_value = {"screen_freeze": 0.95}
+        env = _make_ready_env(game_over_detector=detector)
+
+        obs, reward, terminated, truncated, info = env.step(_action())
+
+        assert "game_over_detector" in info
+        assert info["game_over_detector"]["screen_freeze"] == 0.95
+
+    @mock.patch("src.platform.base_env.time")
+    def test_step_detector_checked_after_modal_game_over_skipped(self, mock_time):
+        """When modal says game_over, detector is not also called (modal takes priority)."""
+        detector = mock.MagicMock()
+        detector.update.return_value = False
+        env = _make_ready_env(game_over_detector=detector)
+
+        with mock.patch.object(env, "handle_modals", return_value="game_over"):
+            with mock.patch.object(env, "_should_check_modals", return_value=True):
+                obs, reward, terminated, truncated, info = env.step(_action())
+
+        # Modal-based game-over takes priority — returns early
+        assert terminated is True
+        # Detector should NOT be called because modal returned early
+        detector.update.assert_not_called()
+
+    @mock.patch("src.platform.base_env.time")
+    def test_step_runs_oracles_on_detector_termination(self, mock_time):
+        """Oracles run when detector signals game-over."""
+        detector = mock.MagicMock()
+        detector.update.return_value = True
+        detector.get_confidence.return_value = {}
+        oracle = mock.MagicMock()
+        oracle.on_step.return_value = []
+        env = _make_ready_env(game_over_detector=detector)
+        env._oracles = [oracle]
+
+        env.step(_action())
+
+        oracle.on_step.assert_called_once()
+
+
+class TestGameOverDetectorResetIntegration:
+    """GameOverDetector.reset() is called during reset()."""
+
+    @mock.patch("src.platform.base_env.time")
+    def test_reset_calls_detector_reset(self, mock_time):
+        """reset() calls game_over_detector.reset() to clear per-episode state."""
+        detector = mock.MagicMock()
+        env = _make_ready_env(game_over_detector=detector)
+
+        env.reset()
+
+        detector.reset.assert_called_once()
+
+    @mock.patch("src.platform.base_env.time")
+    def test_reset_without_detector_works(self, mock_time):
+        """reset() works fine when no detector is configured."""
+        env = _make_ready_env()  # no game_over_detector
+        assert env._game_over_detector is None
+
+        obs, info = env.reset()
+        assert obs is not None
+
+    @mock.patch("src.platform.base_env.time")
+    def test_reset_clears_detector_before_first_step(self, mock_time):
+        """After reset, detector state is clean for the new episode."""
+        detector = mock.MagicMock()
+        detector.update.return_value = False
+        env = _make_ready_env(game_over_detector=detector)
+
+        # First episode
+        for _ in range(5):
+            env.step(_action())
+
+        # Reset
+        env.reset()
+
+        # detector.reset() should have been called once
+        detector.reset.assert_called_once()
+        # update calls from the 5 steps should be 5
+        assert detector.update.call_count == 5
