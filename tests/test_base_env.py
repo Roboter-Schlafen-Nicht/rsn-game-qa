@@ -635,7 +635,7 @@ class TestHeadlessCapture:
             ]
         )
 
-        # canvas_selector returns None so we skip toDataURL
+        # canvas toDataURL fails (unmocked execute_script) so we fall back to screenshot
         # First screenshot raises, second (after dismiss) succeeds
         fake_img = np.zeros((100, 100, 3), dtype=np.uint8)
         _, png_bytes = cv2.imencode(".png", fake_img)
