@@ -1,238 +1,119 @@
-# RSN Game QA — Agent Instructions
+# RSN Game QA -- Agent Instructions
 
 RL-driven autonomous game testing platform. First target: **Breakout 71**
 (browser-based TypeScript canvas game; local clone configured via
 `$BREAKOUT71_DIR` or `configs/games/breakout-71.yaml`).
 
-## Role & Workflow
+## Role
 
-- **Agent leads the project** — execute, don't ask for permission. Read
-  `documentation/ROADMAP.md` for the current phase, pick the next task,
-  do it.
-- Work on feature branches from `main` (pattern: `feature/...`, `docs/...`)
-- Implement -> commit -> push -> create PR -> **Copilot reviews automatically**
-  (via GitHub Ruleset) -> evaluate review, create issues if needed -> merge
-  with `--delete-branch` -> delete local branch -> **post-merge admin**
-  (update checklist, create session log, update AGENTS.md if needed)
-- **Post-merge admin is checklist-only** — no Copilot review needed
-- Pre-commit hook runs CI via `act` (Docker). **Takes 5+ minutes.** Use
-  `timeout` of 600000ms for commit commands; check `git log` afterward.
+You lead this project. Execute autonomously -- read the roadmap, pick the
+next task, do it. Don't ask for permission on engineering decisions.
 
-## Autonomous Operation
+Use `@business` or `@strategy` subagents for business-related questions
+(pricing, outreach, go-to-market).
 
-The agent operates autonomously without human supervision. After context
-compaction, the agent continues by re-reading this file and the roadmap.
+## Workflow
 
-### Continuation after compaction
+1. Work on feature branches from `main` (`feature/...`, `fix/...`,
+   `docs/...`).
+2. Implement -> commit -> push -> create PR -> Copilot reviews
+   automatically (GitHub Ruleset) -> evaluate review -> merge with
+   `--delete-branch` -> delete local branch.
+3. Post-merge admin: update `private/documentation/progress.md` and
+   `private/documentation/BigRocks/checklist.md`.
+4. Pre-commit hook runs CI via `act` (Docker). Takes 5+ minutes.
+   Use `timeout` of 600000ms for commit commands; verify with
+   `git log` afterward.
+
+## Continuation After Compaction
 
 OpenCode auto-compacts when context is full. After compaction:
 
-1. Re-read `AGENTS.md` (this file) for instructions and current state
-2. Re-read `documentation/ROADMAP.md` for the current phase
-3. Check `private/documentation/BigRocks/checklist.md` for task status
-4. Run `git status`, `git log --oneline -5`, `gh pr list` to orient
-5. Check for running training processes: `ps aux | grep train_rl`
-6. Resume the next incomplete task from the roadmap
+1. Re-read this file (`AGENTS.md`).
+2. The following are auto-injected via `opencode.json` instructions:
+   - `documentation/ROADMAP.md` -- the 5-phase plan
+   - `private/documentation/progress.md` -- current status
+   - `private/documentation/BigRocks/checklist.md` -- task tracking
+   - `private/documentation/reference/agent_knowledge_base.md` -- pitfalls
+3. Run `git status`, `git log --oneline -5`, `gh pr list` to orient.
+4. Check for running training: `ps aux | grep train_rl`.
+5. Resume the next incomplete task.
 
-### Session continuity
-
-To continue the last session after restart:
-```
-opencode -c
-```
-
-To continue a specific session:
-```
-opencode -s <session-id>
-```
-
-### Decision authority
+## Decision Authority
 
 The agent has full authority to:
 - Create branches, PRs, merge PRs (after CI passes)
 - Fix bugs, refactor code, add features per the roadmap
 - Launch and monitor training runs
 - Generate evaluation reports and dashboards
-- Update documentation, checklist, and this file
-- Create GitHub issues for problems that need human attention
+- Update documentation and checklists
+- Create GitHub issues for problems needing human attention
 
-The agent should NOT:
+The agent must NOT:
 - Force-push to main
 - Delete data or checkpoints without clear reason
-- Change business strategy or pricing (use @business agent)
+- Change business strategy or pricing (use `@business`)
 - Commit files from `private/` to git
+- Merge PRs before Copilot review approves (see Safety below)
 
-### Training runs
+## Safety
 
-All training uses headless mode on WSL2. Artifacts go to `$ARTIFACTS_DIR`.
-```bash
-PYTHONPATH=$PROJECT_DIR \
-BREAKOUT71_DIR=$PROJECT_DIR/../breakout71-testbed \
-nohup $CONDA_PREFIX/bin/python scripts/train_rl.py \
-  --game breakout71 --headless --policy mlp --timesteps 200000 \
-  --orientation portrait --resume <checkpoint> \
-  > $ARTIFACTS_DIR/training_logs/train_run_$(date +%Y%m%d_%H%M%S).log 2>&1 &
-```
+All changes -- code and documentation -- go through PR review as a
+final gate. Copilot reviews automatically on PR creation; do not merge
+until the review passes. This applies equally to docs, config, and
+code changes.
 
-Environment variables used above (set in your shell profile):
-- `$PROJECT_DIR` — path to this repo (e.g. `/mnt/f/work/rsn-game-qa`)
-- `$ARTIFACTS_DIR` — large disk for training output (e.g. `/mnt/e/rsn-game-qa`)
-- `$CONDA_PREFIX` — conda env root (set automatically by `conda activate yolo`)
+Never expose sensitive data:
+- No API keys, tokens, credentials, or secrets in committed files.
+- No internal paths, hostnames, or infrastructure details in public
+  content (code, docs, PR descriptions).
+- No data from `private/` in commits, PR bodies, or public docs.
+- When in doubt, flag it in the PR description for human review.
 
-### Current status (updated by agent)
+## Decision Logging
 
-- **Phase:** 2b complete. Training validation pending.
-- **Phase 1 COMPLETE:** Trained CNN agent (189K steps), 10-episode eval
-  (mean length 403, 4 critical findings), random baseline comparison
-  (80x survival, 63x findings), QA reports + HTML dashboards generated
-- **Phase 2 COMPLETE:** CNN+RND 200K training (3 runs due to Chrome OOM),
-  10-episode eval (mean length 3003, 3 critical findings), RND intrinsic
-  reward collapsed to near-zero, 98 unique visual states, 270 performance
-  warnings (RAM > 4GB)
-- **Phase 2b COMPLETE:** Multi-level play (PR #94) — perk picker loop,
-  JS score bridge, score-delta reward, level clear bonus, 20 new tests.
-  Bug fix (PR #96) — route perk_picker modals through level transition,
-  add modal-based level clear signal, survival level clear bonus.
-  Bug fix (PR #98) — resolve device='auto' in RNDRewardWrapper (xpu >
-  cuda > cpu, matching codebase convention). 913 tests, 96%+ coverage.
-- **Phase 3 code complete:** GameOverDetector with 4 pixel-based
-  strategies (PRs #91, #92, #93). Not yet wired into training scripts.
-  Pending: CLI integration, live validation on Breakout 71.
-- **Next steps (in order):**
-  1. Run short debug training (`--max-time 180`) to verify multi-level
-     + RND works end-to-end
-  2. If debug succeeds, launch full 200K RND training with multi-level
-  3. Monitor training — check RND intrinsic reward stays alive across
-     levels, check state coverage exceeds Phase 2's 98
-  4. Run 10-episode evaluation, compare vs Phase 2 single-level results
-  5. Generate QA report and update documentation
+Log technical decisions that have business impact to
+`private/documentation/decisions_log.md`. This file is shared across
+all agents (build, business, strategy). Examples: choosing a default
+observation mode, deprioritizing a feature, changing supported
+platforms, altering training infrastructure. Include date, decision,
+rationale, and business impact.
 
 ## Conventions
 
 - Python 3.12, conda env `yolo`
-- NumPy-style docstrings, ruff for lint/format, pytest for tests, Sphinx
-  (Furo theme) for docs
-- Use conda env `yolo` tools directly (e.g. `ruff` on PATH, or the
-  full conda env path if `conda run` times out)
+- NumPy-style docstrings
+- `ruff` for lint/format -- always run `ruff format` before committing
+- `pytest` for tests
+- Sphinx (Furo theme) for docs
 - CI has 4 jobs: Lint, Test, Build Check, Build Docs
-- Always run `ruff format` before committing
-- Commit messages: imperative mood with type prefix (`feat:`, `fix:`, `ci:`,
-  `docs:`)
+- Commit messages: imperative mood with type prefix (`feat:`, `fix:`,
+  `ci:`, `docs:`)
 - Delete feature branches after merging
+- Use conda env tools directly (e.g. `ruff` on PATH, or full conda
+  path if `conda run` times out)
 
 ## TDD Convention
 
-**Applies to:** `src/env/`, `src/orchestrator/`, `src/platform/`, and any
+Applies to: `src/env/`, `src/orchestrator/`, `src/platform/`, and any
 module where the behavioral contract matters more than implementation.
 
 | Change type | TDD required? |
 |---|---|
-| Public method or behavioral change to `step()`, `reset()`, `close()` | **Yes** |
-| New game state transition | **Yes** |
-| Reward function changes | **Yes** |
-| Observation field changes | **Yes** |
-| Orchestrator lifecycle behavior | **Yes** |
-| Internal refactoring (same behavior) | No — existing tests must pass |
+| Public method or behavioral change to `step()`, `reset()`, `close()` | Yes |
+| New game state transition | Yes |
+| Reward function changes | Yes |
+| Observation field changes | Yes |
+| Orchestrator lifecycle behavior | Yes |
+| Internal refactoring (same behavior) | No (existing tests must pass) |
 | Scripts, utilities, exploratory work | No |
 
-**Process:** Write test names as specs (with `pytest.skip`) -> fill bodies
+Process: Write test names as specs (with `pytest.skip`) -> fill bodies
 (red) -> implement (green) -> refactor. Naming:
 `test_{method}_{expected_behavior}_when_{condition}`.
 
-## Current State
-
-- **Tests pass**, 96% coverage, 913 tests, 8 subsystems complete
-- **Architecture done:** BaseGameEnv ABC, game plugin system (`games/`),
-  `--game` flag, CNN/MLP observation modes, dynamic plugin loading
-- **Phase 1 complete** — 4 crash bugs fixed (Chrome OOM, JS alert,
-  multi-alert, false-positive level_cleared), survival reward mode
-  added, CNN 189K training completed, QA reports generated
-- **Phase 2 complete** — RND exploration-driven reward, 200K training,
-  10-episode eval (mean length 3003, 3 critical findings), RND reward
-  collapsed (predictor learns too fast), 270 performance warnings
-- **Phase 2b merged** — multi-level play, perk picker loop, JS
-  score bridge, score delta reward (PR #94). Bug fix merged (PR #96):
-  perk_picker routing through level transition, modal-based level clear
-  signal, survival level clear bonus. Bug fix merged (PR #98):
-  resolve device='auto' in RNDRewardWrapper. 913 tests, 96%+ coverage.
-  Training validation pending.
-- **Phase 3 code complete** — GameOverDetector with 4 pixel-based
-  strategies (PRs #91, #92, #93). Pending: CLI integration, live validation.
-- See `documentation/ROADMAP.md` for the 5-phase plan
-- See `private/documentation/BigRocks/checklist.md` for detailed task tracking
-
-Note: Paths under `private/` refer to local, gitignored documentation
-and are not expected to resolve in a clean public checkout or on GitHub.
-
-## Critical Technical Pitfalls
-
-These cause bugs if forgotten. Full knowledge base at
-`private/documentation/reference/agent_knowledge_base.md`.
-
-1. **`import cv2` at top level breaks CI** — Docker lacks `libGL.so.1`;
-   use lazy imports inside methods
-2. **Copilot review is automatic** — GitHub Ruleset triggers review on
-   PR creation; no manual reviewer assignment needed
-3. **`git pull` times out** — use
-   `git fetch origin main && git reset --hard origin/main`
-4. **`gh pr merge` times out** but often succeeds — verify with
-   `gh pr view N --json state,mergedAt`
-5. **Selenium `execute_script()` IIFE** — must use
-   `return (function() { ... })();` for return value
-6. **Game `mouseup` pauses gameplay** — click once to start, then
-   `moveTo` only
-7. **`_no_ball_count` ownership** — `_check_late_game_over()` exclusively
-   owns updates; `check_termination()` only reads
-8. **Episode boundary** — `step()` passes `dismiss_game_over=False`;
-   `reset()` passes `True`
-9. **Terminal penalty** — game-over uses fixed `-5.01`, not YOLO-computed
-   reward (modal occludes game state)
-10. **OpenVINO GPU routing** — requires `device="intel:GPU.0"` prefix;
-    without it defaults to CPU
-11. **`pip install ultralytics` overwrites XPU torch** — must reinstall
-    XPU torch after
-12. **Pixel-based only** — no JS injection for game state. Exception:
-    Selenium JS for modal handling and one-time settings (mute)
-13. **Keep BOTH `.pt` and OpenVINO models** — `.pt` is source of truth
-14. **CNN is default observation mode** — game-agnostic, no YOLO needed.
-    MLP is optional (requires game-specific YOLO model)
-15. **wincam singleton** — only 1 DXCamera at a time; no CI/headless support
-16. **Survival/RND mode suppressed multi-level play** — `base_env.py`
-    forcibly set `level_cleared=False` in the survival/RND-specific
-    termination logic, completely blocking `_handle_level_transition()`.
-    Fixed in PR #96 via `modal_level_cleared`. Also: perk_picker modals
-    mid-step must route through `_handle_level_transition()`, not
-    `start_game()`.
-
-## Project Structure
-
-```
-src/
-  platform/       # BaseGameEnv ABC, CnnObservationWrapper (game-agnostic)
-  game_loader/    # YAML config, factory, loaders
-  reporting/      # JSON reports, HTML dashboard
-  capture/        # BitBlt window capture, wincam, pydirectinput input
-  perception/     # YoloDetector, breakout_capture
-  oracles/        # 12 oracles with on_step detection
-  env/            # Backward-compat re-exports (actual envs in games/)
-  orchestrator/   # FrameCollector, SessionRunner
-games/
-  breakout71/     # Breakout71Env, loader, modal handler, YOLO classes
-configs/
-  games/          # Per-game loader configs
-  training/       # Per-game YOLO training configs
-scripts/          # CLI tools (train_rl, run_session, capture, debug, etc.)
-tests/            # Unit + integration tests
-documentation/
-  specs/          # Canonical specifications
-  ROADMAP.md      # 5-phase plan
-docs/             # Sphinx source
-```
-
 ## Reference
 
-- `documentation/ROADMAP.md` — what to do next (5-phase plan)
-- `private/documentation/BigRocks/checklist.md` — detailed task tracking
-- `private/documentation/reference/agent_knowledge_base.md` — all technical
-  discoveries from sessions 1-30
-- `documentation/specs/` — canonical specifications
+Technical pitfalls, project structure, and training run templates are
+in the auto-injected private docs (see `agent_knowledge_base.md` and
+`progress.md`). Canonical specs live in `documentation/specs/`.
