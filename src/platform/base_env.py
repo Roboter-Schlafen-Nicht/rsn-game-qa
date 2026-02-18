@@ -445,6 +445,10 @@ class BaseGameEnv(gym.Env, abc.ABC):
         self._step_count = 0
         self.reset_termination_state()
 
+        # Reset pixel-based game-over detector for the new episode
+        if self._game_over_detector is not None:
+            self._game_over_detector.reset()
+
         # Build info dict
         info = self._make_info(detections)
 
@@ -514,6 +518,24 @@ class BaseGameEnv(gym.Env, abc.ABC):
 
         # Build observation
         obs = self.build_observation(detections)
+
+        # Pixel-based game-over detection (Phase 3).
+        # Runs before YOLO-based checks so that game-over can be
+        # detected even when YOLO is unreliable (e.g. headless mode).
+        if self._game_over_detector is not None:
+            detector_fired = self._game_over_detector.update(frame)
+            if detector_fired:
+                self._step_count += 1
+                truncated = self._step_count >= self.max_steps
+                if self.reward_mode == "survival":
+                    reward = self._SURVIVAL_TERMINAL_REWARD
+                else:
+                    reward = self.terminal_reward()
+                info = self._make_info(detections)
+                info["game_over_detector"] = self._game_over_detector.get_confidence()
+                findings = self._run_oracles(obs, reward, True, truncated, info)
+                info["oracle_findings"] = findings
+                return obs, reward, True, truncated, info
 
         # Let subclass check for late game-over (e.g. ball just
         # disappeared → immediate modal check)
