@@ -39,8 +39,8 @@ one strategy. This is the key differentiator for QA vs gameplay.
 | Survival reward mode | `+0.01` per step, `-5.0` on game over — **DONE** (PR #83) |
 | `--reward-mode` CLI flag | `yolo\|survival\|rnd` for `train_rl.py` — **DONE** (PR #83, #86) |
 | `_reward_mode` in BaseGameEnv | Platform-level override — **DONE** (PR #83) |
-| CNN + RND training run | 200K steps, compare state coverage |
-| Coverage measurement | Unique visual states, perk encounters, level progression |
+| CNN + RND training run | 200K steps, compare state coverage — **IN PROGRESS** (PID 31583) |
+| Coverage measurement | Unique visual states, perk encounters, level progression — **logging merged** (PR #88) |
 
 **Success criteria:** CNN + RND agent visits more diverse states than
 score-maximizing agent, measured by state coverage metrics.
