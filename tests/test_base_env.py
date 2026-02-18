@@ -964,3 +964,51 @@ class TestSurvivalReward:
         assert terminated is True
         # Reward should be game-over penalty: 0.01 - 5.0 = -4.99
         assert abs(reward - (-4.99)) < 1e-6
+
+
+class TestSurvivalResetDetections:
+    """Tests for lenient reset detection validation in survival mode."""
+
+    @mock.patch("src.platform.base_env.time")
+    def test_reset_succeeds_in_survival_mode_when_no_ball_detected(self, mock_time):
+        """reset() succeeds in survival mode even when YOLO can't detect ball.
+
+        In survival mode with CNN policy, YOLO detections are not needed
+        for observations or reward computation. The reset should accept
+        any frame with a valid capture, bypassing on_reset_detections().
+        """
+        env = _make_ready_env(reward_mode="survival")
+        # Simulate YOLO failing to detect ball (common in headless mode)
+        env._detector.detect_to_game_state.return_value = _make_detections(ball=None)
+
+        # Should NOT raise — survival mode is lenient
+        obs, info = env.reset()
+        assert obs is not None
+
+    @mock.patch("src.platform.base_env.time")
+    def test_reset_still_validates_in_yolo_mode(self, mock_time):
+        """reset() still requires valid detections in yolo mode."""
+        env = _make_ready_env(reward_mode="yolo")
+        env._detector.detect_to_game_state.return_value = _make_detections(ball=None)
+
+        with pytest.raises(RuntimeError, match="failed to get valid detections"):
+            env.reset()
+
+    @mock.patch("src.platform.base_env.time")
+    def test_reset_prefers_valid_detections_even_in_survival_mode(self, mock_time):
+        """reset() still tries for valid detections in survival mode.
+
+        If valid detections are available, survival mode uses them.
+        The leniency only matters when all 5 attempts fail.
+        """
+        env = _make_ready_env(reward_mode="survival")
+        # First call: no ball; second call: ball detected
+        env._detector.detect_to_game_state.side_effect = [
+            _make_detections(ball=None),
+            _make_detections(ball=(0.5, 0.5, 0.02, 0.02)),
+        ]
+
+        obs, info = env.reset()
+        assert obs is not None
+        # Should have tried 2 times (found valid on 2nd attempt)
+        assert env._detector.detect_to_game_state.call_count == 2

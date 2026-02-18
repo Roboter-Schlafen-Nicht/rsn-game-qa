@@ -415,11 +415,21 @@ class BaseGameEnv(gym.Env, abc.ABC):
             logger.info("reset() attempt %d: invalid detections", attempt + 1)
 
         if not self.on_reset_detections(detections):
-            raise RuntimeError(
-                f"{type(self).__name__}.reset() failed to get valid "
-                f"detections after 5 attempts; the game may not have "
-                f"initialized correctly."
-            )
+            if self.reward_mode == "survival":
+                # In survival mode, YOLO detections are not needed for
+                # reward or CNN observations.  Headless Selenium capture
+                # often fails to produce detectable objects, so accept
+                # any frame rather than aborting the session.
+                logger.warning(
+                    "reset(): accepting frame without valid detections "
+                    "(survival mode — YOLO not required)"
+                )
+            else:
+                raise RuntimeError(
+                    f"{type(self).__name__}.reset() failed to get valid "
+                    f"detections after 5 attempts; the game may not have "
+                    f"initialized correctly."
+                )
 
         # Build observation with reset semantics
         obs = self.build_observation(detections, reset=True)
