@@ -553,6 +553,81 @@ class TestOptionalHooks:
         env.on_reset_complete(obs, {})  # should not raise
 
 
+class TestDismissAllAlerts:
+    """Tests for _dismiss_all_alerts helper."""
+
+    def test_dismiss_single_alert(self):
+        """Dismisses a single alert and returns 1."""
+        env = StubEnv(headless=True)
+        mock_driver = mock.MagicMock()
+        env._driver = mock_driver
+
+        mock_alert = mock.MagicMock()
+        mock_alert.text = "Some alert"
+        # First access returns the alert, second raises (no more alerts)
+        type(mock_driver.switch_to).alert = mock.PropertyMock(
+            side_effect=[mock_alert, Exception("no alert")]
+        )
+
+        dismissed = env._dismiss_all_alerts()
+        assert dismissed == 1
+        mock_alert.dismiss.assert_called_once()
+
+    def test_dismiss_multiple_alerts(self):
+        """Dismisses multiple alerts in a loop."""
+        env = StubEnv(headless=True)
+        mock_driver = mock.MagicMock()
+        env._driver = mock_driver
+
+        alert1 = mock.MagicMock(text="First alert")
+        alert2 = mock.MagicMock(text="Second alert")
+        alert3 = mock.MagicMock(text="Third alert")
+        type(mock_driver.switch_to).alert = mock.PropertyMock(
+            side_effect=[alert1, alert2, alert3, Exception("no alert")]
+        )
+
+        dismissed = env._dismiss_all_alerts()
+        assert dismissed == 3
+        alert1.dismiss.assert_called_once()
+        alert2.dismiss.assert_called_once()
+        alert3.dismiss.assert_called_once()
+
+    def test_dismiss_no_alerts(self):
+        """Returns 0 when no alerts present."""
+        env = StubEnv(headless=True)
+        mock_driver = mock.MagicMock()
+        env._driver = mock_driver
+
+        type(mock_driver.switch_to).alert = mock.PropertyMock(
+            side_effect=Exception("no alert")
+        )
+
+        dismissed = env._dismiss_all_alerts()
+        assert dismissed == 0
+
+    def test_dismiss_respects_max_attempts(self):
+        """Stops after max_attempts even if alerts keep appearing."""
+        env = StubEnv(headless=True)
+        mock_driver = mock.MagicMock()
+        env._driver = mock_driver
+
+        # Infinite alerts — should stop at max_attempts
+        mock_alert = mock.MagicMock(text="Infinite alert")
+        mock_driver.switch_to.alert = mock_alert
+
+        dismissed = env._dismiss_all_alerts(max_attempts=3)
+        assert dismissed == 3
+        assert mock_alert.dismiss.call_count == 3
+
+    def test_dismiss_no_driver_returns_zero(self):
+        """Returns 0 when driver is None."""
+        env = StubEnv(headless=True)
+        env._driver = None
+
+        dismissed = env._dismiss_all_alerts()
+        assert dismissed == 0
+
+
 class TestHeadlessCapture:
     """Tests for headless frame capture."""
 
@@ -580,10 +655,12 @@ class TestHeadlessCapture:
         mock_driver = mock.MagicMock()
         env._driver = mock_driver
 
-        # Simulate an alert present
+        # Simulate an alert present, then no more
         mock_alert = mock.MagicMock()
         mock_alert.text = "Two alerts where opened at once"
-        mock_driver.switch_to.alert = mock_alert
+        type(mock_driver.switch_to).alert = mock.PropertyMock(
+            side_effect=[mock_alert, Exception("no alert")]
+        )
 
         # After dismissal, screenshot works
         fake_img = np.zeros((100, 100, 3), dtype=np.uint8)
@@ -604,9 +681,7 @@ class TestHeadlessCapture:
         mock_driver = mock.MagicMock()
         env._driver = mock_driver
 
-        # No alert — accessing switch_to.alert raises (production code
-        # catches broad Exception, so we don't need the real
-        # NoAlertPresentException which may be mocked away in CI).
+        # No alert — accessing switch_to.alert raises
         type(mock_driver.switch_to).alert = mock.PropertyMock(
             side_effect=Exception("no alert present")
         )
@@ -620,28 +695,28 @@ class TestHeadlessCapture:
 
     @_skip_no_cv2
     def test_headless_capture_retries_after_screenshot_alert(self):
-        """Screenshot fails with alert, dismiss and retry succeeds."""
+        """Screenshot fails with alert, dismiss-all and retry succeeds."""
         import cv2
 
         env = StubEnv(headless=True)
         mock_driver = mock.MagicMock()
         env._driver = mock_driver
 
-        # No initial alert
+        # First _dismiss_all_alerts: no alert.  Second (in retry): one alert.
+        mock_retry_alert = mock.MagicMock(text="popup")
         type(mock_driver.switch_to).alert = mock.PropertyMock(
             side_effect=[
-                Exception("no alert"),  # First check: no alert
-                mock.MagicMock(text="popup"),  # During retry: alert found
+                Exception("no alert"),  # preemptive check
+                mock_retry_alert,  # retry dismiss finds alert
+                Exception("no more"),  # retry dismiss loop ends
             ]
         )
 
-        # canvas toDataURL fails (unmocked execute_script) so we fall back to screenshot
+        # canvas toDataURL fails (unmocked execute_script) so we fall to screenshot
         # First screenshot raises, second (after dismiss) succeeds
         fake_img = np.zeros((100, 100, 3), dtype=np.uint8)
         _, png_bytes = cv2.imencode(".png", fake_img)
 
-        # Production code catches broad Exception, so we don't need the
-        # real UnexpectedAlertPresentException (may be mocked away in CI).
         mock_driver.get_screenshot_as_png.side_effect = [
             Exception("alert open"),
             png_bytes.tobytes(),
@@ -650,6 +725,49 @@ class TestHeadlessCapture:
         frame = env._capture_frame_headless()
         assert frame is not None
         assert mock_driver.get_screenshot_as_png.call_count == 2
+
+    @_skip_no_cv2
+    def test_headless_capture_falls_back_to_cached_frame(self):
+        """Returns cached frame when all capture attempts fail."""
+        env = StubEnv(headless=True)
+        mock_driver = mock.MagicMock()
+        env._driver = mock_driver
+
+        # No alerts
+        type(mock_driver.switch_to).alert = mock.PropertyMock(
+            side_effect=Exception("no alert")
+        )
+
+        # All capture methods fail
+        mock_driver.execute_script.side_effect = Exception("toDataURL failed")
+        mock_driver.get_screenshot_as_png.side_effect = Exception("screenshot failed")
+
+        # Set a cached frame
+        cached = np.zeros((50, 50, 3), dtype=np.uint8)
+        env._last_frame = cached
+
+        frame = env._capture_frame_headless()
+        assert frame is cached
+
+    @_skip_no_cv2
+    def test_headless_capture_raises_when_no_cached_frame(self):
+        """Raises RuntimeError when all attempts fail and no cached frame."""
+        env = StubEnv(headless=True)
+        mock_driver = mock.MagicMock()
+        env._driver = mock_driver
+
+        # No alerts
+        type(mock_driver.switch_to).alert = mock.PropertyMock(
+            side_effect=Exception("no alert")
+        )
+
+        # All capture methods fail
+        mock_driver.execute_script.side_effect = Exception("toDataURL failed")
+        mock_driver.get_screenshot_as_png.side_effect = Exception("screenshot failed")
+        env._last_frame = None
+
+        with pytest.raises(RuntimeError, match="Failed to decode"):
+            env._capture_frame_headless()
 
 
 class TestLazyInitGameClasses:

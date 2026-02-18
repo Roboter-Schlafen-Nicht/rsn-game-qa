@@ -646,6 +646,37 @@ class BaseGameEnv(gym.Env, abc.ABC):
         self._last_frame = frame
         return frame
 
+    def _dismiss_all_alerts(self, max_attempts: int = 5) -> int:
+        """Dismiss all pending browser JS alerts.
+
+        The game can spawn multiple ``alert()`` dialogs in rapid
+        succession (e.g. "Two alerts where opened at once").  A single
+        ``switch_to.alert.dismiss()`` only clears one; this helper loops
+        until no more alerts remain, up to *max_attempts*.
+
+        Parameters
+        ----------
+        max_attempts : int
+            Safety cap to prevent infinite loops (default 5).
+
+        Returns
+        -------
+        int
+            Number of alerts dismissed.
+        """
+        if self._driver is None:
+            return 0
+        dismissed = 0
+        for _ in range(max_attempts):
+            try:
+                alert = self._driver.switch_to.alert
+                logger.warning("Dismissing unexpected browser alert: %s", alert.text)
+                alert.dismiss()
+                dismissed += 1
+            except Exception:  # noqa: BLE001
+                break  # No more alerts
+        return dismissed
+
     def _capture_frame_headless(self) -> np.ndarray:
         """Capture a frame via canvas ``toDataURL`` or Selenium screenshot.
 
@@ -677,15 +708,9 @@ class BaseGameEnv(gym.Env, abc.ABC):
         frame = None
 
         # -- Dismiss any unexpected browser alerts -------------------------
-        # The game can occasionally spawn JS alert() dialogs (e.g. "Two
-        # alerts where opened at once") that block all Selenium commands
-        # including screenshots.  Dismiss them preemptively.
-        try:
-            alert = self._driver.switch_to.alert
-            logger.warning("Dismissing unexpected browser alert: %s", alert.text)
-            alert.dismiss()
-        except Exception:  # noqa: BLE001
-            pass  # No alert present — normal case
+        # The game can spawn multiple JS alert() dialogs that block all
+        # Selenium commands.  Dismiss them all preemptively.
+        self._dismiss_all_alerts()
 
         # Fast path: canvas toDataURL (JPEG, ~11ms vs ~85ms for PNG)
         try:
@@ -719,14 +744,9 @@ class BaseGameEnv(gym.Env, abc.ABC):
                 frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             except Exception:  # noqa: BLE001
                 # Alert may have appeared between toDataURL and screenshot;
-                # dismiss and retry once.
+                # dismiss all and retry once.
+                self._dismiss_all_alerts()
                 try:
-                    alert = self._driver.switch_to.alert
-                    logger.warning(
-                        "Dismissing alert before screenshot retry: %s",
-                        alert.text,
-                    )
-                    alert.dismiss()
                     png_bytes = self._driver.get_screenshot_as_png()
                     nparr = np.frombuffer(png_bytes, np.uint8)
                     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -735,7 +755,17 @@ class BaseGameEnv(gym.Env, abc.ABC):
                         "Screenshot failed even after alert dismissal: %s",
                         inner_exc,
                     )
+
+        # Last resort: if frame is still None, try one more time after
+        # clearing any lingering alerts.  Return the last cached frame
+        # rather than crashing the entire training run.
         if frame is None:
+            self._dismiss_all_alerts()
+            if self._last_frame is not None:
+                logger.warning(
+                    "Returning cached frame after all capture attempts failed"
+                )
+                return self._last_frame
             raise RuntimeError("Failed to decode screenshot PNG to BGR frame")
         self._last_frame = frame
         return frame
