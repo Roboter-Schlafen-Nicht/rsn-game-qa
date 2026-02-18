@@ -2,6 +2,14 @@
 
 from .base_env import BaseGameEnv
 from .cnn_wrapper import CnnEvalWrapper, CnnObservationWrapper
+from .game_over_detector import (
+    EntropyCollapseStrategy,
+    GameOverDetector,
+    GameOverStrategy,
+    MotionCessationStrategy,
+    ScreenFreezeStrategy,
+    TextDetectionStrategy,
+)
 
 # RNDRewardWrapper requires torch; lazy-import to avoid pulling in torch
 # unconditionally (CI/docs environments may not have it installed).
@@ -14,5 +22,11 @@ __all__ = [
     "BaseGameEnv",
     "CnnEvalWrapper",
     "CnnObservationWrapper",
+    "EntropyCollapseStrategy",
+    "GameOverDetector",
+    "GameOverStrategy",
+    "MotionCessationStrategy",
     "RNDRewardWrapper",
+    "ScreenFreezeStrategy",
+    "TextDetectionStrategy",
 ]
