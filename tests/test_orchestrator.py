@@ -1898,3 +1898,138 @@ class TestSessionRunnerValidation:
         runner._cleanup()
         assert runner._raw_env is None
         assert runner._env is None
+
+
+# ===========================================================================
+# GameOverDetector CLI Integration Tests
+# ===========================================================================
+
+
+class TestGameOverDetectorCLI:
+    """Tests for --game-over-detector CLI flag in train_rl.py and run_session.py."""
+
+    def test_train_rl_detector_default_off(self):
+        """--game-over-detector defaults to False in train_rl.py."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args([])
+        assert args.game_over_detector is False
+
+    def test_train_rl_detector_enabled(self):
+        """--game-over-detector flag sets True in train_rl.py."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args(["--game-over-detector"])
+        assert args.game_over_detector is True
+
+    def test_train_rl_detector_threshold_default(self):
+        """--detector-threshold defaults to 0.6 in train_rl.py."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args([])
+        assert args.detector_threshold == 0.6
+
+    def test_train_rl_detector_threshold_custom(self):
+        """--detector-threshold accepts custom value in train_rl.py."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args(["--game-over-detector", "--detector-threshold", "0.8"])
+        assert args.game_over_detector is True
+        assert args.detector_threshold == 0.8
+
+    def test_run_session_detector_default_off(self):
+        """--game-over-detector defaults to False in run_session.py."""
+        from scripts.run_session import parse_args
+
+        args = parse_args([])
+        assert args.game_over_detector is False
+
+    def test_run_session_detector_enabled(self):
+        """--game-over-detector flag sets True in run_session.py."""
+        from scripts.run_session import parse_args
+
+        args = parse_args(["--game-over-detector"])
+        assert args.game_over_detector is True
+
+    def test_run_session_detector_threshold_default(self):
+        """--detector-threshold defaults to 0.6 in run_session.py."""
+        from scripts.run_session import parse_args
+
+        args = parse_args([])
+        assert args.detector_threshold == 0.6
+
+    def test_run_session_detector_threshold_custom(self):
+        """--detector-threshold accepts custom value in run_session.py."""
+        from scripts.run_session import parse_args
+
+        args = parse_args(["--game-over-detector", "--detector-threshold", "0.9"])
+        assert args.game_over_detector is True
+        assert args.detector_threshold == 0.9
+
+
+class TestSessionRunnerGameOverDetector:
+    """Tests for SessionRunner game_over_detector parameter."""
+
+    def test_default_detector_is_none(self):
+        """SessionRunner defaults to no game-over detector."""
+        runner = SessionRunner(game="breakout71")
+        assert runner.game_over_detector is None
+
+    def test_accepts_detector(self):
+        """SessionRunner accepts a GameOverDetector instance."""
+        from src.platform.game_over_detector import GameOverDetector
+
+        detector = GameOverDetector()
+        runner = SessionRunner(game="breakout71", game_over_detector=detector)
+        assert runner.game_over_detector is detector
+
+    def test_detector_passed_to_env(self, tmp_path):
+        """SessionRunner passes detector to env constructor in _setup()."""
+        from src.platform.game_over_detector import GameOverDetector
+
+        detector = GameOverDetector(confidence_threshold=0.8)
+        runner = SessionRunner(
+            game="breakout71",
+            game_over_detector=detector,
+            output_dir=tmp_path,
+        )
+        runner.game_config_path = Path("breakout-71")
+
+        mock_config = mock.MagicMock()
+        mock_config.url = "http://localhost:1234"
+        mock_config.window_width = 768
+        mock_config.window_height = 1024
+        mock_config.window_title = "test"
+
+        mock_loader = mock.MagicMock()
+        mock_loader.url = "http://localhost:1234"
+
+        mock_browser = mock.MagicMock()
+        mock_browser.driver = mock.MagicMock()
+
+        mock_env = mock.MagicMock()
+        MockEnvCls = mock.MagicMock(return_value=mock_env)
+
+        runner._plugin = mock.MagicMock()
+        runner._plugin.env_class = MockEnvCls
+        runner._plugin.game_name = "breakout-71"
+
+        with (
+            mock.patch(
+                "scripts._smoke_utils.BrowserInstance",
+                return_value=mock_browser,
+            ),
+            mock.patch(
+                "src.game_loader.create_loader",
+                return_value=mock_loader,
+            ),
+            mock.patch(
+                "src.game_loader.config.load_game_config",
+                return_value=mock_config,
+            ),
+        ):
+            runner._setup()
+
+        # Verify detector was passed to env constructor
+        call_kwargs = MockEnvCls.call_args[1]
+        assert call_kwargs["game_over_detector"] is detector

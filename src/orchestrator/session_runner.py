@@ -208,6 +208,11 @@ class SessionRunner:
         Reward signal strategy passed to the environment.
         ``"yolo"`` (default) uses game-specific YOLO-based reward.
         ``"survival"`` uses ``+0.01`` per step, ``-5.0`` on game over.
+    game_over_detector : GameOverDetector or None
+        Pixel-based game-over detector.  When provided, passed to
+        the environment constructor so that ``update(frame)`` is called
+        every step.  If it signals game-over, the episode terminates
+        without requiring DOM/JS modal checks.
     """
 
     def __init__(
@@ -226,6 +231,7 @@ class SessionRunner:
         policy: str = "mlp",
         frame_stack: int = 4,
         reward_mode: str = "yolo",
+        game_over_detector: Any | None = None,
     ) -> None:
         valid_policies = ("mlp", "cnn")
         if policy not in valid_policies:
@@ -246,6 +252,7 @@ class SessionRunner:
         self.policy = policy
         self.frame_stack = frame_stack
         self.reward_mode = reward_mode
+        self.game_over_detector = game_over_detector
 
         # Load plugin to resolve defaults
         from games import load_game_plugin
@@ -399,6 +406,7 @@ class SessionRunner:
             driver=self._browser_instance.driver,
             headless=self.headless,
             reward_mode=self.reward_mode,
+            game_over_detector=self.game_over_detector,
         )
 
         # Create frame collector
