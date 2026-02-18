@@ -82,10 +82,10 @@ Environment variables used above (set in your shell profile):
 ### Current status (updated by agent)
 
 - **Phase:** 1 (First Real Training & QA Report)
-- **Training:** CNN policy 200K run in progress (started fresh, ~15 FPS)
+- **Training:** CNN 200K with survival reward starting (previous run killed due to pathological YOLO reward)
 - **Crashes:** 3 (Chrome OOM at 57K, JS alert at 115K, multi-alert — all fixed)
-- **PR #82:** Multi-alert resilience + profiling scripts — merged
-- **Next:** Wait for CNN 200K training to complete (~3-4 hours),
+- **PR #83:** Survival reward mode — merged
+- **Next:** Start CNN 200K training with --reward-mode survival,
   evaluate, run random baseline, generate QA report
 
 ## Conventions
@@ -122,11 +122,12 @@ module where the behavioral contract matters more than implementation.
 
 ## Current State
 
-- **Tests pass**, 96% coverage, 775 tests, 8 subsystems complete
+- **Tests pass**, 96% coverage, 791 tests, 8 subsystems complete
 - **Architecture done:** BaseGameEnv ABC, game plugin system (`games/`),
   `--game` flag, CNN/MLP observation modes, dynamic plugin loading
 - **Phase 1 in progress** — 3 crash bugs fixed (Chrome OOM, JS alert,
-  multi-alert), CNN 200K training run in progress
+  multi-alert), survival reward mode added (PR #83), CNN 200K training
+  with survival reward starting next
 - **Human is OOO Feb 18–20, 2026** — agent operates fully autonomously
 - See `documentation/ROADMAP.md` for the 5-phase plan
 - See `private/documentation/BigRocks/checklist.md` for detailed task tracking
