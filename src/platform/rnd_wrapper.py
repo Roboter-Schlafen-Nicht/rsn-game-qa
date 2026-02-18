@@ -299,6 +299,15 @@ class RNDRewardWrapper(VecEnvWrapper):
                 f"update_proportion must be in (0.0, 1.0], got {update_proportion}"
             )
         self.update_proportion = update_proportion
+
+        # Resolve "auto" to a concrete device (cuda > xpu > cpu)
+        if device == "auto":
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif hasattr(torch, "xpu") and torch.xpu.is_available():
+                device = "xpu"
+            else:
+                device = "cpu"
         self.device = torch.device(device)
 
         # Infer observation shape from the VecEnv
