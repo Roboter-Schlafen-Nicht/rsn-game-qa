@@ -92,8 +92,9 @@ Environment variables used above (set in your shell profile):
 - **Phase 2b COMPLETE:** Multi-level play (PR #94) — perk picker loop,
   JS score bridge, score-delta reward, level clear bonus, 20 new tests.
   Bug fix (PR #96) — route perk_picker modals through level transition,
-  add modal-based level clear signal, survival level clear bonus. 912
-  tests, 96.31% coverage. Both PRs merged.
+  add modal-based level clear signal, survival level clear bonus.
+  Bug fix (PR #98) — resolve device='auto' in RNDRewardWrapper (xpu >
+  cuda > cpu, matching codebase convention). 913 tests, 96%+ coverage.
 - **Phase 3 code complete:** GameOverDetector with 4 pixel-based
   strategies (PRs #91, #92, #93). Not yet wired into training scripts.
   Pending: CLI integration, live validation on Breakout 71.
@@ -140,7 +141,7 @@ module where the behavioral contract matters more than implementation.
 
 ## Current State
 
-- **Tests pass**, 96% coverage, 912 tests, 8 subsystems complete
+- **Tests pass**, 96% coverage, 913 tests, 8 subsystems complete
 - **Architecture done:** BaseGameEnv ABC, game plugin system (`games/`),
   `--game` flag, CNN/MLP observation modes, dynamic plugin loading
 - **Phase 1 complete** — 4 crash bugs fixed (Chrome OOM, JS alert,
@@ -152,7 +153,8 @@ module where the behavioral contract matters more than implementation.
 - **Phase 2b merged** — multi-level play, perk picker loop, JS
   score bridge, score delta reward (PR #94). Bug fix merged (PR #96):
   perk_picker routing through level transition, modal-based level clear
-  signal, survival level clear bonus. 912 tests, 96.31% coverage.
+  signal, survival level clear bonus. Bug fix merged (PR #98):
+  resolve device='auto' in RNDRewardWrapper. 913 tests, 96%+ coverage.
   Training validation pending.
 - **Phase 3 code complete** — GameOverDetector with 4 pixel-based
   strategies (PRs #91, #92, #93). Pending: CLI integration, live validation.
