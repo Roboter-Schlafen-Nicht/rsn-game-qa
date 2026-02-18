@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import hashlib
 import json
 import logging
 import platform
@@ -475,7 +476,7 @@ class FrameCollectionCallback:
                 self._train_start_time = time.perf_counter()
                 self.training_stop_reason: str | None = None
                 # State coverage tracking — count unique visual states
-                self._unique_obs_hashes: set[int] = set()
+                self._unique_obs_hashes: set[bytes] = set()
                 self._coverage_log_interval = 10000  # log coverage every N steps
 
             def _on_step(self) -> bool:
@@ -528,17 +529,24 @@ class FrameCollectionCallback:
                 # -- State coverage tracking (hash-based) -----------------
                 new_obs = self.locals.get("new_obs")
                 if new_obs is not None and len(new_obs) > 0:
-                    # Downsample to 8x8 for fast hashing — captures coarse
-                    # visual state without being sensitive to per-pixel noise
+                    # Downsample to exactly 8x8 for fast hashing — captures
+                    # coarse visual state without per-pixel noise sensitivity.
+                    # Uses deterministic MD5 for reproducible counts across runs.
                     obs_flat = new_obs[0]
                     if obs_flat.ndim >= 2:
-                        # Use every Nth pixel for an 8x8 fingerprint
+                        import numpy as _np  # noqa: PLC0415
+
                         h, w = obs_flat.shape[-2], obs_flat.shape[-1]
-                        step_h, step_w = max(1, h // 8), max(1, w // 8)
-                        fingerprint = obs_flat[..., ::step_h, ::step_w]
+                        # Use linspace indices for exact 8x8 regardless of size
+                        rows = _np.linspace(0, h - 1, 8, dtype=int)
+                        cols = _np.linspace(0, w - 1, 8, dtype=int)
+                        fingerprint = obs_flat[..., rows[:, None], cols[None, :]]
                         # Quantise to reduce noise sensitivity (16 bins)
                         quantised = (fingerprint * 16).astype("uint8")
-                        self._unique_obs_hashes.add(hash(quantised.tobytes()))
+                        digest = hashlib.md5(  # noqa: S324
+                            quantised.tobytes()
+                        ).digest()
+                        self._unique_obs_hashes.add(digest)
 
                 # Log coverage stats periodically
                 if (
