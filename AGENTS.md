@@ -99,6 +99,8 @@ rationale, and business impact.
 
 ## Conventions
 
+- **Hardware:** Intel Arc GPU (XPU, not CUDA). `torch.xpu` for GPU,
+  SB3 PPO on CPU. See `agent_knowledge_base.md` for details.
 - Python 3.12, conda env `yolo`
 - NumPy-style docstrings
 - `ruff` for lint/format -- always run `ruff format` before committing
