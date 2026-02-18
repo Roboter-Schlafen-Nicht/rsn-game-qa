@@ -3,9 +3,11 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 37):** Phase 1 complete. Phase 2 complete.
-Phase 2b (multi-level play) merged (PR #94). 909 tests, 96% coverage.
-Next: Run RND training with multi-level play to validate RND exploration.
+**Current state (session 38):** Phase 1 complete. Phase 2 complete.
+Phase 2b (multi-level play) merged (PR #94). Bug fix for survival/RND
+mode (PR #96) — routes perk_picker modals through level transition,
+adds modal-based level clear signal. 912 tests, 96% coverage.
+Next: Merge bug fix, then run RND training with multi-level play.
 
 ---
 
@@ -95,6 +97,9 @@ with random perk selection, creating diverse visual states across levels.
 | Score-delta reward | `compute_reward()` uses JS score delta — **DONE** |
 | Level clear bonus | +1.0 per level cleared (not terminal) — **DONE** |
 | TDD tests | 20 new tests, 909 total, 96% coverage — **DONE** |
+| Bug fix: perk_picker routing | Route perk_picker modals through `_handle_level_transition()` instead of `start_game()` — **DONE** (PR #96) |
+| Bug fix: survival level clear | Add modal-based `level_cleared` signal (`modal_level_cleared`) bypassing YOLO suppression, add non-terminal level clear bonus (+1.0) — **DONE** (PR #96) |
+| Bug fix tests | 3 new tests (912 total, 96.31% coverage) — **DONE** (PR #96) |
 | RND training validation | Run 200K+ with multi-level, verify RND stays alive — TODO |
 | Evaluation comparison | Compare vs Phase 2 single-level results — TODO |
 

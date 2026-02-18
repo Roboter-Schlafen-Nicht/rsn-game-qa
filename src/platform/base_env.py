@@ -365,6 +365,8 @@ class BaseGameEnv(gym.Env, abc.ABC):
 
         Returns ``+0.01`` per step survived.  On termination:
         ``-5.0`` for game over, ``+5.0`` for level clear.
+        Level clear bonus (``+1.0``) is also awarded for non-terminal
+        level transitions (multi-level play).
 
         Parameters
         ----------
@@ -383,6 +385,9 @@ class BaseGameEnv(gym.Env, abc.ABC):
             reward += 5.0
         elif terminated:
             reward -= 5.0
+        elif level_cleared:
+            # Non-terminal level clear (multi-level play): smaller bonus
+            reward += 1.0
         return reward
 
     _SURVIVAL_TERMINAL_REWARD: float = -5.0 - 0.01
@@ -557,8 +562,22 @@ class BaseGameEnv(gym.Env, abc.ABC):
             obs = self.build_observation(detections)
             return self._make_terminal_transition(obs, detections)
 
-        # Handle non-terminal modals (perk picker, menu)
-        if mid_state in ("perk_picker", "menu"):
+        # Handle non-terminal modals (perk picker, menu).
+        # Perk picker modals indicate a level transition — route
+        # through _handle_level_transition() for the full perk loop
+        # and brick state reset.  This is critical in survival/RND
+        # mode where YOLO-based level_cleared is suppressed but
+        # modal detection still works via DOM.
+        modal_level_cleared = False
+        if mid_state == "perk_picker":
+            transition_ok = self._handle_level_transition()
+            if transition_ok:
+                modal_level_cleared = True
+            else:
+                # Fallback: just unpause
+                self.start_game()
+                time.sleep(0.3)
+        elif mid_state == "menu":
             self.start_game()
             time.sleep(0.3)
 
@@ -597,20 +616,27 @@ class BaseGameEnv(gym.Env, abc.ABC):
         # Determine termination (game-specific)
         terminated, level_cleared = self.check_termination(detections)
 
-        # In survival mode, ignore YOLO-based level_cleared detection.
+        # In survival mode, suppress YOLO-based level_cleared detection.
         # YOLO brick detection is unreliable in headless mode (returns
-        # 0 bricks → false level_cleared). Survival mode ignores YOLO-based
-        # level_cleared and relies on modal-based game-over detection
-        # (handle_modals and _check_late_game_over) as the primary
-        # termination mechanism.
+        # 0 bricks → false level_cleared). Only modal-based detection
+        # (perk_picker state from handle_modals, merged below via
+        # modal_level_cleared) triggers level transitions in this mode.
         if self.reward_mode == "survival" and level_cleared:
             terminated = False
             level_cleared = False
 
+        # Merge modal-based level clear into the level_cleared signal.
+        # In survival/RND mode, YOLO-based level_cleared is suppressed
+        # above, but modal detection still catches perk_picker modals
+        # which indicate a real level transition.
+        if modal_level_cleared:
+            level_cleared = True
+
         # Handle level transitions (multi-level play).
-        # When level_cleared is reported, give the subclass a chance to
+        # When level_cleared is reported via YOLO (not already handled
+        # by modal detection above), give the subclass a chance to
         # handle the transition (perk selection, etc.) and continue.
-        if level_cleared and not terminated:
+        if level_cleared and not terminated and not modal_level_cleared:
             transition_ok = self._handle_level_transition()
             if not transition_ok:
                 # Subclass couldn't handle transition → terminate

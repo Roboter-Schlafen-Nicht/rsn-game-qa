@@ -305,6 +305,43 @@ class TestStep:
         mock_start.assert_called_once()
 
     @mock.patch("src.platform.base_env.time")
+    def test_step_perk_picker_calls_level_transition(self, mock_time):
+        """Mid-step perk_picker modal routes through _handle_level_transition."""
+        env = _make_ready_env(reward_mode="survival")
+
+        with (
+            mock.patch.object(env, "_should_check_modals", return_value=True),
+            mock.patch.object(env, "handle_modals", return_value="perk_picker"),
+            mock.patch.object(
+                env, "_handle_level_transition", return_value=True
+            ) as mock_transition,
+        ):
+            _, reward, terminated, _, _ = env.step(_action())
+
+        assert terminated is False
+        mock_transition.assert_called_once()
+        # Non-terminal level clear gives +1.0 bonus in survival mode
+        assert reward == pytest.approx(1.01)
+
+    @mock.patch("src.platform.base_env.time")
+    def test_step_perk_picker_fallback_when_transition_fails(self, mock_time):
+        """When _handle_level_transition returns False, falls back to start_game."""
+        env = _make_ready_env(reward_mode="survival")
+
+        with (
+            mock.patch.object(env, "_should_check_modals", return_value=True),
+            mock.patch.object(env, "handle_modals", return_value="perk_picker"),
+            mock.patch.object(env, "_handle_level_transition", return_value=False),
+            mock.patch.object(env, "start_game") as mock_start,
+        ):
+            _, reward, terminated, _, _ = env.step(_action())
+
+        assert terminated is False
+        mock_start.assert_called_once()
+        # No level clear bonus — transition failed
+        assert reward == pytest.approx(0.01)
+
+    @mock.patch("src.platform.base_env.time")
     def test_step_late_game_over(self, mock_time):
         """Late game-over detection returns terminal_reward."""
         env = _make_ready_env()
@@ -860,10 +897,16 @@ class TestSurvivalReward:
         assert abs(reward - (-4.99)) < 1e-6
 
     def test_survival_reward_level_clear(self):
-        """Survival mode gives +5.0 + 0.01 = 5.01 on level clear."""
+        """Survival mode gives +5.0 + 0.01 = 5.01 on terminal level clear."""
         env = StubEnv(reward_mode="survival")
         reward = env._compute_survival_reward(terminated=True, level_cleared=True)
         assert abs(reward - 5.01) < 1e-6
+
+    def test_survival_reward_non_terminal_level_clear(self):
+        """Survival mode gives +1.0 + 0.01 = 1.01 on non-terminal level clear."""
+        env = StubEnv(reward_mode="survival")
+        reward = env._compute_survival_reward(terminated=False, level_cleared=True)
+        assert abs(reward - 1.01) < 1e-6
 
     def test_survival_terminal_reward_constant(self):
         """Survival terminal reward is -5.01."""
