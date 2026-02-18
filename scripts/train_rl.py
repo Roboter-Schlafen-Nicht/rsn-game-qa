@@ -251,11 +251,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--reward-mode",
         type=str,
         default="survival",
-        choices=["yolo", "survival"],
+        choices=["yolo", "survival", "rnd"],
         help=(
             "Reward signal strategy.  'yolo' uses YOLO-based brick/score "
             "deltas (noisy).  'survival' uses +0.01 per step, -5.0 on game "
-            "over, +5.0 on level clear (clean gradient).  Default: survival."
+            "over, +5.0 on level clear (clean gradient).  'rnd' uses survival "
+            "reward + RND intrinsic novelty bonus for exploration-driven QA.  "
+            "Default: survival."
         ),
     )
 
@@ -893,6 +895,10 @@ def main(argv: list[str] | None = None) -> int:
         # -- Create environment --------------------------------------------
         window_title = config.window_title or game_name
 
+        # RND mode uses survival reward internally — the RND wrapper adds
+        # the intrinsic bonus externally via VecEnvWrapper.
+        env_reward_mode = "survival" if args.reward_mode == "rnd" else args.reward_mode
+
         env = EnvClass(
             window_title=window_title,
             yolo_weights=yolo_weights,
@@ -900,7 +906,7 @@ def main(argv: list[str] | None = None) -> int:
             driver=browser_instance.driver,
             device=args.device,
             headless=args.headless,
-            reward_mode=args.reward_mode,
+            reward_mode=env_reward_mode,
         )
 
         # -- Wrap for CNN policy (if requested) ----------------------------
@@ -919,11 +925,23 @@ def main(argv: list[str] | None = None) -> int:
             vec_env = DummyVecEnv([lambda: cnn_env])
             vec_env = VecFrameStack(vec_env, n_stack=args.frame_stack)
             vec_env = VecTransposeImage(vec_env)
-            logger.info(
-                "CNN pipeline: CnnObservationWrapper → DummyVecEnv → "
-                "VecFrameStack(%d) → VecTransposeImage",
-                args.frame_stack,
-            )
+
+            # -- RND intrinsic reward wrapper (exploration mode) -----------
+            if args.reward_mode == "rnd":
+                from src.platform.rnd_wrapper import RNDRewardWrapper
+
+                vec_env = RNDRewardWrapper(vec_env, device="cpu")
+                logger.info(
+                    "CNN pipeline: CnnObservationWrapper → DummyVecEnv → "
+                    "VecFrameStack(%d) → VecTransposeImage → RNDRewardWrapper",
+                    args.frame_stack,
+                )
+            else:
+                logger.info(
+                    "CNN pipeline: CnnObservationWrapper → DummyVecEnv → "
+                    "VecFrameStack(%d) → VecTransposeImage",
+                    args.frame_stack,
+                )
             logger.info("CNN observation space: %s", vec_env.observation_space.shape)
             train_env = vec_env
             sb3_policy = "CnnPolicy"

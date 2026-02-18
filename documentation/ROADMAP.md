@@ -3,14 +3,14 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 31):** Tests pass, 96% coverage, 8 subsystems
-complete, game plugin architecture working. Zero meaningful RL training
-results and zero QA reports produced. The architecture is solid — now
-we execute.
+**Current state (session 32):** Phase 1 complete. Trained CNN agent
+(189K steps), 10-episode eval (mean length 403, 4 critical findings),
+random baseline comparison (80x survival, 63x findings), QA reports +
+HTML dashboards generated. 809 tests, 96% coverage. Phase 2 starting.
 
 ---
 
-## Phase 1: First Real Training & QA Report
+## Phase 1: First Real Training & QA Report ✓
 
 **Goal:** Prove the platform works end-to-end by producing a trained agent,
 evaluating it, and generating a QA report with real oracle findings.
@@ -18,17 +18,14 @@ evaluating it, and generating a QA report with real oracle findings.
 | Task | Details |
 |---|---|
 | Merge PR #65 | `--game` flag and dynamic plugin loading — **DONE** |
-| Run 200K-step PPO training | CNN policy, portrait mode, `--max-time 7200` |
-| Run 10-episode evaluation | `run_session.py --game breakout71 --episodes 10` |
-| Generate QA report | Oracle findings, episode metrics, HTML dashboard |
-| Random baseline comparison | 10-episode random policy evaluation for comparison |
-| Analyze results | Mean episode length, reward, oracle findings frequency |
+| Run 200K-step PPO training | CNN policy, survival mode, 189K steps — **DONE** |
+| Run 10-episode evaluation | Mean length 403, 4 critical findings — **DONE** |
+| Generate QA report | Oracle findings, HTML dashboard — **DONE** |
+| Random baseline comparison | Mean length 5, 0 critical findings — **DONE** |
+| Analyze results | 80x survival, 63x findings vs random — **DONE** |
 
-**Success criteria:** Trained model file, 10+ episode eval, QA report with
-oracle findings, measurable difference vs random baseline (even if small).
-
-**Why first:** Everything else is optimization. If the platform can't
-produce a QA report from a trained agent, nothing else matters.
+**Success criteria:** All met. Trained model 80x longer survival than random,
+4 critical frame-freeze bugs found that random baseline missed.
 
 ---
 
