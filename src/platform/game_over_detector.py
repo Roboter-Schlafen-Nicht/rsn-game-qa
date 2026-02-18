@@ -491,6 +491,19 @@ class GameOverDetector:
         """Return per-strategy confidence from the last update."""
         return dict(self._last_per_strategy)
 
+    def get_confidence(self) -> dict[str, float]:
+        """Return per-strategy confidence dict for info reporting.
+
+        Convenience method used by ``BaseGameEnv.step()`` to populate
+        the ``game_over_detector`` key in the info dict.
+
+        Returns
+        -------
+        dict[str, float]
+            Per-strategy confidence values from the last ``update()``.
+        """
+        return self.strategy_confidences
+
     def update(self, frame: np.ndarray) -> bool:
         """Process a frame and return whether game-over is detected.
 
