@@ -299,6 +299,17 @@ class RNDRewardWrapper(VecEnvWrapper):
                 f"update_proportion must be in (0.0, 1.0], got {update_proportion}"
             )
         self.update_proportion = update_proportion
+
+        # Resolve "auto" to a concrete device (xpu > cuda > cpu).
+        # Priority matches resolve_device() in src.perception.yolo_detector.
+        # Duplicated here intentionally to avoid coupling platform → perception.
+        if device == "auto":
+            if hasattr(torch, "xpu") and torch.xpu.is_available():
+                device = "xpu"
+            elif torch.cuda.is_available():
+                device = "cuda"
+            else:
+                device = "cpu"
         self.device = torch.device(device)
 
         # Infer observation shape from the VecEnv

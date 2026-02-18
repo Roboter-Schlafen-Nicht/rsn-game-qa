@@ -514,3 +514,15 @@ class TestRNDRewardWrapper:
         wrapper.step_async(np.array([[0.0]]))
         obs, reward, done, info = wrapper.step_wait()
         assert np.isfinite(reward[0])
+
+    def test_device_auto_resolves_to_concrete_device(self, RNDRewardWrapper):
+        """device='auto' resolves to a concrete torch device (not 'auto')."""
+        venv = _make_vec_env()
+        wrapper = RNDRewardWrapper(venv, device="auto")
+        # Should not raise RuntimeError from torch.device("auto")
+        assert wrapper.device.type in ("cpu", "cuda", "xpu")
+        # Verify the wrapper is functional
+        wrapper.reset()
+        wrapper.step_async(np.array([[0.0]]))
+        obs, reward, done, info = wrapper.step_wait()
+        assert np.isfinite(reward[0])
