@@ -89,8 +89,11 @@ Environment variables used above (set in your shell profile):
   false-positive level_cleared) — PRs #79, #82, #84, #85
 - **RND wrapper merged:** PR #86 — `src/platform/rnd_wrapper.py`,
   37 tests, Copilot review (9 comments addressed)
-- **Next:** Run CNN+RND training (~200K steps), measure state coverage
-  improvement vs survival-only baseline
+- **RND logging merged:** PR #88 — intrinsic reward logging, state
+  coverage tracking (deterministic MD5 8x8 fingerprint), Copilot
+  review (2 comments addressed)
+- **CNN+RND training running:** PID 31583, 200K steps, ~17 FPS
+- **Next:** Wait for training to complete, evaluate, compare to baseline
 
 ## Conventions
 
