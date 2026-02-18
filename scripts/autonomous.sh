@@ -49,7 +49,7 @@ PROMPT='You are running in autonomous continuous mode. Read AGENTS.md for your f
 5. Pick the next incomplete task and execute it fully
 6. When done, summarize what you accomplished
 
-Do NOT ask for user input. Execute autonomously. You have full permissions.'
+Do NOT ask for user input. Execute autonomously. You have full permissions: but you MUST wait and check review comments from Copilot before merging. Never merge without complete review!'
 
 # --- Trap Ctrl+C ---
 RUNNING=true

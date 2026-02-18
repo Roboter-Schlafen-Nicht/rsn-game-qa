@@ -919,3 +919,48 @@ class TestSurvivalReward:
         obs, reward, terminated, truncated, info = env.step(_action())
         assert terminated is True
         assert abs(reward - (-5.01)) < 1e-6
+
+    def test_step_ignores_level_cleared_in_survival_mode(self):
+        """In survival mode, level_cleared from check_termination is ignored.
+
+        YOLO brick detection is unreliable in headless mode and can
+        return 0 bricks, causing false level_cleared=True.  In survival
+        mode the step should continue (not terminate) even when
+        check_termination reports level_cleared.
+        """
+        env = _make_ready_env(reward_mode="survival")
+        # Make check_termination return level_cleared=True
+        env.check_termination = lambda detections: (True, True)
+        obs, reward, terminated, truncated, info = env.step(_action())
+        # Should NOT terminate — level_cleared is ignored in survival mode
+        assert terminated is False
+        # Reward should be survival per-step (+0.01), not level-clear bonus
+        assert abs(reward - 0.01) < 1e-6
+
+    def test_step_respects_level_cleared_in_yolo_mode(self):
+        """In yolo mode, level_cleared from check_termination is respected."""
+        env = _make_ready_env(reward_mode="yolo")
+        # Make check_termination return level_cleared=True
+        env.check_termination = lambda detections: (True, True)
+        env.compute_reward = (
+            lambda detections, terminated, level_cleared: 5.0 if level_cleared else -1.0
+        )
+        obs, reward, terminated, truncated, info = env.step(_action())
+        # Should terminate — level_cleared is respected in yolo mode
+        assert terminated is True
+        assert abs(reward - 5.0) < 1e-6
+
+    def test_step_game_over_still_terminates_in_survival_mode(self):
+        """In survival mode, game_over from check_termination still works.
+
+        Only level_cleared is ignored; game_over (ball lost) should
+        still terminate the episode with a negative reward.
+        """
+        env = _make_ready_env(reward_mode="survival")
+        # Make check_termination return game_over=True, level_cleared=False
+        env.check_termination = lambda detections: (True, False)
+        obs, reward, terminated, truncated, info = env.step(_action())
+        # Should terminate — game_over is respected
+        assert terminated is True
+        # Reward should be game-over penalty: 0.01 - 5.0 = -4.99
+        assert abs(reward - (-4.99)) < 1e-6
