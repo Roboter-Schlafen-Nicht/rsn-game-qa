@@ -3,9 +3,8 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 36):** Phase 1 complete. Phase 2 complete.
-Phase 2b (multi-level play) in progress — core implementation done,
-pending training validation. 909 tests, 96% coverage.
+**Current state (session 37):** Phase 1 complete. Phase 2 complete.
+Phase 2b (multi-level play) merged (PR #94). 909 tests, 96% coverage.
 Next: Run RND training with multi-level play to validate RND exploration.
 
 ---
