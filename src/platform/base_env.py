@@ -518,6 +518,15 @@ class BaseGameEnv(gym.Env, abc.ABC):
 
         # Determine termination (game-specific)
         terminated, level_cleared = self.check_termination(detections)
+
+        # In survival mode, ignore YOLO-based level_cleared detection.
+        # YOLO brick detection is unreliable in headless mode (returns
+        # 0 bricks → false level_cleared).  Survival mode relies solely
+        # on game-over modal detection for episode termination.
+        if self.reward_mode == "survival" and level_cleared:
+            terminated = False
+            level_cleared = False
+
         truncated = self._step_count >= self.max_steps
 
         # Compute reward (game-specific or survival mode)
