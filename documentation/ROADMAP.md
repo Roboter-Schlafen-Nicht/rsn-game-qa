@@ -18,7 +18,7 @@ evaluating it, and generating a QA report with real oracle findings.
 |---|---|
 | Merge PR #65 | `--game` flag and dynamic plugin loading — **DONE** |
 | Run 200K-step PPO training | CNN policy, survival mode, 189K steps — **DONE** |
-| Run 10-episode evaluation | Mean length 403, 4 critical findings — **DONE** |
+| Run 10-episode evaluation | Mean length 402.6, 4 critical findings — **DONE** |
 | Generate QA report | Oracle findings, HTML dashboard — **DONE** |
 | Random baseline comparison | Mean length 5, 0 critical findings — **DONE** |
 | Analyze results | 80x survival, 63x findings vs random — **DONE** |
