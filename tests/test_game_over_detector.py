@@ -592,6 +592,26 @@ class TestGameOverDetector:
         assert abs(detector._weights[0] - 0.5) < 1e-6
         assert abs(detector._weights[1] - 0.5) < 1e-6
 
+    def test_raises_when_all_weights_are_zero(self):
+        """ValueError if all weights are zero (division by zero)."""
+        from src.platform.game_over_detector import (
+            GameOverDetector,
+            ScreenFreezeStrategy,
+        )
+
+        with pytest.raises(ValueError, match="non-zero"):
+            GameOverDetector(
+                strategies=[ScreenFreezeStrategy()],
+                weights=[0.0],
+            )
+
+    def test_raises_when_empty_strategies_list(self):
+        """ValueError if strategies list is empty."""
+        from src.platform.game_over_detector import GameOverDetector
+
+        with pytest.raises(ValueError, match="at least one strategy"):
+            GameOverDetector(strategies=[])
+
 
 # ===================================================================
 # BaseGameEnv integration

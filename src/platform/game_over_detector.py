@@ -455,6 +455,8 @@ class GameOverDetector:
                 ScreenFreezeStrategy(),
                 MotionCessationStrategy(),
             ]
+        if len(strategies) == 0:
+            raise ValueError("strategies list must contain at least one strategy")
         self._strategies = strategies
 
         if weights is not None:
@@ -463,6 +465,8 @@ class GameOverDetector:
                     f"len(weights)={len(weights)} != len(strategies)={len(strategies)}"
                 )
             total = sum(weights)
+            if total == 0.0:
+                raise ValueError("weights must contain at least one non-zero value")
             self._weights = [w / total for w in weights]
         else:
             n = len(strategies)
