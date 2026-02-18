@@ -3,10 +3,9 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 32):** Phase 1 complete. Trained CNN agent
-(189K steps), 10-episode eval (mean length 403, 4 critical findings),
-random baseline comparison (80x survival, 63x findings), QA reports +
-HTML dashboards generated. 809 tests, 96% coverage. Phase 2 starting.
+**Current state (session 33):** Phase 1 complete. Phase 2 in progress.
+RND wrapper implemented (PR #86 merged, 37 tests, 9 Copilot review comments
+addressed). 834 tests, 96% coverage. Next: CNN+RND training run.
 
 ---
 
@@ -36,10 +35,10 @@ one strategy. This is the key differentiator for QA vs gameplay.
 
 | Task | Details |
 |---|---|
-| `src/platform/rnd_wrapper.py` | VecEnv wrapper with RND intrinsic reward |
-| Survival reward mode | `+0.01` per step, `-5.0` on game over |
-| `--reward-mode` CLI flag | `yolo\|survival\|rnd` for `train_rl.py` |
-| `_reward_mode` in BaseGameEnv | Platform-level override |
+| `src/platform/rnd_wrapper.py` | VecEnv wrapper with RND intrinsic reward — **DONE** (PR #86) |
+| Survival reward mode | `+0.01` per step, `-5.0` on game over — **DONE** (PR #83) |
+| `--reward-mode` CLI flag | `yolo\|survival\|rnd` for `train_rl.py` — **DONE** (PR #83, #86) |
+| `_reward_mode` in BaseGameEnv | Platform-level override — **DONE** (PR #83) |
 | CNN + RND training run | 200K steps, compare state coverage |
 | Coverage measurement | Unique visual states, perk encounters, level progression |
 

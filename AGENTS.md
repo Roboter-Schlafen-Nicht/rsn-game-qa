@@ -87,8 +87,10 @@ Environment variables used above (set in your shell profile):
   (80x survival, 63x findings), QA reports + HTML dashboards generated
 - **Crashes fixed:** 4 total (Chrome OOM, JS alert, multi-alert,
   false-positive level_cleared) — PRs #79, #82, #84, #85
-- **Next:** Implement RND intrinsic reward wrapper, run CNN+RND training,
-  measure state coverage improvement
+- **RND wrapper merged:** PR #86 — `src/platform/rnd_wrapper.py`,
+  37 tests, Copilot review (9 comments addressed)
+- **Next:** Run CNN+RND training (~200K steps), measure state coverage
+  improvement vs survival-only baseline
 
 ## Conventions
 
@@ -124,7 +126,7 @@ module where the behavioral contract matters more than implementation.
 
 ## Current State
 
-- **Tests pass**, 96% coverage, 830 tests, 8 subsystems complete
+- **Tests pass**, 96% coverage, 834 tests, 8 subsystems complete
 - **Architecture done:** BaseGameEnv ABC, game plugin system (`games/`),
   `--game` flag, CNN/MLP observation modes, dynamic plugin loading
 - **Phase 1 complete** — 4 crash bugs fixed (Chrome OOM, JS alert,
