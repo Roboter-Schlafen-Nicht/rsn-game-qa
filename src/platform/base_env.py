@@ -676,6 +676,17 @@ class BaseGameEnv(gym.Env, abc.ABC):
 
         frame = None
 
+        # -- Dismiss any unexpected browser alerts -------------------------
+        # The game can occasionally spawn JS alert() dialogs (e.g. "Two
+        # alerts where opened at once") that block all Selenium commands
+        # including screenshots.  Dismiss them preemptively.
+        try:
+            alert = self._driver.switch_to.alert
+            logger.warning("Dismissing unexpected browser alert: %s", alert.text)
+            alert.dismiss()
+        except Exception:  # noqa: BLE001
+            pass  # No alert present — normal case
+
         # Fast path: canvas toDataURL (JPEG, ~11ms vs ~85ms for PNG)
         try:
             selector = self.canvas_selector()
@@ -702,9 +713,28 @@ class BaseGameEnv(gym.Env, abc.ABC):
 
         # Fallback: full-page screenshot
         if frame is None:
-            png_bytes = self._driver.get_screenshot_as_png()
-            nparr = np.frombuffer(png_bytes, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            try:
+                png_bytes = self._driver.get_screenshot_as_png()
+                nparr = np.frombuffer(png_bytes, np.uint8)
+                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            except Exception:  # noqa: BLE001
+                # Alert may have appeared between toDataURL and screenshot;
+                # dismiss and retry once.
+                try:
+                    alert = self._driver.switch_to.alert
+                    logger.warning(
+                        "Dismissing alert before screenshot retry: %s",
+                        alert.text,
+                    )
+                    alert.dismiss()
+                    png_bytes = self._driver.get_screenshot_as_png()
+                    nparr = np.frombuffer(png_bytes, np.uint8)
+                    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                except Exception as inner_exc:  # noqa: BLE001
+                    logger.error(
+                        "Screenshot failed even after alert dismissal: %s",
+                        inner_exc,
+                    )
         if frame is None:
             raise RuntimeError("Failed to decode screenshot PNG to BGR frame")
         self._last_frame = frame
