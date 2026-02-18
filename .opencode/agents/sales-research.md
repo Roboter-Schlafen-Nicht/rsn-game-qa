@@ -46,11 +46,11 @@ You have NO memory between sessions. To persist your work:
 Read these files for context:
 - `private/documentation/business/business_proposition.md` — What RSN
   does, tiers, pricing, competitive landscape
-- `private/documentation/business/decisions_log.md` — Prior research
+- `private/documentation/decisions_log.md` — Prior research
   findings and decisions
 
 ### After every research session
-Append to `private/documentation/business/decisions_log.md` with:
+Append to `private/documentation/decisions_log.md` with:
 - Date and `[sales-research]` tag
 - Company/game analyzed, fit score, key findings
 - Recommendation (pursue / skip / revisit later) with reasoning
