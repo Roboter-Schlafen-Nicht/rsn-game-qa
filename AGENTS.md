@@ -81,12 +81,14 @@ Environment variables used above (set in your shell profile):
 
 ### Current status (updated by agent)
 
-- **Phase:** 1 (First Real Training & QA Report)
-- **Training:** CNN 200K with survival reward starting (previous run killed due to pathological YOLO reward)
-- **Crashes:** 3 (Chrome OOM at 57K, JS alert at 115K, multi-alert — all fixed)
-- **PR #83:** Survival reward mode — merged
-- **Next:** Start CNN 200K training with --reward-mode survival,
-  evaluate, run random baseline, generate QA report
+- **Phase:** 2 (Exploration-Driven Reward — RND)
+- **Phase 1 COMPLETE:** Trained CNN agent (189K steps), 10-episode eval
+  (mean length 403, 4 critical findings), random baseline comparison
+  (80x survival, 63x findings), QA reports + HTML dashboards generated
+- **Crashes fixed:** 4 total (Chrome OOM, JS alert, multi-alert,
+  false-positive level_cleared) — PRs #79, #82, #84, #85
+- **Next:** Implement RND intrinsic reward wrapper, run CNN+RND training,
+  measure state coverage improvement
 
 ## Conventions
 
@@ -122,12 +124,13 @@ module where the behavioral contract matters more than implementation.
 
 ## Current State
 
-- **Tests pass**, 96% coverage, 791 tests, 8 subsystems complete
+- **Tests pass**, 96% coverage, 830 tests, 8 subsystems complete
 - **Architecture done:** BaseGameEnv ABC, game plugin system (`games/`),
   `--game` flag, CNN/MLP observation modes, dynamic plugin loading
-- **Phase 1 in progress** — 3 crash bugs fixed (Chrome OOM, JS alert,
-  multi-alert), survival reward mode added (PR #83), CNN 200K training
-  with survival reward starting next
+- **Phase 1 complete** — 4 crash bugs fixed (Chrome OOM, JS alert,
+  multi-alert, false-positive level_cleared), survival reward mode
+  added, CNN 189K training completed, QA reports generated
+- **Phase 2 starting** — RND exploration-driven reward
 - **Human is OOO Feb 18–20, 2026** — agent operates fully autonomously
 - See `documentation/ROADMAP.md` for the 5-phase plan
 - See `private/documentation/BigRocks/checklist.md` for detailed task tracking
