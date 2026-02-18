@@ -29,8 +29,10 @@ Game QA**, an AI-powered game testing platform.
 ## Memory System
 
 You have NO memory between sessions. All persistent business context is
-stored in files under `private/documentation/business/`. You MUST read
-these files at the start of every session to understand the current state.
+stored in files under `private/documentation/business/` (CRM, proposals,
+plans) and the shared decisions log at
+`private/documentation/decisions_log.md`. You MUST read these files at
+the start of every session to understand the current state.
 
 ### Critical files to read on startup
 
