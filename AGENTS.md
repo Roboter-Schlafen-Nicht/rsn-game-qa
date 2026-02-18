@@ -64,15 +64,20 @@ The agent should NOT:
 
 ### Training runs
 
-All training uses headless mode on WSL2. Artifacts go to `/mnt/e/rsn-game-qa/`.
+All training uses headless mode on WSL2. Artifacts go to `$ARTIFACTS_DIR`.
 ```bash
-PYTHONPATH=/mnt/f/work/rsn-game-qa \
-BREAKOUT71_DIR=/mnt/f/work/breakout71-testbed \
-nohup /home/human/miniconda3/envs/yolo/bin/python scripts/train_rl.py \
+PYTHONPATH=$PROJECT_DIR \
+BREAKOUT71_DIR=$PROJECT_DIR/../breakout71-testbed \
+nohup $CONDA_PREFIX/bin/python scripts/train_rl.py \
   --game breakout71 --headless --policy mlp --timesteps 200000 \
   --orientation portrait --resume <checkpoint> \
-  > /mnt/e/rsn-game-qa/training_logs/train_run_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+  > $ARTIFACTS_DIR/training_logs/train_run_$(date +%Y%m%d_%H%M%S).log 2>&1 &
 ```
+
+Environment variables used above (set in your shell profile):
+- `$PROJECT_DIR` — path to this repo (e.g. `/mnt/f/work/rsn-game-qa`)
+- `$ARTIFACTS_DIR` — large disk for training output (e.g. `/mnt/e/rsn-game-qa`)
+- `$CONDA_PREFIX` — conda env root (set automatically by `conda activate yolo`)
 
 ### Current status (updated by agent)
 
