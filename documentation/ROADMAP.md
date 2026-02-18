@@ -3,11 +3,11 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 38):** Phase 1 complete. Phase 2 complete.
-Phase 2b (multi-level play) merged (PR #94). Bug fix for survival/RND
-mode (PR #96) — routes perk_picker modals through level transition,
-adds modal-based level clear signal. 912 tests, 96% coverage.
-Next: Merge bug fix, then run RND training with multi-level play.
+**Current state (session 39):** Phase 1 complete. Phase 2 complete.
+Phase 2b complete — multi-level play (PR #94) and survival/RND bug fix
+(PR #96) both merged. 912 tests, 96% coverage.
+Next: Run short debug training to verify multi-level + RND, then full
+200K training with evaluation.
 
 ---
 

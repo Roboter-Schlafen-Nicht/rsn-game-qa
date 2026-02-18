@@ -81,8 +81,7 @@ Environment variables used above (set in your shell profile):
 
 ### Current status (updated by agent)
 
-- **Phase:** 2b bug fix (PR #96) under review. Training validation
-  pending after merge.
+- **Phase:** 2b complete. Training validation pending.
 - **Phase 1 COMPLETE:** Trained CNN agent (189K steps), 10-episode eval
   (mean length 403, 4 critical findings), random baseline comparison
   (80x survival, 63x findings), QA reports + HTML dashboards generated
@@ -90,27 +89,22 @@ Environment variables used above (set in your shell profile):
   10-episode eval (mean length 3003, 3 critical findings), RND intrinsic
   reward collapsed to near-zero, 98 unique visual states, 270 performance
   warnings (RAM > 4GB)
-- **Phase 2b MERGED:** Multi-level play (PR #94) — perk picker loop,
-  JS score bridge, score-delta reward, level clear bonus, 20 new tests,
-  909 total, 96% coverage.
-- **Phase 2b BUG FIX (PR #96):** Survival/RND mode suppressed YOLO-based
-  `level_cleared` in the termination logic, preventing multi-level play.
-  Fix: route perk_picker modals through `_handle_level_transition()`,
-  add `modal_level_cleared` flag to bypass YOLO suppression, add
-  non-terminal level clear bonus (+1.0) to survival reward. 3 new
-  tests added (912 total, 96.31% coverage). CI passed.
+- **Phase 2b COMPLETE:** Multi-level play (PR #94) — perk picker loop,
+  JS score bridge, score-delta reward, level clear bonus, 20 new tests.
+  Bug fix (PR #96) — route perk_picker modals through level transition,
+  add modal-based level clear signal, survival level clear bonus. 912
+  tests, 96.31% coverage. Both PRs merged.
 - **Phase 3 code complete:** GameOverDetector with 4 pixel-based
   strategies (PRs #91, #92, #93). Not yet wired into training scripts.
   Pending: CLI integration, live validation on Breakout 71.
 - **Next steps (in order):**
-  1. Merge PR #96 after Copilot review
-  2. Run short debug training (`--max-time 180`) to verify multi-level
+  1. Run short debug training (`--max-time 180`) to verify multi-level
      + RND works end-to-end
-  3. If debug succeeds, launch full 200K RND training with multi-level
-  4. Monitor training — check RND intrinsic reward stays alive across
+  2. If debug succeeds, launch full 200K RND training with multi-level
+  3. Monitor training — check RND intrinsic reward stays alive across
      levels, check state coverage exceeds Phase 2's 98
-  5. Run 10-episode evaluation, compare vs Phase 2 single-level results
-  6. Generate QA report and update documentation
+  4. Run 10-episode evaluation, compare vs Phase 2 single-level results
+  5. Generate QA report and update documentation
 
 ## Conventions
 
@@ -156,9 +150,10 @@ module where the behavioral contract matters more than implementation.
   10-episode eval (mean length 3003, 3 critical findings), RND reward
   collapsed (predictor learns too fast), 270 performance warnings
 - **Phase 2b merged** — multi-level play, perk picker loop, JS
-  score bridge, score delta reward (PR #94). Bug fix pending PR on
-  branch `feature/rnd-multi-level-fix` (perk_picker routing, survival
-  level clear bonus). Training validation pending after merge.
+  score bridge, score delta reward (PR #94). Bug fix merged (PR #96):
+  perk_picker routing through level transition, modal-based level clear
+  signal, survival level clear bonus. 912 tests, 96.31% coverage.
+  Training validation pending.
 - **Phase 3 code complete** — GameOverDetector with 4 pixel-based
   strategies (PRs #91, #92, #93). Pending: CLI integration, live validation.
 - See `documentation/ROADMAP.md` for the 5-phase plan
