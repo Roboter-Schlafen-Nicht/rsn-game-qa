@@ -128,6 +128,9 @@ class Breakout71Env(BaseGameEnv):
     _LEVEL_CLEAR_THRESHOLD: int = 3
     """Consecutive frames with zero bricks before level-cleared."""
 
+    _PERK_LOOP_MAX_RETRIES: int = 20
+    """Maximum perk-click iterations before giving up."""
+
     def __init__(
         self,
         window_title: str = "Breakout",
@@ -734,9 +737,6 @@ class Breakout71Env(BaseGameEnv):
         except Exception as exc:
             logger.debug("Failed to read game state: %s", exc)
         return defaults
-
-    _PERK_LOOP_MAX_RETRIES: int = 20
-    """Maximum perk-click iterations before giving up."""
 
     def _handle_level_transition(self) -> bool:
         """Handle the perk picker modal after clearing a level.

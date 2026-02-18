@@ -650,16 +650,17 @@ class TestComputeReward:
         # brick_delta = 0.1 * 10 = 1.0; + time (-0.01) + level (+1.0) = 1.99
         assert abs(reward - 1.99) < 1e-6
 
-    def test_score_delta_placeholder(self):
-        """Score delta should be 0.0 in v1 (no effect on reward)."""
+    def test_no_brick_or_score_change_time_penalty_only(self):
+        """When bricks and score are unchanged, reward is just the time penalty."""
         env = Breakout71Env()
         env._bricks_total = 10
         env._prev_bricks_norm = 1.0
+        env._prev_score = 0
 
         det = _detections(bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)])
-        reward = env.compute_reward(det, terminated=False, level_cleared=False)
+        reward = env.compute_reward(det, terminated=False, level_cleared=False, score=0)
 
-        # Only time penalty since no bricks changed
+        # Only time penalty since no bricks or score changed
         assert abs(reward - (-0.01)) < 1e-6
 
     def test_prev_bricks_norm_updated(self):
