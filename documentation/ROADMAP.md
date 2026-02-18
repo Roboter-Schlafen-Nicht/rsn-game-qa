@@ -40,7 +40,7 @@ one strategy. This is the key differentiator for QA vs gameplay.
 | `--reward-mode` CLI flag | `yolo\|survival\|rnd` for `train_rl.py` — **DONE** (PR #83, #86) |
 | `_reward_mode` in BaseGameEnv | Platform-level override — **DONE** (PR #83) |
 | CNN + RND training run | 200K steps, compare state coverage — **IN PROGRESS** (PID 31583) |
-| Coverage measurement | Unique visual states, perk encounters, level progression — **logging merged** (PR #88) |
+| Coverage measurement | Unique visual states, perk encounters, level progression — **DONE** (logging merged; coverage analysis TBD, PR #88) |
 
 **Success criteria:** CNN + RND agent visits more diverse states than
 score-maximizing agent, measured by state coverage metrics.
