@@ -18,6 +18,72 @@ RL-driven autonomous game testing platform. First target: **Breakout 71**
 - Pre-commit hook runs CI via `act` (Docker). **Takes 5+ minutes.** Use
   `timeout` of 600000ms for commit commands; check `git log` afterward.
 
+## Autonomous Operation
+
+The agent operates autonomously without human supervision. After context
+compaction, the agent continues by re-reading this file and the roadmap.
+
+### Continuation after compaction
+
+OpenCode auto-compacts when context is full. After compaction:
+
+1. Re-read `AGENTS.md` (this file) for instructions and current state
+2. Re-read `documentation/ROADMAP.md` for the current phase
+3. Check `private/documentation/BigRocks/checklist.md` for task status
+4. Run `git status`, `git log --oneline -5`, `gh pr list` to orient
+5. Check for running training processes: `ps aux | grep train_rl`
+6. Resume the next incomplete task from the roadmap
+
+### Session continuity
+
+To continue the last session after restart:
+```
+opencode -c
+```
+
+To continue a specific session:
+```
+opencode -s <session-id>
+```
+
+### Decision authority
+
+The agent has full authority to:
+- Create branches, PRs, merge PRs (after CI passes)
+- Fix bugs, refactor code, add features per the roadmap
+- Launch and monitor training runs
+- Generate evaluation reports and dashboards
+- Update documentation, checklist, and this file
+- Create GitHub issues for problems that need human attention
+
+The agent should NOT:
+- Force-push to main
+- Delete data or checkpoints without clear reason
+- Change business strategy or pricing (use @business agent)
+- Commit files from `private/` to git
+
+### Training runs
+
+All training uses headless mode on WSL2. Artifacts go to `/mnt/e/rsn-game-qa/`.
+```bash
+PYTHONPATH=/mnt/f/work/rsn-game-qa \
+BREAKOUT71_DIR=/mnt/f/work/breakout71-testbed \
+nohup /home/human/miniconda3/envs/yolo/bin/python scripts/train_rl.py \
+  --game breakout71 --headless --policy mlp --timesteps 200000 \
+  --orientation portrait --resume <checkpoint> \
+  > /mnt/e/rsn-game-qa/training_logs/train_run_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+```
+
+### Current status (updated by agent)
+
+- **Phase:** 1 (First Real Training & QA Report)
+- **Training:** 100K/200K steps complete, checkpoint at
+  `output/checkpoints/ppo_breakout71_100001.zip`
+- **Crashes:** 2 (Chrome OOM at 57K, JS alert at 115K — both fixed)
+- **PR #79:** Alert handling fix — CI green, ready to merge
+- **Next:** Merge PR #79, resume training from 100K, run to 200K,
+  evaluate, generate QA report
+
 ## Conventions
 
 - Python 3.12, conda env `yolo`
@@ -55,7 +121,9 @@ module where the behavioral contract matters more than implementation.
 - **Tests pass**, 96% coverage, 8 subsystems complete
 - **Architecture done:** BaseGameEnv ABC, game plugin system (`games/`),
   `--game` flag, CNN/MLP observation modes, dynamic plugin loading
-- **No real training results yet** — Phase 1 in roadmap
+- **Phase 1 in progress** — 100K/200K training steps done, 2 crash bugs
+  fixed (Chrome OOM, JS alert), resuming training from checkpoint
+- **Human is OOO Feb 18–20, 2026** — agent operates fully autonomously
 - See `documentation/ROADMAP.md` for the 5-phase plan
 - See `private/documentation/BigRocks/checklist.md` for detailed task tracking
 
