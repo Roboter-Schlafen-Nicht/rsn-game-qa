@@ -17,6 +17,15 @@ import pytest
 
 from src.platform.base_env import BaseGameEnv
 
+try:
+    import cv2  # noqa: F401
+
+    _CV2_AVAILABLE = True
+except ImportError:
+    _CV2_AVAILABLE = False
+
+_skip_no_cv2 = pytest.mark.skipif(not _CV2_AVAILABLE, reason="cv2 not available")
+
 
 # ---------------------------------------------------------------------------
 # Stub concrete subclass for testing
@@ -561,6 +570,86 @@ class TestHeadlessCapture:
 
         with pytest.raises(RuntimeError, match="driver is None"):
             env._capture_frame_headless()
+
+    @_skip_no_cv2
+    def test_headless_capture_dismisses_alert(self):
+        """_capture_frame_headless dismisses unexpected browser alerts."""
+        import cv2
+
+        env = StubEnv(headless=True)
+        mock_driver = mock.MagicMock()
+        env._driver = mock_driver
+
+        # Simulate an alert present
+        mock_alert = mock.MagicMock()
+        mock_alert.text = "Two alerts where opened at once"
+        mock_driver.switch_to.alert = mock_alert
+
+        # After dismissal, screenshot works
+        fake_img = np.zeros((100, 100, 3), dtype=np.uint8)
+        _, png_bytes = cv2.imencode(".png", fake_img)
+        mock_driver.get_screenshot_as_png.return_value = png_bytes.tobytes()
+
+        frame = env._capture_frame_headless()
+        mock_alert.dismiss.assert_called_once()
+        assert frame is not None
+        assert frame.shape[0] > 0
+
+    @_skip_no_cv2
+    def test_headless_capture_no_alert_present(self):
+        """_capture_frame_headless works normally when no alert is present."""
+        import cv2
+
+        env = StubEnv(headless=True)
+        mock_driver = mock.MagicMock()
+        env._driver = mock_driver
+
+        # No alert — accessing switch_to.alert raises (production code
+        # catches broad Exception, so we don't need the real
+        # NoAlertPresentException which may be mocked away in CI).
+        type(mock_driver.switch_to).alert = mock.PropertyMock(
+            side_effect=Exception("no alert present")
+        )
+
+        fake_img = np.zeros((100, 100, 3), dtype=np.uint8)
+        _, png_bytes = cv2.imencode(".png", fake_img)
+        mock_driver.get_screenshot_as_png.return_value = png_bytes.tobytes()
+
+        frame = env._capture_frame_headless()
+        assert frame is not None
+
+    @_skip_no_cv2
+    def test_headless_capture_retries_after_screenshot_alert(self):
+        """Screenshot fails with alert, dismiss and retry succeeds."""
+        import cv2
+
+        env = StubEnv(headless=True)
+        mock_driver = mock.MagicMock()
+        env._driver = mock_driver
+
+        # No initial alert
+        type(mock_driver.switch_to).alert = mock.PropertyMock(
+            side_effect=[
+                Exception("no alert"),  # First check: no alert
+                mock.MagicMock(text="popup"),  # During retry: alert found
+            ]
+        )
+
+        # canvas toDataURL fails (unmocked execute_script) so we fall back to screenshot
+        # First screenshot raises, second (after dismiss) succeeds
+        fake_img = np.zeros((100, 100, 3), dtype=np.uint8)
+        _, png_bytes = cv2.imencode(".png", fake_img)
+
+        # Production code catches broad Exception, so we don't need the
+        # real UnexpectedAlertPresentException (may be mocked away in CI).
+        mock_driver.get_screenshot_as_png.side_effect = [
+            Exception("alert open"),
+            png_bytes.tobytes(),
+        ]
+
+        frame = env._capture_frame_headless()
+        assert frame is not None
+        assert mock_driver.get_screenshot_as_png.call_count == 2
 
 
 class TestLazyInitGameClasses:
