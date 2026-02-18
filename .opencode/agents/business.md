@@ -52,7 +52,7 @@ these files at the start of every session to understand the current state.
    - Meeting notes with dates
    - Email drafts sent (summary, not full text)
 
-2. Append to `private/documentation/business/decisions_log.md` with:
+2. Append to `private/documentation/decisions_log.md` with:
    - Date and `[business]` tag
    - Decisions made and rationale
    - Key outcomes or insights

@@ -105,11 +105,11 @@ You have NO memory between sessions. To persist your work:
 
 ### On startup
 Read the Context Files listed above, plus:
-- `private/documentation/business/decisions_log.md` — Shared log of
+- `private/documentation/decisions_log.md` — Shared log of
   all business decisions and insights across agents
 
 ### After every interaction
-Append to `private/documentation/business/decisions_log.md` with:
+Append to `private/documentation/decisions_log.md` with:
 - Date and `[strategy]` tag
 - Strategic advice given and reasoning
 - Decisions made, options rejected, and why
