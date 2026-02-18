@@ -616,11 +616,11 @@ class BaseGameEnv(gym.Env, abc.ABC):
         # Determine termination (game-specific)
         terminated, level_cleared = self.check_termination(detections)
 
-        # In survival mode, ignore YOLO-based level_cleared detection.
+        # In survival mode, suppress YOLO-based level_cleared detection.
         # YOLO brick detection is unreliable in headless mode (returns
-        # 0 bricks → false level_cleared). Survival mode ignores YOLO-based
-        # level_cleared and relies on modal-based detection (perk_picker
-        # state from handle_modals) for level transitions.
+        # 0 bricks → false level_cleared). Only modal-based detection
+        # (perk_picker state from handle_modals, merged below via
+        # modal_level_cleared) triggers level transitions in this mode.
         if self.reward_mode == "survival" and level_cleared:
             terminated = False
             level_cleared = False

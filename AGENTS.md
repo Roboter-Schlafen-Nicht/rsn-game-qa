@@ -81,8 +81,8 @@ Environment variables used above (set in your shell profile):
 
 ### Current status (updated by agent)
 
-- **Phase:** 2b bug fix on branch `feature/rnd-multi-level-fix`, ready
-  for PR. Training validation pending after merge.
+- **Phase:** 2b bug fix (PR #96) under review. Training validation
+  pending after merge.
 - **Phase 1 COMPLETE:** Trained CNN agent (189K steps), 10-episode eval
   (mean length 403, 4 critical findings), random baseline comparison
   (80x survival, 63x findings), QA reports + HTML dashboards generated
@@ -93,21 +93,17 @@ Environment variables used above (set in your shell profile):
 - **Phase 2b MERGED:** Multi-level play (PR #94) — perk picker loop,
   JS score bridge, score-delta reward, level clear bonus, 20 new tests,
   909 total, 96% coverage.
-- **Phase 2b BUG FIX (branch `feature/rnd-multi-level-fix`, commit
-  `c3d4c36`):** Critical bug found — survival/RND mode forcibly set
-  `level_cleared=False` in `base_env.py:606-608`, completely preventing
-  multi-level play. Also `perk_picker` modals detected mid-step only
-  called `start_game()` instead of routing through
-  `_handle_level_transition()`. Fix: route perk_picker modals through
-  `_handle_level_transition()`, add `modal_level_cleared` flag, add
+- **Phase 2b BUG FIX (PR #96):** Survival/RND mode suppressed YOLO-based
+  `level_cleared` in the termination logic, preventing multi-level play.
+  Fix: route perk_picker modals through `_handle_level_transition()`,
+  add `modal_level_cleared` flag to bypass YOLO suppression, add
   non-terminal level clear bonus (+1.0) to survival reward. 3 new
   tests added (912 total, 96.31% coverage). CI passed.
 - **Phase 3 code complete:** GameOverDetector with 4 pixel-based
   strategies (PRs #91, #92, #93). Not yet wired into training scripts.
   Pending: CLI integration, live validation on Breakout 71.
 - **Next steps (in order):**
-  1. Push branch `feature/rnd-multi-level-fix`, create PR, get Copilot
-     review, address comments, merge
+  1. Merge PR #96 after Copilot review
   2. Run short debug training (`--max-time 180`) to verify multi-level
      + RND works end-to-end
   3. If debug succeeds, launch full 200K RND training with multi-level
@@ -205,10 +201,11 @@ These cause bugs if forgotten. Full knowledge base at
     MLP is optional (requires game-specific YOLO model)
 15. **wincam singleton** — only 1 DXCamera at a time; no CI/headless support
 16. **Survival/RND mode suppressed multi-level play** — `base_env.py`
-    forcibly set `level_cleared=False` in survival/RND mode (lines 606-608),
-    completely blocking `_handle_level_transition()`. Fixed in branch
-    `feature/rnd-multi-level-fix`. Also: perk_picker modals mid-step must
-    route through `_handle_level_transition()`, not `start_game()`.
+    forcibly set `level_cleared=False` in the survival/RND-specific
+    termination logic, completely blocking `_handle_level_transition()`.
+    Fixed in PR #96 via `modal_level_cleared`. Also: perk_picker modals
+    mid-step must route through `_handle_level_transition()`, not
+    `start_game()`.
 
 ## Project Structure
 
