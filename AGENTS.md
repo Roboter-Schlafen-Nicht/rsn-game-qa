@@ -101,7 +101,10 @@ Environment variables used above (set in your shell profile):
 - **RND logging merged:** PR #88 — intrinsic reward logging, state
   coverage tracking (deterministic MD5 8x8 fingerprint), Copilot
   review (2 comments addressed)
-- **Next:** Merge multi-level PR, run RND training with multi-level play
+- **Multi-level play merged:** PR #94 — perk picker loop, JS score
+  bridge, score-delta reward, level clear bonus, 20 new tests,
+  Copilot review (2 comments addressed)
+- **Next:** Run RND training with multi-level play, evaluate results
 
 ## Conventions
 
