@@ -2,11 +2,13 @@
 
 Single source of truth for the JS code injected via Selenium
 ``execute_script()`` to detect and dismiss game modals (game-over,
-perk picker, menu) and to dispatch input events.  All scripts and
-the environment import from here.
+perk picker, menu), read game state, and dispatch input events.
+All scripts and the environment import from here.
 
-These are the *only* JS injection points in the platform -- all
-observation and control is otherwise pixel-based.
+Breakout 71 is the development testbed and is treated as gray-box:
+JS score reading, puck position, and modal handling are all allowed.
+The real black-box validation games (Hextris, shapez.io) will NOT
+use game-state JS injection.
 """
 
 # ---------------------------------------------------------------------------
@@ -171,5 +173,24 @@ return (function() {
     });
     canvas.dispatchEvent(evt);
     return {ok: true};
+})();
+"""
+
+# ---------------------------------------------------------------------------
+# Game state -- read score, level, lives from window.gameState
+# (gray-box: Breakout 71 testbed only)
+# ---------------------------------------------------------------------------
+
+READ_GAME_STATE_JS = """
+return (function() {
+    if (typeof gameState === 'undefined') {
+        return {score: 0, level: 0, lives: 0, running: false};
+    }
+    return {
+        score: gameState.score || 0,
+        level: gameState.currentLevel || 0,
+        lives: gameState.balls || 0,
+        running: !!gameState.running
+    };
 })();
 """

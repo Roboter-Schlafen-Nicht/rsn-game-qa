@@ -3,9 +3,10 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 35):** Phase 1 complete. Phase 2 complete.
-CNN+RND 200K training done, 10-episode eval done, comparison complete.
-834 tests, 96% coverage. Next: Phase 3 (game-over detection generalization).
+**Current state (session 36):** Phase 1 complete. Phase 2 complete.
+Phase 2b (multi-level play) in progress — core implementation done,
+pending training validation. 909 tests, 96% coverage.
+Next: Run RND training with multi-level play to validate RND exploration.
 
 ---
 
@@ -78,6 +79,29 @@ novelty. The agent learned survival but not diverse exploration.
 | Critical findings | 0 | 4 | 3 |
 | Performance warnings | 0 | 4 | 270 |
 | Total findings | 64 | 4,045 | 30,316 |
+
+---
+
+## Phase 2b: Multi-Level Play & RND Rescue
+
+**Goal:** Fix RND intrinsic reward collapse by enabling multi-level play
+with random perk selection, creating diverse visual states across levels.
+
+| Task | Details |
+|---|---|
+| Multi-level episode semantics | Level clear no longer terminates — **DONE** |
+| `_handle_level_transition()` hook | BaseGameEnv optional hook, Breakout71 override — **DONE** |
+| Perk picker loop | Click random perks until modal closes — **DONE** |
+| JS score bridge | `READ_GAME_STATE_JS` reads score/level/lives — **DONE** |
+| Score-delta reward | `compute_reward()` uses JS score delta — **DONE** |
+| Level clear bonus | +1.0 per level cleared (not terminal) — **DONE** |
+| TDD tests | 20 new tests, 909 total, 96% coverage — **DONE** |
+| RND training validation | Run 200K+ with multi-level, verify RND stays alive — TODO |
+| Evaluation comparison | Compare vs Phase 2 single-level results — TODO |
+
+**Success criteria:** RND intrinsic reward stays above zero through
+multi-level episodes. State coverage (unique fingerprints) significantly
+exceeds Phase 2's 98.
 
 ---
 

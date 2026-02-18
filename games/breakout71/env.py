@@ -60,6 +60,7 @@ from games.breakout71.modal_handler import (
     DISMISS_GAME_OVER_JS,
     DISMISS_MENU_JS,
     MOVE_MOUSE_JS,
+    READ_GAME_STATE_JS,
 )
 from src.platform.base_env import BaseGameEnv
 
@@ -180,6 +181,11 @@ class Breakout71Env(BaseGameEnv):
         # Termination counters
         self._no_ball_count: int = 0
         self._no_bricks_count: int = 0
+
+        # Multi-level state (gray-box: JS score/level reading)
+        self._prev_score: int = 0
+        self._current_level: int = 0
+        self._levels_cleared: int = 0
 
     # ------------------------------------------------------------------
     # Abstract method implementations
@@ -322,6 +328,8 @@ class Breakout71Env(BaseGameEnv):
         detections: dict[str, Any],
         terminated: bool,
         level_cleared: bool,
+        *,
+        score: int | None = None,
     ) -> float:
         """Compute the reward for the current step.
 
@@ -333,12 +341,20 @@ class Breakout71Env(BaseGameEnv):
             Whether the episode ended this step.
         level_cleared : bool
             Whether the level was cleared (all bricks destroyed).
+        score : int, optional
+            Current game score.  If None, reads from JS bridge
+            (gray-box).  Pass explicitly for testing.
 
         Returns
         -------
         float
             Reward signal.
         """
+        # Read score from JS bridge if not provided
+        if score is None:
+            game_state = self._read_game_state()
+            score = game_state.get("score", 0)
+
         # Brick destruction reward
         bricks_left = len(detections.get("bricks", []))
         bricks_total = self._bricks_total if self._bricks_total else 1
@@ -346,21 +362,24 @@ class Breakout71Env(BaseGameEnv):
         brick_delta = self._prev_bricks_norm - bricks_norm
         reward = brick_delta * 10.0
 
-        # Score delta reward (placeholder -- will activate with OCR/JS bridge)
-        score_delta = 0.0
+        # Score delta reward (JS bridge)
+        score_delta = score - self._prev_score
         reward += score_delta * 0.01
 
         # Time penalty
         reward -= 0.01
 
         # Terminal rewards
-        if terminated and level_cleared:
-            reward += 5.0
-        elif terminated:
+        if terminated and not level_cleared:
             reward -= 5.0
+
+        # Level cleared bonus (awarded whether or not episode continues)
+        if level_cleared:
+            reward += 1.0
 
         # Update state for next step
         self._prev_bricks_norm = bricks_norm
+        self._prev_score = score
 
         return reward
 
@@ -370,6 +389,10 @@ class Breakout71Env(BaseGameEnv):
         Reads ``_no_ball_count`` (already updated by
         ``_check_late_game_over``) and updates ``_no_bricks_count``.
 
+        Level cleared is reported as a signal but does NOT terminate
+        the episode.  The caller (``step()``) handles the level
+        transition via ``_handle_level_transition()``.
+
         Parameters
         ----------
         detections : dict[str, Any]
@@ -378,9 +401,9 @@ class Breakout71Env(BaseGameEnv):
         Returns
         -------
         terminated : bool
-            True if the episode should end.
+            True if the episode should end (game over only).
         level_cleared : bool
-            True if the level was cleared.
+            True if the level was cleared (signal, not termination).
         """
         brick_count = len(detections.get("bricks", []))
 
@@ -395,7 +418,10 @@ class Breakout71Env(BaseGameEnv):
             and self._bricks_total is not None
             and brick_count == self._prev_brick_count()
         )
-        terminated = level_cleared or game_over
+
+        # Level clear is a signal, NOT a termination.
+        # Only game_over terminates the episode.
+        terminated = game_over
 
         return terminated, level_cleared
 
@@ -596,7 +622,9 @@ class Breakout71Env(BaseGameEnv):
             "ball_pos": [ball[0], ball[1]] if ball is not None else None,
             "paddle_pos": [paddle[0], paddle[1]] if paddle is not None else None,
             "brick_count": len(detections.get("bricks", [])),
-            "score": 0.0,  # placeholder for v1
+            "score": self._prev_score,
+            "current_level": self._current_level,
+            "levels_cleared": self._levels_cleared,
             "no_ball_count": self._no_ball_count,
         }
 
@@ -630,6 +658,9 @@ class Breakout71Env(BaseGameEnv):
         self._prev_bricks_norm = 1.0
         self._no_ball_count = 0
         self._no_bricks_count = 0
+        self._prev_score = 0
+        self._current_level = 0
+        self._levels_cleared = 0
 
     # ------------------------------------------------------------------
     # Modal throttling hooks
@@ -674,6 +705,116 @@ class Breakout71Env(BaseGameEnv):
             self._no_ball_count = 0
 
         return False
+
+    # ------------------------------------------------------------------
+    # Multi-level play
+    # ------------------------------------------------------------------
+
+    def _read_game_state(self) -> dict[str, Any]:
+        """Read game state (score, level, lives) via JS bridge.
+
+        Returns
+        -------
+        dict[str, Any]
+            ``{"score": int, "level": int, "lives": int, "running": bool}``
+            Returns defaults on error or when no driver is available.
+        """
+        defaults: dict[str, Any] = {
+            "score": 0,
+            "level": 0,
+            "lives": 0,
+            "running": False,
+        }
+        if self._driver is None:
+            return defaults
+        try:
+            result = self._driver.execute_script(READ_GAME_STATE_JS)
+            if result is not None:
+                return result
+        except Exception as exc:
+            logger.debug("Failed to read game state: %s", exc)
+        return defaults
+
+    _PERK_LOOP_MAX_RETRIES: int = 20
+    """Maximum perk-click iterations before giving up."""
+
+    def _handle_level_transition(self) -> bool:
+        """Handle the perk picker modal after clearing a level.
+
+        Loops: detect perk_picker state → click random perk → repeat
+        until the modal closes or max retries reached.  Resets brick
+        tracking state for the new level.
+
+        Returns
+        -------
+        bool
+            True if the transition was handled and the episode should
+            continue.  False if no driver is available.
+        """
+        if self._driver is None:
+            return False
+
+        self._levels_cleared += 1
+        logger.info(
+            "Level transition #%d — handling perk picker",
+            self._levels_cleared,
+        )
+
+        # Loop perk selection until modal closes
+        for attempt in range(self._PERK_LOOP_MAX_RETRIES):
+            try:
+                state_info = self._driver.execute_script(DETECT_STATE_JS)
+            except Exception as exc:
+                logger.debug("State detection failed during transition: %s", exc)
+                break
+
+            if state_info is None:
+                break
+
+            state = state_info.get("state", "unknown")
+
+            if state != "perk_picker":
+                logger.info(
+                    "Perk picker closed after %d click(s), state=%s",
+                    attempt,
+                    state,
+                )
+                break
+
+            # Click a random perk
+            try:
+                result = self._driver.execute_script(CLICK_PERK_JS)
+                logger.info(
+                    "Perk %d/%d: clicked button %d (%s)",
+                    attempt + 1,
+                    self._PERK_LOOP_MAX_RETRIES,
+                    result.get("clicked", -1),
+                    result.get("text", "?"),
+                )
+            except Exception:
+                pass
+            time.sleep(0.3)
+
+        # Read updated game state
+        game_state = self._read_game_state()
+        self._current_level = game_state.get("level", self._current_level + 1)
+
+        # Reset brick tracking for the new level
+        self._bricks_total = None  # will be re-calibrated on next detection
+        self._prev_bricks_norm = 1.0
+        self._no_bricks_count = 0
+
+        # Restart gameplay
+        self.start_game()
+        time.sleep(0.3)
+
+        logger.info(
+            "Level transition complete: level=%d, score=%d",
+            self._current_level,
+            game_state.get("score", 0),
+        )
+
+        return True
 
     # ------------------------------------------------------------------
     # Private helpers

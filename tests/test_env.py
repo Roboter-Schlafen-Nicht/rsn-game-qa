@@ -47,7 +47,10 @@ for _mod in _SELENIUM_MODULES:
 from games.breakout71.env import (  # noqa: E402
     Breakout71Env,
 )
-from games.breakout71.modal_handler import DISMISS_GAME_OVER_JS  # noqa: E402
+from games.breakout71.modal_handler import (  # noqa: E402
+    DISMISS_GAME_OVER_JS,
+    READ_GAME_STATE_JS,
+)
 
 
 # -- Helpers -------------------------------------------------------------------
@@ -622,16 +625,17 @@ class TestComputeReward:
         assert abs(reward - (-5.01)) < 1e-6
 
     def test_level_cleared_bonus(self):
-        """Level cleared should give +5.0 bonus."""
+        """Level cleared should give +1.0 bonus (multi-level play)."""
         env = Breakout71Env()
         env._bricks_total = 10
         env._prev_bricks_norm = 0.0  # already at 0
 
         det = _detections(bricks=[])
-        reward = env.compute_reward(det, terminated=True, level_cleared=True)
+        # In multi-level play, level_cleared=True with terminated=False
+        reward = env.compute_reward(det, terminated=False, level_cleared=True)
 
-        # brick_delta = 0.0; time penalty (-0.01) + level_clear (+5.0) = 4.99
-        assert abs(reward - 4.99) < 1e-6
+        # brick_delta = 0.0; time penalty (-0.01) + level_clear (+1.0) = 0.99
+        assert abs(reward - 0.99) < 1e-6
 
     def test_combined_brick_and_level_clear(self):
         """Last brick destroyed + level cleared should give both rewards."""
@@ -640,10 +644,11 @@ class TestComputeReward:
         env._prev_bricks_norm = 0.1  # 1 brick left
 
         det = _detections(bricks=[])
-        reward = env.compute_reward(det, terminated=True, level_cleared=True)
+        # In multi-level play, level_cleared=True with terminated=False
+        reward = env.compute_reward(det, terminated=False, level_cleared=True)
 
-        # brick_delta = 0.1 * 10 = 1.0; + time (-0.01) + level (+5.0) = 5.99
-        assert abs(reward - 5.99) < 1e-6
+        # brick_delta = 0.1 * 10 = 1.0; + time (-0.01) + level (+1.0) = 1.99
+        assert abs(reward - 1.99) < 1e-6
 
     def test_score_delta_placeholder(self):
         """Score delta should be 0.0 in v1 (no effect on reward)."""
@@ -1309,7 +1314,11 @@ class TestStep:
 
     @mock.patch("games.breakout71.env.time")
     def test_step_level_cleared(self, mock_time):
-        """Level cleared when no bricks for LEVEL_CLEAR_THRESHOLD frames."""
+        """Level cleared should trigger level transition, not termination.
+
+        In multi-level play, level clear calls _handle_level_transition()
+        which (with a mock driver) succeeds and continues the episode.
+        """
         env = self._make_env_ready()
         env._no_bricks_count = Breakout71Env._LEVEL_CLEAR_THRESHOLD - 1
 
@@ -1318,7 +1327,9 @@ class TestStep:
 
         _, _, terminated, _, _ = env.step(_action())
 
-        assert terminated is True
+        # Transition succeeds (mock driver present) → episode continues
+        assert terminated is False
+        assert env._levels_cleared == 1
 
     @mock.patch("games.breakout71.env.time")
     def test_step_bricks_present_resets_counter(self, mock_time):
@@ -1943,3 +1954,296 @@ class TestModalCheckThrottling:
             mock_cr.assert_not_called()
             # Fixed penalty used instead
             assert reward == pytest.approx(-5.01)
+
+
+# -- Multi-Level Play ---------------------------------------------------------
+
+
+class TestReadGameStateJS:
+    """Tests for the READ_GAME_STATE_JS snippet."""
+
+    def test_snippet_exists_and_is_string(self):
+        """READ_GAME_STATE_JS should be a non-empty string."""
+        assert isinstance(READ_GAME_STATE_JS, str)
+        assert len(READ_GAME_STATE_JS) > 0
+
+    def test_snippet_reads_score_level_lives(self):
+        """READ_GAME_STATE_JS should reference score, level, lives keys."""
+        assert "score" in READ_GAME_STATE_JS
+        assert "level" in READ_GAME_STATE_JS
+        assert "lives" in READ_GAME_STATE_JS
+
+
+class TestMultiLevelState:
+    """Tests for multi-level state tracking in Breakout71Env."""
+
+    def test_initial_multi_level_state(self):
+        """New env should have multi-level state initialized to defaults."""
+        env = Breakout71Env()
+        assert env._prev_score == 0
+        assert env._current_level == 0
+        assert env._levels_cleared == 0
+
+    def test_reset_clears_multi_level_state(self):
+        """reset_termination_state should reset multi-level counters."""
+        env = Breakout71Env()
+        env._prev_score = 100
+        env._current_level = 3
+        env._levels_cleared = 2
+        env.reset_termination_state()
+        assert env._prev_score == 0
+        assert env._current_level == 0
+        assert env._levels_cleared == 0
+
+
+class TestReadGameScore:
+    """Tests for _read_game_state() JS bridge."""
+
+    def test_read_game_state_returns_score_and_level(self):
+        """_read_game_state should return score and level from JS."""
+        driver = _mock_driver()
+        env = Breakout71Env(driver=driver)
+
+        driver.execute_script.return_value = {
+            "score": 42,
+            "level": 2,
+            "lives": 3,
+            "running": True,
+        }
+        state = env._read_game_state()
+        assert state["score"] == 42
+        assert state["level"] == 2
+        assert state["lives"] == 3
+
+    def test_read_game_state_no_driver(self):
+        """_read_game_state without driver should return defaults."""
+        env = Breakout71Env()
+        state = env._read_game_state()
+        assert state["score"] == 0
+        assert state["level"] == 0
+
+    def test_read_game_state_handles_exception(self):
+        """_read_game_state should return defaults on JS error."""
+        driver = _mock_driver()
+        env = Breakout71Env(driver=driver)
+        driver.execute_script.side_effect = Exception("JS error")
+        state = env._read_game_state()
+        assert state["score"] == 0
+        assert state["level"] == 0
+
+
+class TestHandleLevelTransition:
+    """Tests for _handle_level_transition() perk picker loop."""
+
+    def test_handle_level_transition_clicks_perks(self):
+        """_handle_level_transition should click perks until modal closes."""
+        driver = _mock_driver()
+        env = Breakout71Env(driver=driver)
+        env._initialized = True
+        env._bricks_total = 10
+        env._no_bricks_count = 3
+
+        # Simulate: first call = perk_picker, second = perk_picker,
+        # third = gameplay (modal closed)
+        call_count = [0]
+
+        def mock_detect_state(js):
+            from games.breakout71.modal_handler import (
+                CLICK_PERK_JS,
+                DETECT_STATE_JS,
+            )
+
+            if js == DETECT_STATE_JS:
+                call_count[0] += 1
+                if call_count[0] <= 2:
+                    return {"state": "perk_picker", "details": {"numPerks": 3}}
+                return {"state": "gameplay", "details": {}}
+            if js == CLICK_PERK_JS:
+                return {"clicked": 0, "text": "Multiball"}
+            if js == READ_GAME_STATE_JS:
+                return {"score": 0, "level": 1, "lives": 3, "running": True}
+            return None
+
+        driver.execute_script.side_effect = mock_detect_state
+
+        result = env._handle_level_transition()
+        assert result is True
+        assert env._levels_cleared == 1
+        assert env._no_bricks_count == 0
+
+    def test_handle_level_transition_no_driver_returns_false(self):
+        """_handle_level_transition without driver should return False."""
+        env = Breakout71Env()
+        result = env._handle_level_transition()
+        assert result is False
+
+    def test_handle_level_transition_resets_brick_state(self):
+        """After transition, brick tracking state should be reset."""
+        driver = _mock_driver()
+        env = Breakout71Env(driver=driver)
+        env._initialized = True
+        env._bricks_total = 10
+        env._prev_bricks_norm = 0.0
+        env._no_bricks_count = 3
+
+        # Modal immediately closes (gameplay state)
+        driver.execute_script.return_value = {
+            "state": "gameplay",
+            "details": {},
+        }
+
+        env._handle_level_transition()
+        assert env._bricks_total is None  # reset for re-calibration
+        assert env._prev_bricks_norm == 1.0
+        assert env._no_bricks_count == 0
+
+    def test_handle_level_transition_max_retries(self):
+        """_handle_level_transition should give up after max retries."""
+        driver = _mock_driver()
+        env = Breakout71Env(driver=driver)
+        env._initialized = True
+        env._bricks_total = 10
+
+        # Always returns perk_picker (stuck modal)
+        driver.execute_script.return_value = {
+            "state": "perk_picker",
+            "details": {"numPerks": 3},
+        }
+
+        result = env._handle_level_transition()
+        # Should still return True (best effort) but not loop forever
+        assert result is True
+
+
+class TestStepMultiLevel:
+    """Tests for step() behavior with multi-level play."""
+
+    def _make_env_ready(self, bricks_count=10):
+        """Create a ready env (reuse existing helper pattern)."""
+        return _make_env_ready(bricks_count)
+
+    @mock.patch("games.breakout71.env.time")
+    def test_step_level_cleared_continues_when_transition_succeeds(self, mock_time):
+        """When level is cleared and transition succeeds, episode continues."""
+        env = self._make_env_ready(bricks_count=10)
+
+        # Simulate zero bricks for 3+ frames → level_cleared
+        env._no_bricks_count = 2  # one more zero will trigger
+        env._detector.detect_to_game_state.return_value = _detections(bricks=[])
+
+        with mock.patch.object(env, "_handle_level_transition", return_value=True):
+            _, reward, terminated, truncated, info = env.step(_action())
+            assert terminated is False
+            assert truncated is False
+
+    @mock.patch("games.breakout71.env.time")
+    def test_step_level_cleared_terminates_when_transition_fails(self, mock_time):
+        """When level is cleared but transition fails, episode terminates."""
+        env = self._make_env_ready(bricks_count=10)
+
+        # Simulate level_cleared
+        env._no_bricks_count = 2
+        env._detector.detect_to_game_state.return_value = _detections(bricks=[])
+
+        with mock.patch.object(env, "_handle_level_transition", return_value=False):
+            _, reward, terminated, truncated, info = env.step(_action())
+            assert terminated is True
+
+    @mock.patch("games.breakout71.env.time")
+    def test_step_level_cleared_gives_bonus_reward(self, mock_time):
+        """Level clear should give a positive bonus reward."""
+        env = self._make_env_ready(bricks_count=10)
+
+        env._no_bricks_count = 2
+        env._detector.detect_to_game_state.return_value = _detections(bricks=[])
+
+        with mock.patch.object(env, "_handle_level_transition", return_value=True):
+            _, reward, terminated, _, _ = env.step(_action())
+            # Should have level clear bonus (positive)
+            assert reward > 0
+
+    @mock.patch("games.breakout71.env.time")
+    def test_step_game_over_still_terminates(self, mock_time):
+        """Game-over (ball lost) should still terminate the episode."""
+        env = self._make_env_ready(bricks_count=10)
+
+        # Ball lost for enough frames
+        env._no_ball_count = env._BALL_LOST_THRESHOLD
+        env._detector.detect_to_game_state.return_value = _detections(
+            ball=None,
+            bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)],
+        )
+
+        _, _, terminated, _, _ = env.step(_action())
+        assert terminated is True
+
+
+class TestScoreReward:
+    """Tests for JS score-based reward computation."""
+
+    def test_compute_reward_includes_score_delta(self):
+        """compute_reward should include score delta component."""
+        env = Breakout71Env()
+        env._bricks_total = 10
+        env._prev_bricks_norm = 1.0
+        env._prev_score = 0
+
+        dets = _detections(bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)])
+        reward = env.compute_reward(dets, False, False, score=100)
+        # Score delta should contribute positively
+        # Without score: reward = 0 * 10 - 0.01 = -0.01
+        # With score 100: reward = -0.01 + 100 * scale
+        assert reward > -0.01
+
+    def test_compute_reward_updates_prev_score(self):
+        """compute_reward should update _prev_score for next step."""
+        env = Breakout71Env()
+        env._bricks_total = 10
+        env._prev_bricks_norm = 1.0
+        env._prev_score = 0
+
+        dets = _detections(bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)])
+        env.compute_reward(dets, False, False, score=100)
+        assert env._prev_score == 100
+
+    def test_compute_reward_level_cleared_bonus(self):
+        """Level cleared should add bonus when not terminated."""
+        env = Breakout71Env()
+        env._bricks_total = 10
+        env._prev_bricks_norm = 0.0
+        env._prev_score = 0
+
+        dets = _detections(bricks=[])
+        # level_cleared=True, terminated=False (multi-level continues)
+        reward = env.compute_reward(dets, False, True, score=0)
+        # Should include level_cleared bonus
+        assert reward > 0
+
+    def test_compute_reward_game_over_penalty(self):
+        """Game over should give negative terminal reward."""
+        env = Breakout71Env()
+        env._bricks_total = 10
+        env._prev_bricks_norm = 1.0
+        env._prev_score = 0
+
+        dets = _detections(bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)])
+        reward = env.compute_reward(dets, True, False, score=0)
+        assert reward < 0
+
+
+class TestBuildInfoMultiLevel:
+    """Tests for build_info with multi-level state."""
+
+    def test_build_info_includes_level_and_score(self):
+        """build_info should include current_level and levels_cleared."""
+        env = Breakout71Env()
+        env._current_level = 2
+        env._levels_cleared = 1
+        env._prev_score = 50
+
+        dets = _detections()
+        info = env.build_info(dets)
+        assert "current_level" in info
+        assert info["current_level"] == 2
+        assert "levels_cleared" in info
+        assert info["levels_cleared"] == 1

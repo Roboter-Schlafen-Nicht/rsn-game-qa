@@ -81,7 +81,7 @@ Environment variables used above (set in your shell profile):
 
 ### Current status (updated by agent)
 
-- **Phase:** 2 COMPLETE, ready for Phase 3
+- **Phase:** 2b IN PROGRESS (multi-level play)
 - **Phase 1 COMPLETE:** Trained CNN agent (189K steps), 10-episode eval
   (mean length 403, 4 critical findings), random baseline comparison
   (80x survival, 63x findings), QA reports + HTML dashboards generated
@@ -89,6 +89,11 @@ Environment variables used above (set in your shell profile):
   10-episode eval (mean length 3003, 3 critical findings), RND intrinsic
   reward collapsed to near-zero, 98 unique visual states, 270 performance
   warnings (RAM > 4GB)
+- **Phase 2b IN PROGRESS:** Multi-level play implementation done —
+  level clear no longer terminates episode, perk picker loop handles
+  random perk selection, JS score bridge reads score/level/lives,
+  compute_reward uses score delta. 20 new tests, 909 total, 96% coverage.
+  Pending: RND training validation run.
 - **Crashes fixed:** 4 total (Chrome OOM, JS alert, multi-alert,
   false-positive level_cleared) — PRs #79, #82, #84, #85
 - **RND wrapper merged:** PR #86 — `src/platform/rnd_wrapper.py`,
@@ -96,7 +101,7 @@ Environment variables used above (set in your shell profile):
 - **RND logging merged:** PR #88 — intrinsic reward logging, state
   coverage tracking (deterministic MD5 8x8 fingerprint), Copilot
   review (2 comments addressed)
-- **Next:** Phase 3 — game-over detection generalization
+- **Next:** Merge multi-level PR, run RND training with multi-level play
 
 ## Conventions
 
@@ -132,7 +137,7 @@ module where the behavioral contract matters more than implementation.
 
 ## Current State
 
-- **Tests pass**, 96% coverage, 834 tests, 8 subsystems complete
+- **Tests pass**, 96% coverage, 909 tests, 8 subsystems complete
 - **Architecture done:** BaseGameEnv ABC, game plugin system (`games/`),
   `--game` flag, CNN/MLP observation modes, dynamic plugin loading
 - **Phase 1 complete** — 4 crash bugs fixed (Chrome OOM, JS alert,
@@ -141,7 +146,8 @@ module where the behavioral contract matters more than implementation.
 - **Phase 2 complete** — RND exploration-driven reward, 200K training,
   10-episode eval (mean length 3003, 3 critical findings), RND reward
   collapsed (predictor learns too fast), 270 performance warnings
-- **Human is OOO Feb 18–20, 2026** — agent operates fully autonomously
+- **Phase 2b in progress** — multi-level play, perk picker loop, JS
+  score bridge, score delta reward. Pending: training validation run.
 - See `documentation/ROADMAP.md` for the 5-phase plan
 - See `private/documentation/BigRocks/checklist.md` for detailed task tracking
 
