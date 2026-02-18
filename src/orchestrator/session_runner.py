@@ -204,6 +204,10 @@ class SessionRunner:
     frame_stack : int
         Number of frames to stack when ``policy="cnn"``.  Default is 4.
         Ignored when ``policy="mlp"``.
+    reward_mode : str
+        Reward signal strategy passed to the environment.
+        ``"yolo"`` (default) uses game-specific YOLO-based reward.
+        ``"survival"`` uses ``+0.01`` per step, ``-5.0`` on game over.
     """
 
     def __init__(
@@ -221,6 +225,7 @@ class SessionRunner:
         headless: bool = False,
         policy: str = "mlp",
         frame_stack: int = 4,
+        reward_mode: str = "yolo",
     ) -> None:
         valid_policies = ("mlp", "cnn")
         if policy not in valid_policies:
@@ -240,6 +245,7 @@ class SessionRunner:
         self.headless = headless
         self.policy = policy
         self.frame_stack = frame_stack
+        self.reward_mode = reward_mode
 
         # Load plugin to resolve defaults
         from games import load_game_plugin
@@ -392,6 +398,7 @@ class SessionRunner:
             oracles=oracles,
             driver=self._browser_instance.driver,
             headless=self.headless,
+            reward_mode=self.reward_mode,
         )
 
         # Create frame collector

@@ -148,6 +148,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--reward-mode",
+        type=str,
+        default="yolo",
+        choices=["yolo", "survival"],
+        help=(
+            "Reward signal strategy.  'yolo' (default) uses game-specific "
+            "YOLO-based reward.  'survival' uses +0.01 per step, -5.0 on "
+            "game over, +5.0 on level clear."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -217,6 +228,7 @@ def main(argv: list[str] | None = None) -> int:
         headless=args.headless,
         policy=args.policy,
         frame_stack=args.frame_stack,
+        reward_mode=args.reward_mode,
     )
 
     report = runner.run()

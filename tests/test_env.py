@@ -669,6 +669,25 @@ class TestComputeReward:
         assert abs(env._prev_bricks_norm - 0.7) < 1e-6
 
 
+class TestRewardModePassthrough:
+    """Verify Breakout71Env passes reward_mode to BaseGameEnv."""
+
+    def test_default_is_yolo(self):
+        """Default reward_mode is 'yolo'."""
+        env = Breakout71Env()
+        assert env.reward_mode == "yolo"
+
+    def test_survival_mode_passthrough(self):
+        """reward_mode='survival' is forwarded to BaseGameEnv."""
+        env = Breakout71Env(reward_mode="survival")
+        assert env.reward_mode == "survival"
+
+    def test_invalid_mode_raises(self):
+        """Invalid reward_mode raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid reward_mode"):
+            Breakout71Env(reward_mode="bogus")
+
+
 # -- Apply Action --------------------------------------------------------------
 
 

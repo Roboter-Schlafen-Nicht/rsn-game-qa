@@ -813,3 +813,109 @@ class TestLazyInitGameClasses:
                 "obstacle",
                 "coin",
             ]
+
+
+# ===========================================================================
+# Reward mode tests
+# ===========================================================================
+
+
+class TestRewardModeValidation:
+    """Tests for reward_mode parameter validation."""
+
+    def test_default_reward_mode_is_yolo(self):
+        """Default reward_mode is 'yolo'."""
+        env = StubEnv()
+        assert env.reward_mode == "yolo"
+
+    def test_survival_mode_accepted(self):
+        """reward_mode='survival' is valid."""
+        env = StubEnv(reward_mode="survival")
+        assert env.reward_mode == "survival"
+
+    def test_invalid_reward_mode_raises(self):
+        """Invalid reward_mode raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid reward_mode"):
+            StubEnv(reward_mode="invalid")
+
+    def test_yolo_mode_accepted(self):
+        """reward_mode='yolo' is valid."""
+        env = StubEnv(reward_mode="yolo")
+        assert env.reward_mode == "yolo"
+
+
+class TestSurvivalReward:
+    """Tests for _compute_survival_reward and survival reward mode in step()."""
+
+    def test_survival_reward_per_step(self):
+        """Survival mode gives +0.01 per step."""
+        env = StubEnv(reward_mode="survival")
+        reward = env._compute_survival_reward(terminated=False, level_cleared=False)
+        assert abs(reward - 0.01) < 1e-6
+
+    def test_survival_reward_game_over(self):
+        """Survival mode gives -5.0 + 0.01 = -4.99 on game over."""
+        env = StubEnv(reward_mode="survival")
+        reward = env._compute_survival_reward(terminated=True, level_cleared=False)
+        assert abs(reward - (-4.99)) < 1e-6
+
+    def test_survival_reward_level_clear(self):
+        """Survival mode gives +5.0 + 0.01 = 5.01 on level clear."""
+        env = StubEnv(reward_mode="survival")
+        reward = env._compute_survival_reward(terminated=True, level_cleared=True)
+        assert abs(reward - 5.01) < 1e-6
+
+    def test_survival_terminal_reward_constant(self):
+        """Survival terminal reward is -5.01."""
+        env = StubEnv(reward_mode="survival")
+        assert abs(env._SURVIVAL_TERMINAL_REWARD - (-5.01)) < 1e-6
+
+    def test_step_uses_survival_reward_when_mode_set(self):
+        """step() uses survival reward (not game-specific) when mode='survival'."""
+        env = _make_ready_env(reward_mode="survival")
+        # StubEnv.compute_reward returns 0.01 for non-terminal steps
+        # Survival mode should also give 0.01 (same value, but from different source)
+        # The key test: if we make compute_reward return something different,
+        # survival mode should still give 0.01
+        env.compute_reward = lambda *a, **kw: 999.0  # noisy YOLO reward
+        obs, reward, terminated, truncated, info = env.step(_action())
+        assert abs(reward - 0.01) < 1e-6  # survival, not 999.0
+
+    def test_step_uses_yolo_reward_by_default(self):
+        """step() uses game-specific compute_reward() in yolo mode."""
+        env = _make_ready_env(reward_mode="yolo")
+        env.compute_reward = lambda *a, **kw: 42.0
+        obs, reward, terminated, truncated, info = env.step(_action())
+        assert abs(reward - 42.0) < 1e-6
+
+    def test_survival_mid_step_game_over_uses_survival_terminal(self):
+        """Mid-step game-over in survival mode uses _SURVIVAL_TERMINAL_REWARD."""
+        env = _make_ready_env(reward_mode="survival")
+        env.handle_modals = lambda **kw: "game_over"
+        env._no_ball_count = 1  # triggers _should_check_modals -> True
+        obs, reward, terminated, truncated, info = env.step(_action())
+        assert terminated is True
+        assert abs(reward - (-5.01)) < 1e-6
+
+    def test_yolo_mid_step_game_over_uses_game_terminal(self):
+        """Mid-step game-over in yolo mode uses terminal_reward()."""
+        env = _make_ready_env(reward_mode="yolo")
+        env.handle_modals = lambda **kw: "game_over"
+        env._no_ball_count = 1
+        obs, reward, terminated, truncated, info = env.step(_action())
+        assert terminated is True
+        assert abs(reward - (-5.0)) < 1e-6  # StubEnv.terminal_reward() = -5.0
+
+    def test_survival_late_game_over_uses_survival_terminal(self):
+        """Late game-over (ball disappears) in survival mode uses survival terminal."""
+        env = _make_ready_env(reward_mode="survival")
+        # Make detection return no ball
+        no_ball_det = _make_detections(ball=None)
+        env._detector.detect_to_game_state.return_value = no_ball_det
+        # Make handle_modals return game_over when called with dismiss=False
+        env.handle_modals = lambda **kw: (
+            "game_over" if not kw.get("dismiss_game_over", True) else "gameplay"
+        )
+        obs, reward, terminated, truncated, info = env.step(_action())
+        assert terminated is True
+        assert abs(reward - (-5.01)) < 1e-6

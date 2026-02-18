@@ -82,12 +82,11 @@ Environment variables used above (set in your shell profile):
 ### Current status (updated by agent)
 
 - **Phase:** 1 (First Real Training & QA Report)
-- **Training:** 100K/200K steps complete, checkpoint at
-  `output/checkpoints/ppo_breakout71_100001.zip`
-- **Crashes:** 2 (Chrome OOM at 57K, JS alert at 115K — both fixed)
-- **PR #79:** Alert handling fix — CI green, ready to merge
-- **Next:** Merge PR #79, resume training from 100K, run to 200K,
-  evaluate, generate QA report
+- **Training:** CNN policy 200K run in progress (started fresh, ~15 FPS)
+- **Crashes:** 3 (Chrome OOM at 57K, JS alert at 115K, multi-alert — all fixed)
+- **PR #82:** Multi-alert resilience + profiling scripts — merged
+- **Next:** Wait for CNN 200K training to complete (~3-4 hours),
+  evaluate, run random baseline, generate QA report
 
 ## Conventions
 
@@ -123,11 +122,11 @@ module where the behavioral contract matters more than implementation.
 
 ## Current State
 
-- **Tests pass**, 96% coverage, 8 subsystems complete
+- **Tests pass**, 96% coverage, 775 tests, 8 subsystems complete
 - **Architecture done:** BaseGameEnv ABC, game plugin system (`games/`),
   `--game` flag, CNN/MLP observation modes, dynamic plugin loading
-- **Phase 1 in progress** — 100K/200K training steps done, 2 crash bugs
-  fixed (Chrome OOM, JS alert), resuming training from checkpoint
+- **Phase 1 in progress** — 3 crash bugs fixed (Chrome OOM, JS alert,
+  multi-alert), CNN 200K training run in progress
 - **Human is OOO Feb 18–20, 2026** — agent operates fully autonomously
 - See `documentation/ROADMAP.md` for the 5-phase plan
 - See `private/documentation/BigRocks/checklist.md` for detailed task tracking
