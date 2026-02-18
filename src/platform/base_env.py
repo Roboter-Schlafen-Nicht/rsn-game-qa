@@ -339,6 +339,23 @@ class BaseGameEnv(gym.Env, abc.ABC):
             Info dict from reset.
         """
 
+    def _handle_level_transition(self) -> bool:
+        """Handle a level transition (e.g. perk selection between levels).
+
+        Called by ``step()`` when ``check_termination()`` reports
+        ``level_cleared=True``.  Override in subclasses that support
+        multi-level play to handle the transition (dismiss modals,
+        select perks, etc.) and continue the episode.
+
+        Returns
+        -------
+        bool
+            ``True`` if the transition was handled and the episode
+            should continue.  ``False`` to terminate the episode
+            (default behaviour).
+        """
+        return False
+
     # ------------------------------------------------------------------
     # Reward mode helpers
     # ------------------------------------------------------------------
@@ -589,6 +606,15 @@ class BaseGameEnv(gym.Env, abc.ABC):
         if self.reward_mode == "survival" and level_cleared:
             terminated = False
             level_cleared = False
+
+        # Handle level transitions (multi-level play).
+        # When level_cleared is reported, give the subclass a chance to
+        # handle the transition (perk selection, etc.) and continue.
+        if level_cleared and not terminated:
+            transition_ok = self._handle_level_transition()
+            if not transition_ok:
+                # Subclass couldn't handle transition → terminate
+                terminated = True
 
         truncated = self._step_count >= self.max_steps
 
