@@ -246,6 +246,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Number of frames to stack for CNN policy (default: 4)",
     )
 
+    # -- Reward mode -------------------------------------------------------
+    parser.add_argument(
+        "--reward-mode",
+        type=str,
+        default="survival",
+        choices=["yolo", "survival"],
+        help=(
+            "Reward signal strategy.  'yolo' uses YOLO-based brick/score "
+            "deltas (noisy).  'survival' uses +0.01 per step, -5.0 on game "
+            "over, +5.0 on level clear (clean gradient).  Default: survival."
+        ),
+    )
+
     # -- Resume from checkpoint --------------------------------------------
     parser.add_argument(
         "--resume",
@@ -852,6 +865,7 @@ def main(argv: list[str] | None = None) -> int:
                 "device": args.device,
                 "policy": args.policy,
                 "frame_stack": args.frame_stack,
+                "reward_mode": args.reward_mode,
                 "yolo_weights": yolo_weights,
                 "max_steps": args.max_steps,
                 "n_steps": args.n_steps,
@@ -886,6 +900,7 @@ def main(argv: list[str] | None = None) -> int:
             driver=browser_instance.driver,
             device=args.device,
             headless=args.headless,
+            reward_mode=args.reward_mode,
         )
 
         # -- Wrap for CNN policy (if requested) ----------------------------

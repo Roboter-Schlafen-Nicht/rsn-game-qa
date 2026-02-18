@@ -137,6 +137,7 @@ class Breakout71Env(BaseGameEnv):
         driver: Optional[Any] = None,
         device: str = "auto",
         headless: bool = False,
+        reward_mode: str = "yolo",
     ) -> None:
         super().__init__(
             window_title=window_title,
@@ -147,6 +148,7 @@ class Breakout71Env(BaseGameEnv):
             driver=driver,
             device=device,
             headless=headless,
+            reward_mode=reward_mode,
         )
 
         # Observation: 8-element vector

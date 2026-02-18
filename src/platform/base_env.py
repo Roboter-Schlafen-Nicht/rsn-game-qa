@@ -73,7 +73,17 @@ class BaseGameEnv(gym.Env, abc.ABC):
         ``"cpu"``).
     headless : bool
         If True, use Selenium screenshots instead of Win32 capture.
+    reward_mode : str
+        Reward signal strategy.  ``"yolo"`` (default) uses the
+        game-specific ``compute_reward()`` (YOLO-based brick/score
+        deltas).  ``"survival"`` overrides with a game-agnostic signal:
+        ``+0.01`` per step survived, ``-5.0`` on game over, ``+5.0``
+        on level clear.  Survival mode eliminates YOLO detection noise
+        from the reward and gives a clean gradient for learning to
+        keep the ball alive.
     """
+
+    _VALID_REWARD_MODES = ("yolo", "survival")
 
     metadata = {"render_modes": ["human", "rgb_array"]}
 
@@ -87,8 +97,15 @@ class BaseGameEnv(gym.Env, abc.ABC):
         driver: Optional[Any] = None,
         device: str = "auto",
         headless: bool = False,
+        reward_mode: str = "yolo",
     ) -> None:
         super().__init__()
+
+        if reward_mode not in self._VALID_REWARD_MODES:
+            raise ValueError(
+                f"Invalid reward_mode={reward_mode!r}; "
+                f"expected one of {self._VALID_REWARD_MODES}"
+            )
 
         self.window_title = window_title
         self.yolo_weights = Path(yolo_weights)
@@ -96,6 +113,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         self.render_mode = render_mode
         self.device = device
         self.headless = headless
+        self.reward_mode = reward_mode
 
         # Internal state
         self._step_count: int = 0
@@ -315,6 +333,38 @@ class BaseGameEnv(gym.Env, abc.ABC):
         """
 
     # ------------------------------------------------------------------
+    # Reward mode helpers
+    # ------------------------------------------------------------------
+
+    def _compute_survival_reward(self, terminated: bool, level_cleared: bool) -> float:
+        """Compute a game-agnostic survival reward.
+
+        Returns ``+0.01`` per step survived.  On termination:
+        ``-5.0`` for game over, ``+5.0`` for level clear.
+
+        Parameters
+        ----------
+        terminated : bool
+            Whether the episode ended this step.
+        level_cleared : bool
+            Whether the level/stage was cleared.
+
+        Returns
+        -------
+        float
+            Survival reward signal.
+        """
+        reward = 0.01
+        if terminated and level_cleared:
+            reward += 5.0
+        elif terminated:
+            reward -= 5.0
+        return reward
+
+    _SURVIVAL_TERMINAL_REWARD: float = -5.0 - 0.01
+    """Terminal penalty for survival mode (game-over via modal)."""
+
+    # ------------------------------------------------------------------
     # Gymnasium lifecycle — generic implementation
     # ------------------------------------------------------------------
 
@@ -427,7 +477,10 @@ class BaseGameEnv(gym.Env, abc.ABC):
             obs = self.build_observation(detections)
             self._step_count += 1
             truncated = self._step_count >= self.max_steps
-            reward = self.terminal_reward()
+            if self.reward_mode == "survival":
+                reward = self._SURVIVAL_TERMINAL_REWARD
+            else:
+                reward = self.terminal_reward()
             info = self._make_info(detections)
             findings = self._run_oracles(obs, reward, True, truncated, info)
             info["oracle_findings"] = findings
@@ -451,7 +504,10 @@ class BaseGameEnv(gym.Env, abc.ABC):
         if late_game_over:
             self._step_count += 1
             truncated = self._step_count >= self.max_steps
-            reward = self.terminal_reward()
+            if self.reward_mode == "survival":
+                reward = self._SURVIVAL_TERMINAL_REWARD
+            else:
+                reward = self.terminal_reward()
             info = self._make_info(detections)
             findings = self._run_oracles(obs, reward, True, truncated, info)
             info["oracle_findings"] = findings
@@ -464,8 +520,11 @@ class BaseGameEnv(gym.Env, abc.ABC):
         terminated, level_cleared = self.check_termination(detections)
         truncated = self._step_count >= self.max_steps
 
-        # Compute reward (game-specific)
-        reward = self.compute_reward(detections, terminated, level_cleared)
+        # Compute reward (game-specific or survival mode)
+        if self.reward_mode == "survival":
+            reward = self._compute_survival_reward(terminated, level_cleared)
+        else:
+            reward = self.compute_reward(detections, terminated, level_cleared)
 
         # Build info dict
         info = self._make_info(detections)
