@@ -81,7 +81,8 @@ Environment variables used above (set in your shell profile):
 
 ### Current status (updated by agent)
 
-- **Phase:** 2b MERGED, Phase 3 code complete, training validation pending
+- **Phase:** 2b bug fix on branch `feature/rnd-multi-level-fix`, ready
+  for PR. Training validation pending after merge.
 - **Phase 1 COMPLETE:** Trained CNN agent (189K steps), 10-episode eval
   (mean length 403, 4 critical findings), random baseline comparison
   (80x survival, 63x findings), QA reports + HTML dashboards generated
@@ -91,21 +92,29 @@ Environment variables used above (set in your shell profile):
   warnings (RAM > 4GB)
 - **Phase 2b MERGED:** Multi-level play (PR #94) — perk picker loop,
   JS score bridge, score-delta reward, level clear bonus, 20 new tests,
-  909 total, 96% coverage. Pending: RND training validation run.
+  909 total, 96% coverage.
+- **Phase 2b BUG FIX (branch `feature/rnd-multi-level-fix`, commit
+  `c3d4c36`):** Critical bug found — survival/RND mode forcibly set
+  `level_cleared=False` in `base_env.py:606-608`, completely preventing
+  multi-level play. Also `perk_picker` modals detected mid-step only
+  called `start_game()` instead of routing through
+  `_handle_level_transition()`. Fix: route perk_picker modals through
+  `_handle_level_transition()`, add `modal_level_cleared` flag, add
+  non-terminal level clear bonus (+1.0) to survival reward. 3 new
+  tests added (912 total, 96.31% coverage). CI passed.
 - **Phase 3 code complete:** GameOverDetector with 4 pixel-based
   strategies (PRs #91, #92, #93). Not yet wired into training scripts.
   Pending: CLI integration, live validation on Breakout 71.
-- **Crashes fixed:** 4 total (Chrome OOM, JS alert, multi-alert,
-  false-positive level_cleared) — PRs #79, #82, #84, #85
-- **RND wrapper merged:** PR #86 — `src/platform/rnd_wrapper.py`,
-  37 tests, Copilot review (9 comments addressed)
-- **RND logging merged:** PR #88 — intrinsic reward logging, state
-  coverage tracking (deterministic MD5 8x8 fingerprint), Copilot
-  review (2 comments addressed)
-- **Multi-level play merged:** PR #94 — perk picker loop, JS score
-  bridge, score-delta reward, level clear bonus, 20 new tests,
-  Copilot review (2 comments addressed)
-- **Next:** Run RND training with multi-level play, evaluate results
+- **Next steps (in order):**
+  1. Push branch `feature/rnd-multi-level-fix`, create PR, get Copilot
+     review, address comments, merge
+  2. Run short debug training (`--max-time 180`) to verify multi-level
+     + RND works end-to-end
+  3. If debug succeeds, launch full 200K RND training with multi-level
+  4. Monitor training — check RND intrinsic reward stays alive across
+     levels, check state coverage exceeds Phase 2's 98
+  5. Run 10-episode evaluation, compare vs Phase 2 single-level results
+  6. Generate QA report and update documentation
 
 ## Conventions
 
@@ -141,7 +150,7 @@ module where the behavioral contract matters more than implementation.
 
 ## Current State
 
-- **Tests pass**, 96% coverage, 909 tests, 8 subsystems complete
+- **Tests pass**, 96% coverage, 912 tests, 8 subsystems complete
 - **Architecture done:** BaseGameEnv ABC, game plugin system (`games/`),
   `--game` flag, CNN/MLP observation modes, dynamic plugin loading
 - **Phase 1 complete** — 4 crash bugs fixed (Chrome OOM, JS alert,
@@ -151,7 +160,9 @@ module where the behavioral contract matters more than implementation.
   10-episode eval (mean length 3003, 3 critical findings), RND reward
   collapsed (predictor learns too fast), 270 performance warnings
 - **Phase 2b merged** — multi-level play, perk picker loop, JS
-  score bridge, score delta reward (PR #94). Pending: training validation.
+  score bridge, score delta reward (PR #94). Bug fix pending PR on
+  branch `feature/rnd-multi-level-fix` (perk_picker routing, survival
+  level clear bonus). Training validation pending after merge.
 - **Phase 3 code complete** — GameOverDetector with 4 pixel-based
   strategies (PRs #91, #92, #93). Pending: CLI integration, live validation.
 - See `documentation/ROADMAP.md` for the 5-phase plan
@@ -193,6 +204,11 @@ These cause bugs if forgotten. Full knowledge base at
 14. **CNN is default observation mode** — game-agnostic, no YOLO needed.
     MLP is optional (requires game-specific YOLO model)
 15. **wincam singleton** — only 1 DXCamera at a time; no CI/headless support
+16. **Survival/RND mode suppressed multi-level play** — `base_env.py`
+    forcibly set `level_cleared=False` in survival/RND mode (lines 606-608),
+    completely blocking `_handle_level_transition()`. Fixed in branch
+    `feature/rnd-multi-level-fix`. Also: perk_picker modals mid-step must
+    route through `_handle_level_transition()`, not `start_game()`.
 
 ## Project Structure
 
