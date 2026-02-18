@@ -3,9 +3,9 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 33):** Phase 1 complete. Phase 2 in progress.
-RND wrapper implemented (PR #86 merged, 37 tests, 9 Copilot review comments
-addressed). 834 tests, 96% coverage. Next: CNN+RND training run.
+**Current state (session 35):** Phase 1 complete. Phase 2 complete.
+CNN+RND 200K training done, 10-episode eval done, comparison complete.
+834 tests, 96% coverage. Next: Phase 3 (game-over detection generalization).
 
 ---
 
@@ -18,7 +18,7 @@ evaluating it, and generating a QA report with real oracle findings.
 |---|---|
 | Merge PR #65 | `--game` flag and dynamic plugin loading — **DONE** |
 | Run 200K-step PPO training | CNN policy, survival mode, 189K steps — **DONE** |
-| Run 10-episode evaluation | Mean length 403, 4 critical findings — **DONE** |
+| Run 10-episode evaluation | Mean length 402.6, 4 critical findings — **DONE** |
 | Generate QA report | Oracle findings, HTML dashboard — **DONE** |
 | Random baseline comparison | Mean length 5, 0 critical findings — **DONE** |
 | Analyze results | 80x survival, 63x findings vs random — **DONE** |
@@ -28,7 +28,7 @@ evaluating it, and generating a QA report with real oracle findings.
 
 ---
 
-## Phase 2: Exploration-Driven Reward (RND)
+## Phase 2: Exploration-Driven Reward (RND) ✓
 
 **Goal:** Make the agent explore diverse game states instead of optimizing
 one strategy. This is the key differentiator for QA vs gameplay.
@@ -39,17 +39,45 @@ one strategy. This is the key differentiator for QA vs gameplay.
 | Survival reward mode | `+0.01` per step, `-5.0` on game over — **DONE** (PR #83) |
 | `--reward-mode` CLI flag | `yolo\|survival\|rnd` for `train_rl.py` — **DONE** (PR #83, #86) |
 | `_reward_mode` in BaseGameEnv | Platform-level override — **DONE** (PR #83) |
-| CNN + RND training run | 200K steps, compare state coverage — **IN PROGRESS** (PID 31583) |
-| Coverage measurement | Unique visual states, perk encounters, level progression — **DONE** (logging merged; coverage analysis TBD, PR #88) |
+| CNN + RND training run | 200K steps (3 runs due to Chrome OOM) — **DONE** |
+| Coverage measurement | 98 unique visual states at 200K steps — **DONE** (PR #88) |
+| 10-episode evaluation | Mean length 3003, 3 critical findings — **DONE** |
+| Baseline comparison | 589x vs random, 7.5x vs Phase 1 — **DONE** |
 
-**Success criteria:** CNN + RND agent visits more diverse states than
-score-maximizing agent, measured by state coverage metrics.
+**Success criteria:** Partially met. RND agent survives much longer than
+random (589x) and longer than Phase 1 CNN (7.5x when comparing max
+episode length). However, RND intrinsic reward collapsed to near-zero
+during training, meaning exploration was not meaningfully driven by
+novelty. The agent learned survival but not diverse exploration.
+
+**Key findings:**
+- RND intrinsic reward decays to ~0.0000 within each episode (predictor
+  learns target too quickly for low-diversity visual observations)
+- Training episodes always hit max_steps (10K) — ball never exits in
+  training, survival reward is trivially maximized
+- Eval episodes are bimodal: 7/10 die instantly (3-6 steps), 3/10
+  survive to max_steps — same pattern as Phase 1
+- 3 critical "frozen frame" bugs found (same class as Phase 1's 4)
+- 270 performance warnings (RAM > 4GB threshold) — new finding class
+- State coverage: 98 unique visual fingerprints (8x8 quantized) over
+  50K training steps — modest diversity
 
 **RND architecture:**
 - Fixed random CNN target: 3 conv layers -> 512-dim embedding
 - Trainable predictor: same backbone + deeper head, MSE loss
 - Non-episodic intrinsic rewards with running variance normalization
 - Single value head with combined extrinsic + intrinsic reward
+
+**Phase 2 vs Phase 1 vs Random comparison:**
+
+| Metric | Random | Phase 1 CNN | Phase 2 RND |
+|---|---|---|---|
+| Mean episode length | 5.1 | 402.6 | 3003.0 |
+| Mean reward | -4.96 | 1.01 | 26.52 |
+| Survival rate | 0/10 | 4/10 (1K cap) | 3/10 (10K cap) |
+| Critical findings | 0 | 4 | 3 |
+| Performance warnings | 0 | 4 | 270 |
+| Total findings | 64 | 4,045 | 30,316 |
 
 ---
 

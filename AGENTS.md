@@ -81,10 +81,14 @@ Environment variables used above (set in your shell profile):
 
 ### Current status (updated by agent)
 
-- **Phase:** 2 (Exploration-Driven Reward — RND)
+- **Phase:** 2 COMPLETE, ready for Phase 3
 - **Phase 1 COMPLETE:** Trained CNN agent (189K steps), 10-episode eval
   (mean length 403, 4 critical findings), random baseline comparison
   (80x survival, 63x findings), QA reports + HTML dashboards generated
+- **Phase 2 COMPLETE:** CNN+RND 200K training (3 runs due to Chrome OOM),
+  10-episode eval (mean length 3003, 3 critical findings), RND intrinsic
+  reward collapsed to near-zero, 98 unique visual states, 270 performance
+  warnings (RAM > 4GB)
 - **Crashes fixed:** 4 total (Chrome OOM, JS alert, multi-alert,
   false-positive level_cleared) — PRs #79, #82, #84, #85
 - **RND wrapper merged:** PR #86 — `src/platform/rnd_wrapper.py`,
@@ -92,8 +96,7 @@ Environment variables used above (set in your shell profile):
 - **RND logging merged:** PR #88 — intrinsic reward logging, state
   coverage tracking (deterministic MD5 8x8 fingerprint), Copilot
   review (2 comments addressed)
-- **CNN+RND training running:** PID 31583, 200K steps, ~17 FPS
-- **Next:** Wait for training to complete, evaluate, compare to baseline
+- **Next:** Phase 3 — game-over detection generalization
 
 ## Conventions
 
@@ -135,7 +138,9 @@ module where the behavioral contract matters more than implementation.
 - **Phase 1 complete** — 4 crash bugs fixed (Chrome OOM, JS alert,
   multi-alert, false-positive level_cleared), survival reward mode
   added, CNN 189K training completed, QA reports generated
-- **Phase 2 starting** — RND exploration-driven reward
+- **Phase 2 complete** — RND exploration-driven reward, 200K training,
+  10-episode eval (mean length 3003, 3 critical findings), RND reward
+  collapsed (predictor learns too fast), 270 performance warnings
 - **Human is OOO Feb 18–20, 2026** — agent operates fully autonomously
 - See `documentation/ROADMAP.md` for the 5-phase plan
 - See `private/documentation/BigRocks/checklist.md` for detailed task tracking
