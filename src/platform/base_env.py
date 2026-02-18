@@ -521,8 +521,10 @@ class BaseGameEnv(gym.Env, abc.ABC):
 
         # In survival mode, ignore YOLO-based level_cleared detection.
         # YOLO brick detection is unreliable in headless mode (returns
-        # 0 bricks → false level_cleared).  Survival mode relies solely
-        # on game-over modal detection for episode termination.
+        # 0 bricks → false level_cleared). Survival mode ignores YOLO-based
+        # level_cleared and relies on modal-based game-over detection
+        # (handle_modals and _check_late_game_over) as the primary
+        # termination mechanism.
         if self.reward_mode == "survival" and level_cleared:
             terminated = False
             level_cleared = False
