@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import hashlib
 import json
 import logging
 import platform
@@ -469,10 +470,14 @@ class FrameCollectionCallback:
                 self._episode_start_time = time.perf_counter()
                 self._episode_step_count = 0
                 self._episode_cumulative_reward = 0.0
+                self._episode_rnd_sum = 0.0  # accumulated raw intrinsic reward
                 self._episode_fps_samples: list[float] = []
                 self._last_step_time = time.perf_counter()
                 self._train_start_time = time.perf_counter()
                 self.training_stop_reason: str | None = None
+                # State coverage tracking — count unique visual states
+                self._unique_obs_hashes: set[bytes] = set()
+                self._coverage_log_interval = 10000  # log coverage every N steps
 
             def _on_step(self) -> bool:
                 now = time.perf_counter()
@@ -514,6 +519,53 @@ class FrameCollectionCallback:
                     step_reward = float(rewards[0])
                     self._episode_cumulative_reward += step_reward
 
+                # Track RND intrinsic reward per step
+                infos_for_rnd = self.locals.get("infos", [])
+                if infos_for_rnd:
+                    rnd_val = infos_for_rnd[0].get("rnd_intrinsic_reward")
+                    if rnd_val is not None:
+                        self._episode_rnd_sum += rnd_val
+
+                # -- State coverage tracking (hash-based) -----------------
+                new_obs = self.locals.get("new_obs")
+                if new_obs is not None and len(new_obs) > 0:
+                    # Downsample to exactly 8x8 for fast hashing — captures
+                    # coarse visual state without per-pixel noise sensitivity.
+                    # Uses deterministic MD5 for reproducible counts across runs.
+                    obs_flat = new_obs[0]
+                    if obs_flat.ndim >= 2:
+                        import numpy as _np  # noqa: PLC0415
+
+                        h, w = obs_flat.shape[-2], obs_flat.shape[-1]
+                        # Use linspace indices for exact 8x8 regardless of size
+                        rows = _np.linspace(0, h - 1, 8, dtype=int)
+                        cols = _np.linspace(0, w - 1, 8, dtype=int)
+                        fingerprint = obs_flat[..., rows[:, None], cols[None, :]]
+                        # Quantise to reduce noise sensitivity (16 bins)
+                        quantised = (fingerprint * 16).astype("uint8")
+                        digest = hashlib.md5(  # noqa: S324
+                            quantised.tobytes()
+                        ).digest()
+                        self._unique_obs_hashes.add(digest)
+
+                # Log coverage stats periodically
+                if (
+                    self.num_timesteps % self._coverage_log_interval == 0
+                    and self.num_timesteps > 0
+                ):
+                    coverage_event = {
+                        "event": "coverage_summary",
+                        "step": self.num_timesteps,
+                        "unique_states": len(self._unique_obs_hashes),
+                    }
+                    if tlog:
+                        tlog.log(coverage_event)
+                    logger.info(
+                        "Coverage @ step %d: %d unique visual states",
+                        self.num_timesteps,
+                        len(self._unique_obs_hashes),
+                    )
+
                 # -- Periodic step summary --------------------------------
                 if self.num_timesteps % log_interval == 0:
                     infos = self.locals.get("infos", [])
@@ -539,16 +591,35 @@ class FrameCollectionCallback:
                         "fps": round(fps, 1),
                         "no_ball_count": info.get("no_ball_count", 0),
                     }
+                    # RND-specific metrics (populated by RNDRewardWrapper)
+                    rnd_raw = info.get("rnd_intrinsic_reward")
+                    if rnd_raw is not None:
+                        step_event["rnd_intrinsic_raw"] = rnd_raw
+                        step_event["rnd_intrinsic_norm"] = info.get(
+                            "rnd_normalised_intrinsic", 0.0
+                        )
                     if tlog:
                         tlog.log(step_event)
-                    logger.info(
-                        "Step %d | ep %d | r=%.3f | bricks=%d | fps=%.1f",
-                        self.num_timesteps,
-                        self._episode_count,
-                        step_reward,
-                        info.get("brick_count", -1),
-                        fps,
-                    )
+                    if rnd_raw is not None:
+                        logger.info(
+                            "Step %d | ep %d | r=%.3f | rnd=%.4f | "
+                            "bricks=%d | fps=%.1f",
+                            self.num_timesteps,
+                            self._episode_count,
+                            step_reward,
+                            rnd_raw,
+                            info.get("brick_count", -1),
+                            fps,
+                        )
+                    else:
+                        logger.info(
+                            "Step %d | ep %d | r=%.3f | bricks=%d | fps=%.1f",
+                            self.num_timesteps,
+                            self._episode_count,
+                            step_reward,
+                            info.get("brick_count", -1),
+                            fps,
+                        )
 
                 # -- Frame collection (existing logic) --------------------
                 if collector is not None:
@@ -601,6 +672,14 @@ class FrameCollectionCallback:
                             "duration_seconds": round(ep_duration, 2),
                             "mean_fps": round(mean_fps, 1),
                         }
+                        # Include RND intrinsic reward stats if available
+                        if self._episode_rnd_sum > 0:
+                            ep_event["rnd_intrinsic_total"] = round(
+                                self._episode_rnd_sum, 4
+                            )
+                            ep_event["rnd_intrinsic_mean"] = round(
+                                self._episode_rnd_sum / max(ep_length, 1), 6
+                            )
                         if tlog:
                             tlog.log(ep_event)
                         logger.info(
@@ -617,6 +696,7 @@ class FrameCollectionCallback:
                         self._episode_start_time = now
                         self._episode_step_count = 0
                         self._episode_cumulative_reward = 0.0
+                        self._episode_rnd_sum = 0.0
                         self._episode_fps_samples = []
 
                         # -- Episode limit check --------------------------
@@ -1177,6 +1257,10 @@ def main(argv: list[str] | None = None) -> int:
             "stop_reason": stop_reason
             or ("interrupted" if interrupted else "completed"),
         }
+        # Add state coverage data if tracked
+        unique_states = len(callback._unique_obs_hashes) if callback is not None else 0
+        if unique_states > 0:
+            summary["unique_visual_states"] = unique_states
         tlog.log(summary)
 
         # -- Console summary -----------------------------------------------
@@ -1193,6 +1277,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Model saved:     {model_path}")
         if collector is not None:
             print(f"Frames saved:    {collector.frame_count}")
+        if unique_states > 0:
+            print(f"Unique states:   {unique_states}")
         print(f"Log file:        {log_path}")
         print(f"JSONL log:       {jsonl_path}")
         status = stop_reason or ("INTERRUPTED" if interrupted else "COMPLETED")
