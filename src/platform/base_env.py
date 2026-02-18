@@ -81,6 +81,11 @@ class BaseGameEnv(gym.Env, abc.ABC):
         on level clear.  Survival mode eliminates YOLO detection noise
         from the reward and gives a clean gradient for learning to
         keep the ball alive.
+    game_over_detector : GameOverDetector, optional
+        Pixel-based game-over detector.  When provided, the detector's
+        ``update(frame)`` is called every step.  If it signals
+        game-over, the episode terminates without requiring DOM/JS
+        modal checks.  See ``src.platform.game_over_detector``.
     """
 
     _VALID_REWARD_MODES = ("yolo", "survival")
@@ -98,6 +103,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         device: str = "auto",
         headless: bool = False,
         reward_mode: str = "yolo",
+        game_over_detector: Optional[Any] = None,
     ) -> None:
         super().__init__()
 
@@ -114,6 +120,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         self.device = device
         self.headless = headless
         self.reward_mode = reward_mode
+        self._game_over_detector = game_over_detector
 
         # Internal state
         self._step_count: int = 0
