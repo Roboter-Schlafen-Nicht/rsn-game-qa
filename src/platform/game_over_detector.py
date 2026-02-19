@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import abc
 import logging
-from typing import Optional
 
 import numpy as np
 
@@ -364,7 +363,7 @@ class TextDetectionStrategy(GameOverStrategy):
 
     def __init__(
         self,
-        patterns: Optional[list[str]] = None,
+        patterns: list[str] | None = None,
         check_interval: int = 5,
     ) -> None:
         self._patterns = [p.lower() for p in (patterns or self._DEFAULT_PATTERNS)]
@@ -446,8 +445,8 @@ class GameOverDetector:
 
     def __init__(
         self,
-        strategies: Optional[list[GameOverStrategy]] = None,
-        weights: Optional[list[float]] = None,
+        strategies: list[GameOverStrategy] | None = None,
+        weights: list[float] | None = None,
         confidence_threshold: float = 0.6,
     ) -> None:
         if strategies is None:

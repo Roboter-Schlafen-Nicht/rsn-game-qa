@@ -54,7 +54,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import Any, Optional
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
@@ -177,8 +177,8 @@ class CnnObservationWrapper(gym.ObservationWrapper):
     def reset(
         self,
         *,
-        seed: Optional[int] = None,
-        options: Optional[dict[str, Any]] = None,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         """Reset the environment and return a grayscale image observation.
 
@@ -342,8 +342,8 @@ class CnnEvalWrapper(gym.Wrapper):
     def reset(
         self,
         *,
-        seed: Optional[int] = None,
-        options: Optional[dict[str, Any]] = None,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         """Reset the environment and return a stacked CHW observation.
 

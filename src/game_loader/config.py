@@ -18,7 +18,6 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -77,7 +76,7 @@ class GameLoaderConfig:
     loader_type: str = "browser"
 
     # Build / serve
-    install_command: Optional[str] = "npm install"
+    install_command: str | None = "npm install"
     serve_command: str = "npx parcel src/index.html --no-cache"
     serve_port: int = 1234
     url: str = "http://localhost:1234"
@@ -86,7 +85,7 @@ class GameLoaderConfig:
     readiness_poll_interval_s: float = 2.0
 
     # Window identification (for capture layer)
-    window_title: Optional[str] = None
+    window_title: str | None = None
     window_width: int = 1280
     window_height: int = 720
 

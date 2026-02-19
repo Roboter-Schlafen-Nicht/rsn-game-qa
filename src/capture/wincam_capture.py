@@ -20,7 +20,6 @@ Key differences from WindowCapture
 
 from __future__ import annotations
 
-from typing import Optional
 
 import numpy as np
 
@@ -75,7 +74,7 @@ class WinCamCapture:
     def __init__(
         self,
         window_title: str = "",
-        hwnd: Optional[int] = None,
+        hwnd: int | None = None,
         fps: int = 60,
     ) -> None:
         if not _WINCAM_AVAILABLE:
@@ -96,7 +95,7 @@ class WinCamCapture:
         self._fps = fps
 
         # Lazily created on first capture_frame() call.
-        self._camera: Optional[DXCamera] = None
+        self._camera: DXCamera | None = None
 
         # Track the region the camera was created with so we can detect
         # when the window moves/resizes without accessing DXCamera privates.

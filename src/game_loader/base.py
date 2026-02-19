@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import abc
 import logging
-from typing import Optional
+from types import TracebackType
 
 from src.game_loader.config import GameLoaderConfig
 
@@ -46,7 +46,7 @@ class GameLoader(abc.ABC):
         return self.config.name
 
     @property
-    def url(self) -> Optional[str]:
+    def url(self) -> str | None:
         """URL where the running game can be reached, or ``None``."""
         return self.config.url if self._running else None
 
@@ -97,7 +97,12 @@ class GameLoader(abc.ABC):
         self.start()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:  # noqa: ANN001
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
         self.stop()
         return False
 

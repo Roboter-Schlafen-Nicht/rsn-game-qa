@@ -40,7 +40,7 @@ import abc
 import logging
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
@@ -101,13 +101,13 @@ class BaseGameEnv(gym.Env, abc.ABC):
         window_title: str = "",
         yolo_weights: str | Path = "weights/best.pt",
         max_steps: int = 10_000,
-        render_mode: Optional[str] = None,
-        oracles: Optional[list[Any]] = None,
-        driver: Optional[Any] = None,
+        render_mode: str | None = None,
+        oracles: list[Any] | None = None,
+        driver: Any | None = None,
         device: str = "auto",
         headless: bool = False,
         reward_mode: str = "yolo",
-        game_over_detector: Optional[Any] = None,
+        game_over_detector: Any | None = None,
         survival_bonus: float = 0.01,
     ) -> None:
         super().__init__()
@@ -422,8 +422,8 @@ class BaseGameEnv(gym.Env, abc.ABC):
     def reset(
         self,
         *,
-        seed: Optional[int] = None,
-        options: Optional[dict[str, Any]] = None,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         """Reset the environment for a new episode.
 

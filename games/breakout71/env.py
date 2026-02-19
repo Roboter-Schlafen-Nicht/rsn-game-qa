@@ -49,7 +49,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 from gymnasium import spaces
@@ -136,13 +136,13 @@ class Breakout71Env(BaseGameEnv):
         window_title: str = "Breakout",
         yolo_weights: str | Path = "weights/best.pt",
         max_steps: int = 10_000,
-        render_mode: Optional[str] = None,
-        oracles: Optional[list[Any]] = None,
-        driver: Optional[Any] = None,
+        render_mode: str | None = None,
+        oracles: list[Any] | None = None,
+        driver: Any | None = None,
         device: str = "auto",
         headless: bool = False,
         reward_mode: str = "yolo",
-        game_over_detector: Optional[Any] = None,
+        game_over_detector: Any | None = None,
         survival_bonus: float = 0.01,
     ) -> None:
         super().__init__(

@@ -16,6 +16,8 @@ Typical usage::
     loader.stop()
 """
 
+from typing import Any
+
 from src.game_loader.config import GameLoaderConfig, load_game_config
 from src.game_loader.base import GameLoader, GameLoaderError
 from src.game_loader.browser_loader import BrowserGameLoader
@@ -32,7 +34,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     """Lazy import for backward compatibility with moved modules."""
     if name == "Breakout71Loader":
         from games.breakout71.loader import Breakout71Loader

@@ -10,7 +10,6 @@ that return black frames with plain BitBlt.
 
 from __future__ import annotations
 
-from typing import Optional
 
 import numpy as np
 
@@ -49,7 +48,7 @@ class WindowCapture:
         If pywin32 is not installed or the target window cannot be found.
     """
 
-    def __init__(self, window_title: str = "", hwnd: Optional[int] = None) -> None:
+    def __init__(self, window_title: str = "", hwnd: int | None = None) -> None:
         if not _PYWIN32_AVAILABLE:
             raise RuntimeError(
                 "pywin32 is required for WindowCapture. "

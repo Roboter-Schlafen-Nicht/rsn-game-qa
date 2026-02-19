@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -38,7 +38,7 @@ class Finding:
     step: int
     description: str
     data: dict[str, Any] = field(default_factory=dict)
-    frame: Optional[np.ndarray] = None
+    frame: np.ndarray | None = None
 
 
 class Oracle(ABC):
