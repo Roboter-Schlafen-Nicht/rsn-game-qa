@@ -482,6 +482,30 @@ class TestFormatReport:
         report = format_report(analysis)
         assert "RND Collapse Analysis:" in report
 
+    def test_top_episodes_section(self, sample_events: list[dict]) -> None:
+        analysis = build_analysis(sample_events)
+        report = format_report(analysis, top_episodes=3)
+        assert "Top 3 Longest Episodes:" in report
+        assert "Top 3 Shortest Episodes:" in report
+
+    def test_top_episodes_zero_suppressed(self, sample_events: list[dict]) -> None:
+        analysis = build_analysis(sample_events)
+        report = format_report(analysis, top_episodes=0)
+        assert "Longest Episodes:" not in report
+        assert "Shortest Episodes:" not in report
+
+    def test_top_episodes_capped_to_count(self) -> None:
+        """top_episodes larger than episode count shows all available."""
+        events = [
+            _make_config_event(),
+            _make_episode_event(0, 100, -5.0, "game_over"),
+            _make_episode_event(1, 200, -3.0, "game_over"),
+        ]
+        analysis = build_analysis(events)
+        report = format_report(analysis, top_episodes=10)
+        # Only 2 episodes, so it should say "Top 2"
+        assert "Top 2 Longest Episodes:" in report
+
 
 # ---------------------------------------------------------------------------
 # _describe helper
@@ -550,3 +574,62 @@ class TestMain:
         main([str(sample_jsonl), "--top-episodes", "3"])
         captured = capsys.readouterr()
         assert "TRAINING ANALYSIS REPORT" in captured.out
+        assert "Top 3 Longest Episodes:" in captured.out
+        assert "Top 3 Shortest Episodes:" in captured.out
+
+    def test_top_episodes_in_report(
+        self, sample_jsonl: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        main([str(sample_jsonl), "--top-episodes", "2"])
+        captured = capsys.readouterr()
+        assert "Top 2 Longest Episodes:" in captured.out
+        assert "Top 2 Shortest Episodes:" in captured.out
+
+    def test_multi_file_concatenation(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        """Multiple JSONL files are concatenated and analyzed together."""
+        # File 1: config + 2 episodes
+        file1 = tmp_path / "log1.jsonl"
+        events1 = [
+            _make_config_event(),
+            _make_episode_event(0, 100, -5.0, "game_over", 0.005, 0.5),
+            _make_episode_event(1, 200, -3.0, "game_over", 0.003, 0.6),
+        ]
+        with open(file1, "w", encoding="utf-8") as f:
+            for event in events1:
+                f.write(json.dumps(event) + "\n")
+
+        # File 2: resumed training, 2 more episodes (no config, like a real resume)
+        file2 = tmp_path / "log2.jsonl"
+        events2 = [
+            _make_episode_event(2, 300, -1.0, "game_over", 0.002, 0.6),
+            _make_episode_event(3, 2000, 3.5, "truncated", 0.00003, 0.06),
+        ]
+        with open(file2, "w", encoding="utf-8") as f:
+            for event in events2:
+                f.write(json.dumps(event) + "\n")
+
+        # Analyze both files
+        main([str(file1), str(file2), "--json"])
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+
+        # Should have all 4 episodes combined
+        assert data["episode_stats"]["count"] == 4
+        assert data["episode_stats"]["termination"]["game_over"] == 3
+        assert data["episode_stats"]["termination"]["truncated"] == 1
+
+    def test_multi_file_one_missing(self, tmp_path: Path) -> None:
+        """If any file is missing, raises FileNotFoundError."""
+        file1 = tmp_path / "exists.jsonl"
+        file1.write_text(json.dumps(_make_config_event()) + "\n")
+        with pytest.raises(FileNotFoundError):
+            main([str(file1), str(tmp_path / "missing.jsonl")])
+
+    def test_multi_file_all_empty(self, tmp_path: Path) -> None:
+        """Multiple empty files result in SystemExit."""
+        file1 = tmp_path / "empty1.jsonl"
+        file2 = tmp_path / "empty2.jsonl"
+        file1.write_text("")
+        file2.write_text("")
+        with pytest.raises(SystemExit):
+            main([str(file1), str(file2)])

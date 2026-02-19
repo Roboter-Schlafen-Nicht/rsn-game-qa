@@ -5,9 +5,13 @@ Parses training log files produced by ``train_rl.py`` and generates
 summary statistics, episode metrics, RND intrinsic reward analysis,
 state coverage growth, and paddle movement analysis.
 
+Supports multiple log files (e.g. from resumed training runs) which
+are concatenated in the order given.
+
 Usage::
 
     python scripts/analyze_training.py /path/to/training.jsonl
+    python scripts/analyze_training.py log1.jsonl log2.jsonl
     python scripts/analyze_training.py /path/to/training.jsonl --top-episodes 10
     python scripts/analyze_training.py /path/to/training.jsonl --json
 """
@@ -327,7 +331,7 @@ def build_analysis(events: list[dict]) -> dict:
     Parameters
     ----------
     events : list[dict]
-        All parsed events from the JSONL file.
+        All parsed events from the JSONL file(s).
 
     Returns
     -------
@@ -367,13 +371,15 @@ def build_analysis(events: list[dict]) -> dict:
     }
 
 
-def format_report(analysis: dict) -> str:
+def format_report(analysis: dict, *, top_episodes: int = 5) -> str:
     """Format analysis results as a human-readable console report.
 
     Parameters
     ----------
     analysis : dict
         Complete analysis from ``build_analysis()``.
+    top_episodes : int
+        Number of longest and shortest episodes to highlight.
 
     Returns
     -------
@@ -417,6 +423,26 @@ def format_report(analysis: dict) -> str:
             lines.append(f"    {term}: {count} ({pct:.1f}%)")
         if ep.get("rnd"):
             lines.append(_format_stat_block("  RND mean", ep["rnd"]))
+
+    # Top episodes (longest and shortest)
+    per_ep_rnd = analysis.get("per_episode_rnd", [])
+    if per_ep_rnd and top_episodes > 0:
+        lines.append("")
+        lines.append("-" * 60)
+        by_steps = sorted(per_ep_rnd, key=lambda e: e["steps"], reverse=True)
+        n = min(top_episodes, len(by_steps))
+        lines.append(f"Top {n} Longest Episodes:")
+        for e in by_steps[:n]:
+            lines.append(
+                f"  Episode {e['episode']:>3}: {e['steps']:>6,} steps, "
+                f"RND={e['rnd_mean']:.6f}, {e['termination']}"
+            )
+        lines.append(f"Top {n} Shortest Episodes:")
+        for e in reversed(by_steps[-n:]):
+            lines.append(
+                f"  Episode {e['episode']:>3}: {e['steps']:>6,} steps, "
+                f"RND={e['rnd_mean']:.6f}, {e['termination']}"
+            )
 
     # Step stats
     ss = analysis["step_stats"]
@@ -611,9 +637,10 @@ def main(argv: list[str] | None = None) -> None:
         description="Analyze JSONL training logs from train_rl.py",
     )
     parser.add_argument(
-        "log_file",
+        "log_files",
         type=Path,
-        help="Path to the JSONL training log file",
+        nargs="+",
+        help="Path(s) to JSONL training log file(s). Multiple files are concatenated in order.",
     )
     parser.add_argument(
         "--json",
@@ -629,17 +656,20 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
-    events = parse_jsonl(args.log_file)
-    if not events:
-        print("No events found in log file.", file=sys.stderr)
+    all_events: list[dict] = []
+    for log_file in args.log_files:
+        all_events.extend(parse_jsonl(log_file))
+
+    if not all_events:
+        print("No events found in log file(s).", file=sys.stderr)
         sys.exit(1)
 
-    analysis = build_analysis(events)
+    analysis = build_analysis(all_events)
 
     if args.json:
         print(json.dumps(analysis, indent=2, default=str))
     else:
-        print(format_report(analysis))
+        print(format_report(analysis, top_episodes=args.top_episodes))
 
 
 if __name__ == "__main__":
