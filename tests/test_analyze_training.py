@@ -601,7 +601,6 @@ class TestMain:
         # File 2: resumed training, 2 more episodes (no config, like a real resume)
         file2 = tmp_path / "log2.jsonl"
         events2 = [
-            _make_config_event(),
             _make_episode_event(2, 300, -1.0, "game_over", 0.002, 0.6),
             _make_episode_event(3, 2000, 3.5, "truncated", 0.00003, 0.06),
         ]

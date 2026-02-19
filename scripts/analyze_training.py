@@ -438,7 +438,7 @@ def format_report(analysis: dict, *, top_episodes: int = 5) -> str:
                 f"RND={e['rnd_mean']:.6f}, {e['termination']}"
             )
         lines.append(f"Top {n} Shortest Episodes:")
-        for e in by_steps[-n:]:
+        for e in reversed(by_steps[-n:]):
             lines.append(
                 f"  Episode {e['episode']:>3}: {e['steps']:>6,} steps, "
                 f"RND={e['rnd_mean']:.6f}, {e['termination']}"
