@@ -7,6 +7,7 @@ modal handler JS snippets, perception class list, and config files.
 Current plugins:
 
 - :mod:`games.breakout71` -- Breakout 71 browser game
+- :mod:`games.hextris` -- Hextris hexagonal puzzle game
 
 Plugin Convention
 -----------------
