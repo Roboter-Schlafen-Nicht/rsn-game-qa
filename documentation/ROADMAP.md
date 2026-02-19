@@ -3,20 +3,15 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 47):** Phase 1 complete. Phase 2 complete.
-Phase 2b complete (RND rescue FAILED) — multi-level play (PR #94) and
-survival/RND bug fix (PR #96) both merged. GameOverDetector CLI wired
-(PR #103). RND exploration fix merged (PR #105) — configurable
-`survival_bonus`, `EpsilonGreedyWrapper`, RND hyperparameter CLI flags.
-Critical MOVE_MOUSE_JS bug fixed (PR #107) — paddle never moved in any
-training run due to IIFE arguments shadowing. Browser crash recovery
-merged (PR #114) — `BrowserInstance.is_alive()` + `restart()`, crash
-recovery in `step()`/`reset()`. Training log analysis (PR #111), dead
-code cleanup (PR #112), ruff config (PR #113). 1023 tests, 95.47%
-coverage. 200K training run in progress (PID 53751, at 70K steps) with
-working paddle movement (`--reward-mode rnd --survival-bonus 0.0
---epsilon-greedy 0.1 --max-steps 2000`). Phase 3 strategies all
-implemented — only live validation remains.
+**Current state (session 49):** Phase 1 complete. Phase 2 complete.
+Phase 2b complete (RND rescue FAILED). Phase 2c complete — first 200K
+training with working paddle movement (PR #107 IIFE fix) and crash
+recovery (PR #117). Training showed real gameplay: 89% game_over
+episodes, 15K+ unique visual states, diverse episode lengths. However,
+**evaluation regressed** — trained model (mean 204 steps) performs worse
+than random baseline (mean 608 steps). The model fails to generalize
+from training to evaluation. 1037 tests, 95.47% coverage. Phase 3
+strategies all implemented — only live validation remains.
 
 ---
 
@@ -138,6 +133,78 @@ clears bricks to trigger a level transition.
 
 ---
 
+## Phase 2c: Paddle Fix & First Real Training
+
+**Goal:** Complete 200K training with working paddle movement (PR #107
+fixed the critical IIFE arguments shadowing bug that prevented the paddle
+from ever moving) and crash recovery (PR #117 fixed stale cached frames
+preventing browser crash recovery from triggering).
+
+| Task | Details |
+|---|---|
+| MOVE_MOUSE_JS bug fix | IIFE `arguments` shadowing — paddle never moved — **DONE** (PR #107) |
+| RND exploration fix | Configurable `survival_bonus`, `EpsilonGreedyWrapper` — **DONE** (PR #105) |
+| Browser crash recovery | `is_alive()` + `restart()`, crash detection in headless capture — **DONE** (PR #114, #117) |
+| Training log analysis tool | JSONL parser with episode/coverage/paddle/RND analysis — **DONE** (PR #111) |
+| 200K CNN+RND training | 4 runs (crashes at 64K, 114K, 178K; final 150K→229K successful) — **DONE** |
+| 10-episode evaluation | Mean length 204, 1 critical finding, 9/10 instant deaths — **DONE** |
+| Random baseline comparison | Mean length 608, 0 critical findings, 3/10 truncated — **DONE** |
+
+**Training results (200K steps, post-paddle-fix):**
+- 259 episodes total (across 4 runs, final run 150K→229K)
+- 89.2% terminate via game_over (natural deaths — paddle is moving!)
+- Episode length: mean=305, median=35, min=6, max=2000
+- 15,521 unique visual states (214/1K growth rate — 158x Phase 2's 98)
+- 28 degenerate episodes (10.8%, all truncated at max_steps=2000)
+- Paddle movement: HEALTHY (9 unique positions, 55.3% most common)
+- FPS: 14.97 mean, stable throughout
+
+**Evaluation results (200K model, max_steps=2000):**
+
+| Metric | Random | Phase 2c Trained |
+|---|---|---|
+| Mean episode length | 608.4 | 203.8 |
+| Median episode length | 15 | 4 |
+| Mean reward | 2.57 | -2.48 |
+| Game over rate | 7/10 | 9/10 |
+| Truncated (max_steps) | 3/10 | 1/10 |
+| Critical findings | 0 | 1 |
+| Total findings | 11,804 | 2,055 |
+
+**Success criteria:** NOT MET. The trained model performs **worse** than
+random baseline (mean 204 vs 608 steps). 9/10 episodes die in 4 steps
+(ball lost immediately after release). The training data showed genuine
+learning (diverse episodes, paddle movement, 15K+ unique states), but the
+policy does not generalize from training to evaluation.
+
+**Root cause analysis:** The bimodal eval pattern (90% instant death,
+10% degenerate survival) suggests the model learned two modes during
+training: (1) active play that occasionally catches the ball but mostly
+fails at the critical first bounce, and (2) a degenerate parking strategy.
+During evaluation, mode (1) dominates but fails because the initial ball
+trajectory after release is highly variable and the 4-frame CNN observation
+provides insufficient temporal context for reliable first-bounce
+interception. The 200K training budget may also be insufficient — the
+model saw ~259 episodes with mean 305 steps, which is modest experience.
+
+**Full cross-phase comparison:**
+
+| Metric | Random | Phase 1 | Phase 2 | Phase 2b | Phase 2c |
+|---|---|---|---|---|---|
+| Mean episode length | 608 | 403 | 3003 | 3003 | 204 |
+| Mean reward | 2.57 | 1.01 | 26.52 | 26.51 | -2.48 |
+| Survival rate | 3/10 | 4/10 | 3/10 | 3/10 | 1/10 |
+| Critical findings | 0 | 4 | 3 | 3 | 1 |
+| Total findings | 11,804 | 4,045 | 30,316 | 30,328 | 2,055 |
+
+*Note: Phases 1-2b had the IIFE bug (paddle never moved). Phase 2c is the
+first evaluation with working paddle movement. Prior phases' survival came
+from degenerate paddle-parking, not active gameplay. The random baseline
+also benefits from degenerate trajectories where the ball enters infinite
+bounce loops without paddle interaction.*
+
+---
+
 ## Phase 3: Game-Over Detection Generalization
 
 **Goal:** Detect game-over without DOM access, enabling the platform to
@@ -152,7 +219,7 @@ work with any game (not just web games with inspectable DOM).
 | Ensemble `GameOverDetector` | Configurable strategies with per-game weights — **DONE** (PR #91) |
 | Integrate into BaseGameEnv | `step()` and `reset()` lifecycle — **DONE** (PR #92) |
 | Wire into CLI scripts | `--game-over-detector`, `--detector-threshold` flags — **DONE** (PR #103) |
-| Live validation on Breakout 71 | Run with `--game-over-detector` flag, measure false positive rate — TODO |
+| Live validation on Breakout 71 | Run with `--game-over-detector` flag, measure false positive rate — **TODO** |
 
 **Success criteria:** Pixel-based game-over detection works on Breakout 71
 without any JS injection, with <5% false positive rate.
