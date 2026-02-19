@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -28,14 +29,20 @@ for name in (
 
 logging.basicConfig(level=logging.WARNING)
 
-sys.path.insert(0, os.environ.get("PYTHONPATH", "/mnt/f/work/rsn-game-qa"))
+_project_root = str(Path(__file__).resolve().parent.parent)
+sys.path.insert(0, os.environ.get("PYTHONPATH", _project_root))
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
 # -- Setup browser --
-game_dir = os.environ.get("BREAKOUT71_DIR", "/mnt/f/work/breakout71-testbed")
+game_dir = os.environ.get("BREAKOUT71_DIR")
+if not game_dir:
+    raise SystemExit(
+        "BREAKOUT71_DIR environment variable is required. "
+        "Set it to the path of the Breakout 71 testbed directory."
+    )
 dist_index = os.path.join(game_dir, "dist", "index.html")
 
 options = Options()
