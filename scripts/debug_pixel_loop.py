@@ -48,9 +48,9 @@ Usage::
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 import sys
 import time
-from pathlib import Path
 
 import cv2
 import numpy as np
@@ -188,11 +188,7 @@ def _norm_to_screen(
 
 from games.breakout71.modal_handler import (
     CLICK_PERK_JS as _CLICK_PERK_JS,
-)
-from games.breakout71.modal_handler import (
     DETECT_STATE_JS as _DETECT_STATE_JS,
-)
-from games.breakout71.modal_handler import (
     DISMISS_GAME_OVER_JS as _DISMISS_GAME_OVER_JS,
 )
 

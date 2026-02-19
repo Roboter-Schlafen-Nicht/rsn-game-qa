@@ -552,7 +552,7 @@ def _deduplicate_bricks(
                     keep[i] = False
                     break
 
-    return [d for d, k in zip(detections, keep, strict=False) if k]
+    return [d for d, k in zip(detections, keep, strict=True) if k]
 
 
 def _detect_paddle(

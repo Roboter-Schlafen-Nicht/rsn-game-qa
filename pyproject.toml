@@ -51,8 +51,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"scripts/capture_dataset.py" = ["E402"]
-"scripts/debug_pixel_loop.py" = ["E402"]
+"scripts/capture_dataset.py" = ["E402", "I001"]
+"scripts/debug_pixel_loop.py" = ["E402", "I001"]
 "scripts/profile_capture.py" = ["E402"]
 "scripts/profile_step.py" = ["E402"]
 

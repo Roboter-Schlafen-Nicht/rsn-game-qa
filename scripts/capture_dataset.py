@@ -25,10 +25,10 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 import random
 import sys
 import time
-from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -59,14 +59,8 @@ STATE_UNKNOWN = "unknown"
 # Import canonical JS snippets from the game plugin (single source of truth).
 from games.breakout71.modal_handler import (
     CLICK_PERK_JS as _CLICK_PERK_JS,
-)
-from games.breakout71.modal_handler import (
     DETECT_STATE_JS as _DETECT_STATE_JS,
-)
-from games.breakout71.modal_handler import (
     DISMISS_GAME_OVER_JS as _DISMISS_GAME_OVER_JS,
-)
-from games.breakout71.modal_handler import (
     DISMISS_MENU_JS as _DISMISS_MENU_JS,
 )
 
