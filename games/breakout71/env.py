@@ -144,6 +144,7 @@ class Breakout71Env(BaseGameEnv):
         reward_mode: str = "yolo",
         game_over_detector: Any | None = None,
         survival_bonus: float = 0.01,
+        browser_instance: Any | None = None,
     ) -> None:
         super().__init__(
             window_title=window_title,
@@ -157,6 +158,7 @@ class Breakout71Env(BaseGameEnv):
             reward_mode=reward_mode,
             game_over_detector=game_over_detector,
             survival_bonus=survival_bonus,
+            browser_instance=browser_instance,
         )
 
         # Observation: 8-element vector

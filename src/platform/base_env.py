@@ -90,6 +90,12 @@ class BaseGameEnv(gym.Env, abc.ABC):
         Per-step survival reward in ``"survival"`` mode.  Default
         ``0.01``.  Set to ``0.0`` when using RND intrinsic reward to
         eliminate the degenerate "park and collect" local optimum.
+    browser_instance : BrowserInstance, optional
+        Reference to the ``BrowserInstance`` managing the browser
+        process.  When provided, the environment can automatically
+        restart the browser after a crash (e.g. Chrome tab crash)
+        instead of raising an exception.  The caller retains ownership
+        and is responsible for calling ``close()`` at shutdown.
     """
 
     _VALID_REWARD_MODES = ("yolo", "survival")
@@ -109,6 +115,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         reward_mode: str = "yolo",
         game_over_detector: Any | None = None,
         survival_bonus: float = 0.01,
+        browser_instance: Any | None = None,
     ) -> None:
         super().__init__()
 
@@ -126,6 +133,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         self.reward_mode = reward_mode
         self._survival_bonus = survival_bonus
         self._game_over_detector = game_over_detector
+        self._browser_instance = browser_instance
 
         # Internal state
         self._step_count: int = 0
@@ -449,12 +457,23 @@ class BaseGameEnv(gym.Env, abc.ABC):
         detections: dict[str, Any] = {}
         for attempt in range(5):
             logger.info("reset() attempt %d/5", attempt + 1)
-            self.handle_modals()
-            self.start_game()
-            time.sleep(0.5)
+            try:
+                self.handle_modals()
+                self.start_game()
+                time.sleep(0.5)
 
-            frame = self._capture_frame()
-            detections = self._detect_objects(frame)
+                frame = self._capture_frame()
+                detections = self._detect_objects(frame)
+            except (RuntimeError, Exception) as exc:
+                if self._browser_instance is not None:
+                    logger.warning(
+                        "reset() attempt %d: browser crash (%s) — restarting",
+                        attempt + 1,
+                        exc,
+                    )
+                    self._restart_browser()
+                    continue
+                raise
 
             if self.on_reset_detections(detections):
                 logger.info("reset() attempt %d: valid detections", attempt + 1)
@@ -563,16 +582,35 @@ class BaseGameEnv(gym.Env, abc.ABC):
         info : dict[str, Any]
             Auxiliary information.
         """
-        self.apply_action(action)
+        # -- Apply action (may fail if browser is dead) ----------------
+        try:
+            self.apply_action(action)
+        except Exception:
+            if self._browser_instance is not None:
+                self._restart_browser()
+                return self._make_crash_transition()
+            raise
 
         # Modal check throttling: only check when subclass signals
         # a missing key object (e.g. ball not detected for N frames).
         mid_state = "gameplay"
-        if self._should_check_modals():
-            mid_state = self.handle_modals(dismiss_game_over=False)
+        try:
+            if self._should_check_modals():
+                mid_state = self.handle_modals(dismiss_game_over=False)
+        except Exception:
+            if self._browser_instance is not None:
+                self._restart_browser()
+                return self._make_crash_transition()
+            raise
 
         if mid_state == "game_over":
-            frame = self._capture_frame()
+            try:
+                frame = self._capture_frame()
+            except RuntimeError:
+                if self._browser_instance is not None:
+                    self._restart_browser()
+                    return self._make_crash_transition()
+                raise
             detections = self._detect_objects(frame)
             obs = self.build_observation(detections)
             return self._make_terminal_transition(obs, detections)
@@ -597,7 +635,13 @@ class BaseGameEnv(gym.Env, abc.ABC):
             time.sleep(0.3)
 
         # Capture and detect
-        frame = self._capture_frame()
+        try:
+            frame = self._capture_frame()
+        except RuntimeError:
+            if self._browser_instance is not None:
+                self._restart_browser()
+                return self._make_crash_transition()
+            raise
         detections = self._detect_objects(frame)
 
         # Build observation
@@ -740,6 +784,62 @@ class BaseGameEnv(gym.Env, abc.ABC):
             True if a late game-over modal was detected.
         """
         return False
+
+    # ------------------------------------------------------------------
+    # Browser crash recovery
+    # ------------------------------------------------------------------
+
+    def _restart_browser(self) -> None:
+        """Restart the browser via ``browser_instance.restart()``.
+
+        Swaps the internal ``_driver`` reference to the new WebDriver
+        and re-initialises the canvas element so that subsequent
+        ``apply_action()`` and ``handle_modals()`` calls target the
+        new session.
+
+        Raises
+        ------
+        RuntimeError
+            If ``_browser_instance`` is None (no recovery possible).
+        """
+        if self._browser_instance is None:
+            raise RuntimeError(
+                "Browser crash detected but no browser_instance provided — cannot auto-restart"
+            )
+        logger.warning("Browser crash detected — restarting browser ...")
+        self._browser_instance.restart()
+        self._driver = self._browser_instance.driver
+        self._init_canvas()
+        logger.info("Browser restarted — new driver session active")
+
+    def _make_crash_transition(self) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        """Build a forced terminal transition after a browser crash.
+
+        Returns an observation of zeros (since no frame is available),
+        the terminal penalty, ``terminated=True``, and an info dict
+        with ``browser_crashed=True``.
+
+        Returns
+        -------
+        tuple
+            ``(obs, reward, terminated=True, truncated, info)``
+        """
+        self._step_count += 1
+        truncated = self._step_count >= self.max_steps
+        if self.reward_mode == "survival":
+            reward = self._SURVIVAL_TERMINAL_REWARD
+        else:
+            reward = self.terminal_reward()
+
+        # Build a zero observation (no frame available)
+        obs = np.zeros(self.observation_space.shape, dtype=np.float32)
+        info: dict[str, Any] = {
+            "frame": self._last_frame,
+            "step": self._step_count,
+            "browser_crashed": True,
+            "oracle_findings": [],
+        }
+        return obs, reward, True, truncated, info
 
     # ------------------------------------------------------------------
     # Private helpers — shared infrastructure

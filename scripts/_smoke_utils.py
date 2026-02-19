@@ -271,18 +271,6 @@ class BrowserInstance:
         browser: str | None = None,
         headless: bool = False,
     ) -> None:
-        try:
-            from selenium import webdriver
-            from selenium.webdriver.chrome.options import Options as ChromeOptions
-            from selenium.webdriver.edge.options import Options as EdgeOptions
-            from selenium.webdriver.firefox.options import Options as FirefoxOptions
-        except ImportError as exc:
-            raise RuntimeError(
-                "Selenium is required for BrowserInstance but is not installed. "
-                "Install it with 'pip install selenium' or add it to "
-                "environment.yml pip dependencies."
-            ) from exc
-
         # Resolve which browser to use
         if browser is None:
             available = get_available_browsers()
@@ -298,9 +286,57 @@ class BrowserInstance:
 
         self.name: str = browser
         self.url: str = url
-        self._driver: webdriver.Remote | None = None
+        self._window_size: tuple[int, int] = window_size
+        self._headless: bool = headless
+        self._settle_seconds: float = settle_seconds
 
+        self._driver = self._create_driver()
+
+        # Navigate to the URL
+        self._driver.get(url)
+
+        # Set window size explicitly (ensures consistency)
         w, h = window_size
+        self._driver.set_window_size(w, h)
+
+        logger_browser.info(
+            "Browser ready — waiting %.1fs for page to settle ...",
+            settle_seconds,
+        )
+        time.sleep(settle_seconds)
+
+    # -- Driver creation --------------------------------------------------
+
+    def _create_driver(self):
+        """Create and return a new Selenium WebDriver instance.
+
+        Uses the browser name, window size, and headless flag stored
+        at construction time.  Does **not** navigate to any URL or
+        set the window size — the caller handles that.
+
+        Returns
+        -------
+        selenium.webdriver.Remote
+            A fresh WebDriver instance.
+
+        Raises
+        ------
+        RuntimeError
+            If Selenium is not installed.
+        """
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options as ChromeOptions
+            from selenium.webdriver.edge.options import Options as EdgeOptions
+            from selenium.webdriver.firefox.options import Options as FirefoxOptions
+        except ImportError as exc:
+            raise RuntimeError(
+                "Selenium is required for BrowserInstance but is not installed. "
+                "Install it with 'pip install selenium' or add it to "
+                "environment.yml pip dependencies."
+            ) from exc
+
+        w, h = self._window_size
         logger_browser.info("Launching %s via Selenium ...", self.name)
 
         if self.name == "chrome":
@@ -314,59 +350,47 @@ class BrowserInstance:
             opts.add_argument("--no-service-autorun")
             opts.add_argument("--password-store=basic")
             opts.add_argument(f"--window-size={w},{h}")
-            if headless:
+            if self._headless:
                 opts.add_argument("--headless=new")
                 opts.add_argument("--disable-gpu")
                 opts.add_argument("--no-sandbox")
                 opts.add_argument("--disable-dev-shm-usage")
-            self._driver = webdriver.Chrome(options=opts)
+            return webdriver.Chrome(options=opts)
 
-        elif self.name == "edge":
+        if self.name == "edge":
             opts = EdgeOptions()
             opts.add_argument("--no-first-run")
             opts.add_argument("--no-default-browser-check")
             opts.add_argument("--disable-extensions")
             opts.add_argument(f"--window-size={w},{h}")
-            if headless:
+            if self._headless:
                 opts.add_argument("--headless=new")
                 opts.add_argument("--disable-gpu")
-            self._driver = webdriver.Edge(options=opts)
+            return webdriver.Edge(options=opts)
 
-        elif self.name == "firefox":
-            opts = FirefoxOptions()
-            opts.set_preference("browser.startup.homepage_override.mstone", "ignore")
-            opts.set_preference("startup.homepage_welcome_url", "")
-            opts.set_preference("startup.homepage_welcome_url.additional", "")
-            opts.set_preference("startup.homepage_override_url", "")
-            opts.set_preference("browser.startup.firstrunSkipsHomepage", True)
-            opts.set_preference("browser.shell.checkDefaultBrowser", False)
-            opts.set_preference("browser.shell.skipDefaultBrowserCheckOnFirstRun", True)
-            opts.set_preference("datareporting.policy.dataSubmissionEnabled", False)
-            opts.set_preference(
-                "datareporting.policy.dataSubmissionPolicyBypassNotification",
-                True,
-            )
-            opts.set_preference("toolkit.telemetry.reportingpolicy.firstRun", False)
-            opts.set_preference("datareporting.policy.firstRunURL", "")
-            opts.set_preference("browser.aboutwelcome.enabled", False)
-            opts.set_preference("trailhead.firstrun.didSeeAboutWelcome", True)
-            if headless:
-                opts.add_argument("--headless")
-            opts.add_argument(f"--width={w}")
-            opts.add_argument(f"--height={h}")
-            self._driver = webdriver.Firefox(options=opts)
-
-        # Navigate to the URL
-        self._driver.get(url)
-
-        # Set window size explicitly (ensures consistency)
-        self._driver.set_window_size(w, h)
-
-        logger_browser.info(
-            "Browser ready — waiting %.1fs for page to settle ...",
-            settle_seconds,
+        # firefox
+        opts = FirefoxOptions()
+        opts.set_preference("browser.startup.homepage_override.mstone", "ignore")
+        opts.set_preference("startup.homepage_welcome_url", "")
+        opts.set_preference("startup.homepage_welcome_url.additional", "")
+        opts.set_preference("startup.homepage_override_url", "")
+        opts.set_preference("browser.startup.firstrunSkipsHomepage", True)
+        opts.set_preference("browser.shell.checkDefaultBrowser", False)
+        opts.set_preference("browser.shell.skipDefaultBrowserCheckOnFirstRun", True)
+        opts.set_preference("datareporting.policy.dataSubmissionEnabled", False)
+        opts.set_preference(
+            "datareporting.policy.dataSubmissionPolicyBypassNotification",
+            True,
         )
-        time.sleep(settle_seconds)
+        opts.set_preference("toolkit.telemetry.reportingpolicy.firstRun", False)
+        opts.set_preference("datareporting.policy.firstRunURL", "")
+        opts.set_preference("browser.aboutwelcome.enabled", False)
+        opts.set_preference("trailhead.firstrun.didSeeAboutWelcome", True)
+        if self._headless:
+            opts.add_argument("--headless")
+        opts.add_argument(f"--width={w}")
+        opts.add_argument(f"--height={h}")
+        return webdriver.Firefox(options=opts)
 
     # -- Public API -----------------------------------------------------
 
@@ -407,3 +431,56 @@ class BrowserInstance:
             pass
         self._driver = None
         logger_browser.info("Browser closed.")
+
+    def is_alive(self) -> bool:
+        """Check whether the browser session is still responsive.
+
+        Attempts to read ``driver.title`` as a lightweight health
+        check.  Returns ``False`` if the driver is ``None`` or if
+        the query raises any exception (tab crash, process exit,
+        connection refused, etc.).
+
+        Returns
+        -------
+        bool
+            ``True`` if the browser is responsive.
+        """
+        if self._driver is None:
+            return False
+        try:
+            _ = self._driver.title
+            return True
+        except Exception:
+            return False
+
+    def restart(self) -> None:
+        """Close the current browser and launch a fresh session.
+
+        Handles the case where the old driver is already dead (its
+        ``quit()`` may throw).  After creating a new driver, navigates
+        to the original URL, sets the window size, and waits the
+        configured settle time.
+
+        The new driver is stored in ``self._driver`` and is also
+        accessible via ``self.driver``.
+        """
+        # Best-effort close of the old driver
+        if self._driver is not None:
+            try:
+                self._driver.quit()
+            except Exception:
+                pass
+
+        logger_browser.info("Restarting %s browser ...", self.name)
+
+        self._driver = self._create_driver()
+        self._driver.get(self.url)
+
+        w, h = self._window_size
+        self._driver.set_window_size(w, h)
+
+        logger_browser.info(
+            "Browser restarted — waiting %.1fs for page to settle ...",
+            self._settle_seconds,
+        )
+        time.sleep(self._settle_seconds)
