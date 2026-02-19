@@ -403,6 +403,7 @@ class SessionRunner:
             headless=self.headless,
             reward_mode=self.reward_mode,
             game_over_detector=self.game_over_detector,
+            browser_instance=self._browser_instance,
         )
 
         # Create frame collector

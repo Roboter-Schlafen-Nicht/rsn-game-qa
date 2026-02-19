@@ -1078,6 +1078,7 @@ def main(argv: list[str] | None = None) -> int:
             reward_mode=env_reward_mode,
             game_over_detector=detector,
             survival_bonus=survival_bonus,
+            browser_instance=browser_instance,
         )
 
         # -- Wrap for CNN policy (if requested) ----------------------------
