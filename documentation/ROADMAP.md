@@ -3,12 +3,14 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 42):** Phase 1 complete. Phase 2 complete.
+**Current state (session 43):** Phase 1 complete. Phase 2 complete.
 Phase 2b complete (RND rescue FAILED) — multi-level play (PR #94) and
 survival/RND bug fix (PR #96) both merged. GameOverDetector CLI wired
-(PR #103). 928 tests, 96.20% coverage.
-Next: Phase 3 live validation (GameOverDetector on Breakout 71) and
-strategic pivot on exploration approach.
+(PR #103). RND exploration fix merged (PR #105) — configurable
+`survival_bonus`, `EpsilonGreedyWrapper`, RND hyperparameter CLI flags.
+962 tests, 96.24% coverage.
+Next: Training validation with new RND flags, then Phase 3 live
+validation (GameOverDetector on Breakout 71).
 
 ---
 
