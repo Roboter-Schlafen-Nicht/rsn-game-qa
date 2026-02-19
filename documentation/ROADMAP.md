@@ -3,7 +3,7 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 50):** Phase 1 complete. Phase 2 complete.
+**Current state (session 51):** Phase 1 complete. Phase 2 complete.
 Phase 2b complete (RND rescue FAILED). Phase 2c complete — first 200K
 training with working paddle movement (PR #107 IIFE fix) and crash
 recovery (PR #117). Training showed real gameplay: 89% game_over
@@ -11,8 +11,9 @@ episodes, 15K+ unique visual states, diverse episode lengths. However,
 **evaluation regressed** — trained model (mean 204 steps) performs worse
 than random baseline (mean 608 steps). The model fails to generalize
 from training to evaluation. Phase 3 complete — GameOverDetector achieves
-0% false positive rate on Breakout 71, meeting <5% criterion. 1037 tests,
-95.47% coverage. Phase 4 starting: second game onboarding (Hextris).
+0% false positive rate on Breakout 71, meeting <5% criterion. 1135 tests,
+95.26% coverage. Phase 4 in progress: Hextris plugin complete (PR #120),
+live validation pending.
 
 ---
 
@@ -240,20 +241,45 @@ this DOM-enabled game.
 
 ---
 
-## Phase 4: Second Game Onboarding
+## Phase 4: Second Game Onboarding (IN PROGRESS)
 
 **Goal:** Validate the plugin architecture by onboarding a completely
 different game with zero platform code changes.
 
 | Task | Details |
 |---|---|
-| Select second game | Different genre, different input modality |
-| Create `games/<game>/` plugin | env.py, loader.py, `__init__.py` |
+| Select second game | Hextris (hextris.io) — hexagonal puzzle, keyboard rotation, different genre — **DONE** |
+| Create `games/hextris/` plugin | env.py, loader.py, modal_handler.py, perception.py, `__init__.py` — **DONE** (PR #120) |
+| CNN-only YOLO bypass | Override `_lazy_init()` and `_detect_objects()` to skip YOLO for CNN-only games — **DONE** (PR #120) |
+| Plugin tests | 91 tests (73 env + 11 loader + 7 plugin loading), zero regressions — **DONE** (PR #120) |
+| Clone Hextris repo | Clone to local directory, set `$HEXTRIS_DIR` — **DONE** |
+| Auto-discover plugin loaders | Factory scans `games/` for plugin loader classes — **DONE** |
+| Live validation | `--game hextris --headless --episodes 3` with random policy — **DONE** (session 51) |
 | CNN + survival training | No YOLO model needed |
 | QA report comparison | Cross-game oracle findings |
 
-**Success criteria:** New game running with `--game <name>`, producing QA
-reports, with zero changes to `src/` or `src/platform/`.
+**Hextris plugin architecture (PR #120):**
+- `Discrete(3)` action space: noop / rotate_left / rotate_right (via JS
+  `MainHex.rotate()` injection)
+- CNN-only pixel observation (no YOLO model required)
+- Game state detection via `window.gameState` (0=start, 1=playing,
+  2=game_over, -1=paused)
+- Game-over confirmed over 3 consecutive frames
+- Static HTTP serving on port 8271 (no build step)
+- 0 changes to `src/` or `src/platform/` — plugin architecture validated
+
+**Live validation results (session 51):**
+- 3 episodes with random policy, headless mode, max_steps=500
+- Mean episode length: 256 steps (natural game overs)
+- Mean reward: -5.23 (survival mode)
+- 837 total findings (0 critical, 71 warnings, 766 info)
+- Full lifecycle validated: start, play, game-over detection, restart
+- QA report and HTML dashboard generated successfully
+
+**Success criteria:** MET. Hextris running with `--game hextris`, producing
+QA reports. Plugin code complete (PR #120), live validation successful.
+Auto-discover plugin loaders added to factory for seamless multi-game
+support.
 
 ---
 

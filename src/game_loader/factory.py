@@ -31,7 +31,44 @@ def _ensure_registry() -> None:
 
     _LOADER_REGISTRY.setdefault("browser", BrowserGameLoader)
     _LOADER_REGISTRY.setdefault("breakout-71", Breakout71Loader)
+
+    # Auto-discover loaders from game plugins
+    _auto_discover_plugin_loaders()
+
     _REGISTRY_INITIALIZED = True
+
+
+def _auto_discover_plugin_loaders() -> None:
+    """Scan ``games/`` for plugins and register their loader classes.
+
+    Each plugin module is expected to have a ``loader_class`` attribute
+    and a ``game_name`` attribute.  The loader is registered under the
+    ``game_name`` key so that ``loader_type`` in the game's YAML config
+    can reference it directly.
+    """
+    import importlib
+    from pathlib import Path
+
+    games_dir = Path(__file__).resolve().parent.parent.parent / "games"
+    if not games_dir.is_dir():
+        return
+
+    for child in sorted(games_dir.iterdir()):
+        if not child.is_dir() or not (child / "__init__.py").exists():
+            continue
+        name = child.name
+        # Skip already-registered plugins
+        if name in _LOADER_REGISTRY:
+            continue
+        try:
+            mod = importlib.import_module(f"games.{name}")
+            loader_cls = getattr(mod, "loader_class", None)
+            game_name = getattr(mod, "game_name", name)
+            if loader_cls is not None:
+                _LOADER_REGISTRY.setdefault(game_name, loader_cls)
+                logger.debug("Auto-registered loader %r → %s", game_name, loader_cls.__name__)
+        except Exception:
+            logger.debug("Skipping plugin %r (import failed)", name, exc_info=True)
 
 
 def create_loader(config: GameLoaderConfig) -> GameLoader:
