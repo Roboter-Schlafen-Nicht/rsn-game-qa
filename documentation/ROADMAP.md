@@ -3,15 +3,17 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 44):** Phase 1 complete. Phase 2 complete.
+**Current state (session 45):** Phase 1 complete. Phase 2 complete.
 Phase 2b complete (RND rescue FAILED) — multi-level play (PR #94) and
 survival/RND bug fix (PR #96) both merged. GameOverDetector CLI wired
 (PR #103). RND exploration fix merged (PR #105) — configurable
 `survival_bonus`, `EpsilonGreedyWrapper`, RND hyperparameter CLI flags.
 Critical MOVE_MOUSE_JS bug fixed (PR #107) — paddle never moved in any
-training run due to IIFE arguments shadowing. 962 tests, 96.24% coverage.
-Next: Training validation with working paddle movement, then Phase 3 live
-validation (GameOverDetector on Breakout 71).
+training run due to IIFE arguments shadowing. Code quality cleanup merged
+(PR #109) — PEP 604 type annotations, expanded coverage tracking.
+962 tests, 96.03% coverage. 200K training run in progress with working
+paddle movement (`--reward-mode rnd --survival-bonus 0.0 --epsilon-greedy
+0.1`). Phase 3 strategies all implemented — only live validation remains.
 
 ---
 
@@ -142,8 +144,8 @@ work with any game (not just web games with inspectable DOM).
 |---|---|
 | Screen freeze detector | Pixel diff < threshold for N consecutive frames — **DONE** (PR #91) |
 | Entropy collapse detector | Static/uniform screen detection — **DONE** (PR #91) |
-| Input responsiveness detector | Send actions, check if state changes |
-| OCR terminal text detector | "Game Over", "You Died", "Continue?" patterns |
+| Motion cessation detector | Replaces input responsiveness — passive motion fraction tracking — **DONE** (PR #91) |
+| OCR terminal text detector | `TextDetectionStrategy` with pytesseract, 7 default patterns — **DONE** (PR #91) |
 | Ensemble `GameOverDetector` | Configurable strategies with per-game weights — **DONE** (PR #91) |
 | Integrate into BaseGameEnv | `step()` and `reset()` lifecycle — **DONE** (PR #92) |
 | Wire into CLI scripts | `--game-over-detector`, `--detector-threshold` flags — **DONE** (PR #103) |
