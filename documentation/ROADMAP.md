@@ -13,7 +13,8 @@ than random baseline (mean 608 steps). The model fails to generalize
 from training to evaluation. Phase 3 complete — GameOverDetector achieves
 0% false positive rate on Breakout 71, meeting <5% criterion. 1135 tests,
 95.26% coverage. Phase 4 in progress: Hextris plugin complete (PR #120),
-live validation pending.
+live validation complete (session 51). CNN training and cross-game QA
+comparison remaining.
 
 ---
 
@@ -263,7 +264,8 @@ different game with zero platform code changes.
   `MainHex.rotate()` injection)
 - CNN-only pixel observation (no YOLO model required)
 - Game state detection via `window.gameState` (0=start, 1=playing,
-  2=game_over, -1=paused)
+  2=game_over, -1=paused) — gray-box hook for DOM-enabled web games;
+  Phase 3's pixel-only GameOverDetector is available for non-DOM games
 - Game-over confirmed over 3 consecutive frames
 - Static HTTP serving on port 8271 (no build step)
 - 0 changes to `src/` or `src/platform/` — plugin architecture validated
@@ -276,10 +278,11 @@ different game with zero platform code changes.
 - Full lifecycle validated: start, play, game-over detection, restart
 - QA report and HTML dashboard generated successfully
 
-**Success criteria:** MET. Hextris running with `--game hextris`, producing
-QA reports. Plugin code complete (PR #120), live validation successful.
-Auto-discover plugin loaders added to factory for seamless multi-game
-support.
+**Onboarding & validation success criteria:** MET. Hextris running with
+`--game hextris`, producing QA reports. Plugin code complete (PR #120),
+live validation successful. Auto-discover plugin loaders added to factory
+for seamless multi-game support. Remaining Phase 4 tasks (CNN training,
+cross-game QA comparison) tracked in the task table above.
 
 ---
 

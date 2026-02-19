@@ -39,36 +39,62 @@ def _ensure_registry() -> None:
 
 
 def _auto_discover_plugin_loaders() -> None:
-    """Scan ``games/`` for plugins and register their loader classes.
+    """Scan the ``games`` package for plugins and register their loaders.
 
     Each plugin module is expected to have a ``loader_class`` attribute
-    and a ``game_name`` attribute.  The loader is registered under the
-    ``game_name`` key so that ``loader_type`` in the game's YAML config
-    can reference it directly.
+    (a :class:`GameLoader` subclass) and a ``game_name`` attribute.
+    The loader is registered under the ``game_name`` key so that
+    ``loader_type`` in the game's YAML config can reference it directly.
+
+    Uses :mod:`pkgutil` for discovery so it works regardless of
+    filesystem layout (editable installs, packaged distributions, etc.).
     """
     import importlib
-    from pathlib import Path
+    import pkgutil
 
-    games_dir = Path(__file__).resolve().parent.parent.parent / "games"
-    if not games_dir.is_dir():
+    try:
+        import games as _games_pkg  # type: ignore[import]
+    except Exception:
+        logger.debug(
+            "games package not available; skipping plugin auto-discovery",
+            exc_info=True,
+        )
         return
 
-    for child in sorted(games_dir.iterdir()):
-        if not child.is_dir() or not (child / "__init__.py").exists():
+    for module_info in pkgutil.iter_modules(
+        getattr(_games_pkg, "__path__", []),
+    ):
+        if not module_info.ispkg:
             continue
-        name = child.name
-        # Skip already-registered plugins
-        if name in _LOADER_REGISTRY:
-            continue
+        name = module_info.name
         try:
             mod = importlib.import_module(f"games.{name}")
-            loader_cls = getattr(mod, "loader_class", None)
-            game_name = getattr(mod, "game_name", name)
-            if loader_cls is not None:
-                _LOADER_REGISTRY.setdefault(game_name, loader_cls)
-                logger.debug("Auto-registered loader %r → %s", game_name, loader_cls.__name__)
-        except Exception:
-            logger.debug("Skipping plugin %r (import failed)", name, exc_info=True)
+        except (ImportError, ModuleNotFoundError):
+            logger.debug(
+                "Skipping plugin %r (import failed)",
+                name,
+                exc_info=True,
+            )
+            continue
+
+        loader_cls = getattr(mod, "loader_class", None)
+        game_name: str = getattr(mod, "game_name", name)
+
+        if loader_cls is None:
+            continue
+        if not (isinstance(loader_cls, type) and issubclass(loader_cls, GameLoader)):
+            logger.debug(
+                "Skipping plugin %r: loader_class is not a GameLoader subclass",
+                name,
+            )
+            continue
+        if game_name not in _LOADER_REGISTRY:
+            _LOADER_REGISTRY[game_name] = loader_cls
+            logger.debug(
+                "Auto-registered loader %r → %s",
+                game_name,
+                loader_cls.__name__,
+            )
 
 
 def create_loader(config: GameLoaderConfig) -> GameLoader:
