@@ -402,10 +402,16 @@ class BaseGameEnv(gym.Env, abc.ABC):
         detected (modal-based game-over, pixel-based detector, or late
         game-over via ball disappearance).
 
-        Combines the game-over penalty (``-5.0``) with the negated
-        per-step survival bonus to ensure the net reward for a terminal
-        step is exactly ``-5.0`` (the bonus is pre-applied in
-        ``_compute_survival_reward``).
+        Returns ``-5.0 - self._survival_bonus``.  This is used by
+        ``_make_terminal_transition()`` which sets the reward directly
+        (without calling ``_compute_survival_reward``).  The negated
+        survival bonus compensates for the fact that in the *normal*
+        termination path the agent still receives its per-step bonus
+        alongside the ``-5.0`` penalty (via ``_compute_survival_reward``
+        returning ``self._survival_bonus - 5.0``).
+
+        With the default ``survival_bonus=0.01`` this evaluates to
+        ``-5.01``.
         """
         return -5.0 - self._survival_bonus
 
