@@ -72,9 +72,7 @@ def _finding_to_report(
         import cv2
 
         screenshots_dir.mkdir(parents=True, exist_ok=True)
-        fname = (
-            f"{finding.oracle_name}_step{finding.step}_{int(time.time() * 1000)}.png"
-        )
+        fname = f"{finding.oracle_name}_step{finding.step}_{int(time.time() * 1000)}.png"
         fpath = screenshots_dir / fname
         cv2.imwrite(str(fpath), finding.frame)
         screenshot_path = str(fpath)
@@ -237,9 +235,7 @@ class SessionRunner:
         if policy not in valid_policies:
             raise ValueError(f"policy must be one of {valid_policies}, got {policy!r}")
         if policy == "cnn" and frame_stack < 1:
-            raise ValueError(
-                f"frame_stack must be >= 1 when policy='cnn', got {frame_stack}"
-            )
+            raise ValueError(f"frame_stack must be >= 1 when policy='cnn', got {frame_stack}")
         self.game = game
         self.n_episodes = n_episodes
         self.max_steps_per_episode = max_steps_per_episode

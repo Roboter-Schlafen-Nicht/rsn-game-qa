@@ -163,9 +163,7 @@ class TemporalAnomalyOracle(Oracle):
             return
 
         # Count transitions (present -> absent or absent -> present)
-        transitions = sum(
-            1 for i in range(1, len(history)) if history[i] != history[i - 1]
-        )
+        transitions = sum(1 for i in range(1, len(history)) if history[i] != history[i - 1])
 
         if transitions >= self.flicker_threshold:
             self._add_finding(

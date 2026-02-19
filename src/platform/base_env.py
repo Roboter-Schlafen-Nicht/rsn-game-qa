@@ -114,8 +114,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
 
         if reward_mode not in self._VALID_REWARD_MODES:
             raise ValueError(
-                f"Invalid reward_mode={reward_mode!r}; "
-                f"expected one of {self._VALID_REWARD_MODES}"
+                f"Invalid reward_mode={reward_mode!r}; expected one of {self._VALID_REWARD_MODES}"
             )
 
         self.window_title = window_title
@@ -161,9 +160,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         """
 
     @abc.abstractmethod
-    def build_observation(
-        self, detections: dict[str, Any], *, reset: bool = False
-    ) -> np.ndarray:
+    def build_observation(self, detections: dict[str, Any], *, reset: bool = False) -> np.ndarray:
         """Convert YOLO detections into the observation vector.
 
         Parameters
@@ -545,9 +542,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         info["oracle_findings"] = findings
         return obs, reward, True, truncated, info
 
-    def step(
-        self, action: np.ndarray
-    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Execute one action and return the resulting transition.
 
         Parameters
@@ -618,9 +613,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
                     obs,
                     detections,
                     extra_info={
-                        "game_over_detector": (
-                            self._game_over_detector.get_confidence()
-                        ),
+                        "game_over_detector": (self._game_over_detector.get_confidence()),
                     },
                 )
 
@@ -876,7 +869,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
                 logger.warning("Dismissing unexpected browser alert: %s", alert.text)
                 alert.dismiss()
                 dismissed += 1
-            except Exception:  # noqa: BLE001
+            except Exception:
                 break  # No more alerts
         return dismissed
 
@@ -904,9 +897,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         try:
             import cv2
         except ImportError as exc:
-            raise RuntimeError(
-                "cv2 (opencv-python) is required for headless capture"
-            ) from exc
+            raise RuntimeError("cv2 (opencv-python) is required for headless capture") from exc
 
         frame = None
 
@@ -945,7 +936,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
                 png_bytes = self._driver.get_screenshot_as_png()
                 nparr = np.frombuffer(png_bytes, np.uint8)
                 frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # Alert may have appeared between toDataURL and screenshot;
                 # dismiss all and retry once.
                 self._dismiss_all_alerts()
@@ -953,7 +944,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
                     png_bytes = self._driver.get_screenshot_as_png()
                     nparr = np.frombuffer(png_bytes, np.uint8)
                     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                except Exception as inner_exc:  # noqa: BLE001
+                except Exception as inner_exc:
                     logger.error(
                         "Screenshot failed even after alert dismissal: %s",
                         inner_exc,
@@ -965,9 +956,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         if frame is None:
             self._dismiss_all_alerts()
             if self._last_frame is not None:
-                logger.warning(
-                    "Returning cached frame after all capture attempts failed"
-                )
+                logger.warning("Returning cached frame after all capture attempts failed")
                 return self._last_frame
             raise RuntimeError("Failed to decode screenshot PNG to BGR frame")
         self._last_frame = frame

@@ -1,7 +1,8 @@
-from pathlib import Path
-from PIL import Image
-import imagehash
 import shutil
+from pathlib import Path
+
+import imagehash
+from PIL import Image
 
 FRAMES_DIR = Path("E:\\lastwar_raw_images")  # your VLC output dir
 KEEP_DIR = Path("E:\\lastwar_deduped_images")  # cleaned set

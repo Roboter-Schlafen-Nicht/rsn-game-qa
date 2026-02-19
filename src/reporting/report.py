@@ -50,7 +50,7 @@ import json
 import os
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -176,12 +176,8 @@ class SessionReport:
 
     session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     game: str = "breakout-71"
-    build_id: str = field(
-        default_factory=lambda: os.getenv("CI_COMMIT_SHORT_SHA", "local")
-    )
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    build_id: str = field(default_factory=lambda: os.getenv("CI_COMMIT_SHORT_SHA", "local"))
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     episodes: list[EpisodeReport] = field(default_factory=list)
     summary: dict[str, Any] = field(default_factory=dict)
 

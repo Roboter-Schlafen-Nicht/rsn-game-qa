@@ -83,9 +83,7 @@ def prepare_dataset(
     if not classes_file.exists():
         raise FileNotFoundError(f"classes.txt not found: {classes_file}")
 
-    class_names = [
-        line.strip() for line in classes_file.read_text().splitlines() if line.strip()
-    ]
+    class_names = [line.strip() for line in classes_file.read_text().splitlines() if line.strip()]
     logger.info("Classes (%d): %s", len(class_names), class_names)
 
     # Determine which frames to exclude
@@ -122,9 +120,7 @@ def prepare_dataset(
 
     # Validate val_ratio
     if not (0 < val_ratio < 1):
-        raise ValueError(
-            f"val_ratio must be between 0 and 1 (exclusive), got {val_ratio}"
-        )
+        raise ValueError(f"val_ratio must be between 0 and 1 (exclusive), got {val_ratio}")
 
     # Shuffle and split
     random.seed(seed)
@@ -188,9 +184,7 @@ def prepare_dataset(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Prepare a captured dataset for YOLO training."
-    )
+    parser = argparse.ArgumentParser(description="Prepare a captured dataset for YOLO training.")
     parser.add_argument(
         "--source",
         required=True,

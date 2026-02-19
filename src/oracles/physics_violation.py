@@ -156,12 +156,8 @@ class PhysicsViolationOracle(Oracle):
                 curr_vy = float(np.asarray(ball_vel)[1])
 
                 # Ball crossed paddle Y-line (moving downward)
-                crossed_paddle = (
-                    prev_y < paddle_y <= curr_y or curr_y <= paddle_y < prev_y
-                )
-                vy_flipped = (prev_vy > 0 and curr_vy < 0) or (
-                    prev_vy < 0 and curr_vy > 0
-                )
+                crossed_paddle = prev_y < paddle_y <= curr_y or curr_y <= paddle_y < prev_y
+                vy_flipped = (prev_vy > 0 and curr_vy < 0) or (prev_vy < 0 and curr_vy > 0)
 
                 if crossed_paddle and not vy_flipped and not terminated:
                     self._add_finding(

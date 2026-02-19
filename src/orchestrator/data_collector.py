@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +45,7 @@ class FrameCollector:
         self._metadata: list[dict[str, Any]] = []
 
         # Create timestamped output directory
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         self._output_dir = Path(output_dir) / f"frames_{ts}"
         self._frames_dir = self._output_dir / "frames"
         self._frames_dir.mkdir(parents=True, exist_ok=True)
@@ -115,7 +115,7 @@ class FrameCollector:
             "filename": filename,
             "step": step,
             "episode_id": episode_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         if metadata:
             entry["metadata"] = metadata

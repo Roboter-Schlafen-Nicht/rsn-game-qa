@@ -52,7 +52,6 @@ from games.breakout71.modal_handler import (  # noqa: E402
     READ_GAME_STATE_JS,
 )
 
-
 # -- Helpers -------------------------------------------------------------------
 
 
@@ -309,9 +308,7 @@ class TestLazyInit:
         side_effect=ImportError("no wincam"),
     )
     @mock.patch("src.capture.window_capture.WindowCapture")
-    def test_lazy_init_falls_back_to_window_capture(
-        self, mock_wc, mock_wincam, mock_det
-    ):
+    def test_lazy_init_falls_back_to_window_capture(self, mock_wc, mock_wincam, mock_det):
         """_lazy_init should fall back to WindowCapture when WinCamCapture fails."""
         mock_det.return_value = mock.MagicMock()
         mock_wc_instance = mock.MagicMock()
@@ -1827,9 +1824,7 @@ class TestModalCheckThrottling:
         env = self._make_env_ready()
         env._no_ball_count = 3  # ball has been missing for 3 frames
 
-        with mock.patch.object(
-            env, "handle_modals", return_value="gameplay"
-        ) as mock_hgs:
+        with mock.patch.object(env, "handle_modals", return_value="gameplay") as mock_hgs:
             env.step(_action())
             mock_hgs.assert_called_once()
 
@@ -1853,9 +1848,7 @@ class TestModalCheckThrottling:
         env = self._make_env_ready()
         env._no_ball_count = 1  # ball missing → triggers modal check
 
-        with mock.patch.object(
-            env, "handle_modals", return_value="perk_picker"
-        ) as mock_hgs:
+        with mock.patch.object(env, "handle_modals", return_value="perk_picker") as mock_hgs:
             _, _, terminated, _, _ = env.step(_action())
             # Perk picker is part of normal gameplay — not terminated
             assert terminated is False
@@ -1883,9 +1876,7 @@ class TestModalCheckThrottling:
         env = self._make_env_ready()
         env._no_ball_count = 1  # exactly at boundary
 
-        with mock.patch.object(
-            env, "handle_modals", return_value="gameplay"
-        ) as mock_hgs:
+        with mock.patch.object(env, "handle_modals", return_value="gameplay") as mock_hgs:
             env.step(_action())
             mock_hgs.assert_called_once()
 

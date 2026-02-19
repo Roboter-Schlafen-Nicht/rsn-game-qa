@@ -23,16 +23,15 @@ from unittest import mock
 
 import pytest
 
+from games.breakout71.loader import Breakout71Loader
 from src.game_loader.base import GameLoader, GameLoaderError
 from src.game_loader.browser_loader import BrowserGameLoader
-from games.breakout71.loader import Breakout71Loader
 from src.game_loader.config import (
     GameLoaderConfig,
     _expand_vars,
     load_game_config,
 )
 from src.game_loader.factory import create_loader, register_loader
-
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -550,9 +549,7 @@ class TestBreakout71Loader:
         build_result = mock.MagicMock(returncode=0, stderr="", stdout="")
         with (
             mock.patch.object(BrowserGameLoader, "setup"),
-            mock.patch(
-                "games.breakout71.loader.subprocess.run", return_value=build_result
-            ),
+            mock.patch("games.breakout71.loader.subprocess.run", return_value=build_result),
         ):
             loader.setup()
 
@@ -564,9 +561,7 @@ class TestBreakout71Loader:
         build_result = mock.MagicMock(returncode=0, stderr="", stdout="")
         with (
             mock.patch.object(BrowserGameLoader, "setup"),
-            mock.patch(
-                "games.breakout71.loader.subprocess.run", return_value=build_result
-            ),
+            mock.patch("games.breakout71.loader.subprocess.run", return_value=build_result),
         ):
             loader.setup()  # should not raise
 
@@ -585,9 +580,7 @@ class TestBreakout71Loader:
         build_result = mock.MagicMock(returncode=0, stderr="", stdout="")
         with (
             mock.patch.object(BrowserGameLoader, "setup"),
-            mock.patch(
-                "games.breakout71.loader.subprocess.run", return_value=build_result
-            ),
+            mock.patch("games.breakout71.loader.subprocess.run", return_value=build_result),
         ):
             loader.setup()
 
@@ -600,9 +593,7 @@ class TestBreakout71Loader:
         build_result = mock.MagicMock(returncode=1, stderr="Build error", stdout="")
         with (
             mock.patch.object(BrowserGameLoader, "setup"),
-            mock.patch(
-                "games.breakout71.loader.subprocess.run", return_value=build_result
-            ),
+            mock.patch("games.breakout71.loader.subprocess.run", return_value=build_result),
         ):
             with pytest.raises(RuntimeError, match="Game build failed"):
                 loader.setup()

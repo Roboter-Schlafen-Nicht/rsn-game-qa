@@ -19,13 +19,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts._smoke_utils import BrowserInstance
 from games.breakout71.modal_handler import (
     CLICK_PERK_JS,
     DETECT_STATE_JS,
     DISMISS_GAME_OVER_JS,
     DISMISS_MENU_JS,
 )
+from scripts._smoke_utils import BrowserInstance
 from src.game_loader import create_loader
 from src.game_loader.config import load_game_config
 
@@ -81,9 +81,7 @@ def main() -> None:
         while True:
             try:
                 result = driver.execute_script(DETECT_STATE_JS)
-                print(
-                    f"[{time.strftime('%H:%M:%S')}] State: {json.dumps(result, indent=2)}"
-                )
+                print(f"[{time.strftime('%H:%M:%S')}] State: {json.dumps(result, indent=2)}")
 
                 if args.auto_dismiss and result:
                     state = result.get("state", "unknown")

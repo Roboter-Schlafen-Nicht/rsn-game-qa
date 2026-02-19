@@ -35,9 +35,7 @@ class _DummyImageEnv(gym.Env):
 
     def __init__(self, obs_shape: tuple[int, ...] = (1, 84, 84)):
         super().__init__()
-        self.observation_space = gym.spaces.Box(
-            low=0, high=255, shape=obs_shape, dtype=np.float32
-        )
+        self.observation_space = gym.spaces.Box(low=0, high=255, shape=obs_shape, dtype=np.float32)
         self.action_space = gym.spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
         self._step_count = 0
 
@@ -75,25 +73,25 @@ def rnd_module():
 
 
 @pytest.fixture
-def RNDRewardWrapper(rnd_module):  # noqa: N802
+def RNDRewardWrapper(rnd_module):
     """Return the RNDRewardWrapper class."""
     return rnd_module.RNDRewardWrapper
 
 
 @pytest.fixture
-def RNDTargetNetwork(rnd_module):  # noqa: N802
+def RNDTargetNetwork(rnd_module):
     """Return the RNDTargetNetwork class."""
     return rnd_module.RNDTargetNetwork
 
 
 @pytest.fixture
-def RNDPredictorNetwork(rnd_module):  # noqa: N802
+def RNDPredictorNetwork(rnd_module):
     """Return the RNDPredictorNetwork class."""
     return rnd_module.RNDPredictorNetwork
 
 
 @pytest.fixture
-def RunningMeanStd(rnd_module):  # noqa: N802
+def RunningMeanStd(rnd_module):
     """Return the RunningMeanStd class."""
     return rnd_module.RunningMeanStd
 
@@ -181,9 +179,7 @@ class TestRNDPredictorNetwork:
         out = net(x)
         loss = out.sum()
         loss.backward()
-        has_grad = any(
-            p.grad is not None and p.grad.abs().sum() > 0 for p in net.parameters()
-        )
+        has_grad = any(p.grad is not None and p.grad.abs().sum() > 0 for p in net.parameters())
         assert has_grad
 
 
@@ -344,8 +340,7 @@ class TestRNDRewardWrapper:
         first_avg = np.mean(intrinsic_rewards[:10])
         last_avg = np.mean(intrinsic_rewards[-10:])
         assert first_avg > last_avg, (
-            f"Predictor did not learn: first_avg={first_avg:.6f}, "
-            f"last_avg={last_avg:.6f}"
+            f"Predictor did not learn: first_avg={first_avg:.6f}, last_avg={last_avg:.6f}"
         )
 
     def test_novel_obs_has_higher_intrinsic_reward(self, RNDRewardWrapper):
@@ -368,9 +363,7 @@ class TestRNDRewardWrapper:
         # Novel observations should have higher intrinsic reward on average
         novel_rewards = []
         for seed in range(99, 109):
-            novel_obs = (
-                np.random.RandomState(seed).randn(1, 1, 84, 84).astype(np.float32)
-            )
+            novel_obs = np.random.RandomState(seed).randn(1, 1, 84, 84).astype(np.float32)
             novel_rewards.append(wrapper._compute_intrinsic_reward(novel_obs)[0])
         mean_novel_reward = np.mean(novel_rewards)
 

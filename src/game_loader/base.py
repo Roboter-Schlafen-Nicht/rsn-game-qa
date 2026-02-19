@@ -92,7 +92,7 @@ class GameLoader(abc.ABC):
 
     # -- Context manager -----------------------------------------------
 
-    def __enter__(self) -> "GameLoader":
+    def __enter__(self) -> GameLoader:
         self.setup()
         self.start()
         return self

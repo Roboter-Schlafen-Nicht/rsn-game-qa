@@ -55,9 +55,7 @@ def _load_upload_state(state_path: Path) -> set[str]:
                 data = json.load(f)
             return set(data.get("uploaded", []))
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning(
-                "Corrupted upload state file %s (%s) — starting fresh", state_path, exc
-            )
+            logger.warning("Corrupted upload state file %s (%s) — starting fresh", state_path, exc)
             return set()
     return set()
 
@@ -97,27 +95,20 @@ def _build_labelmap(dataset_dir: Path) -> dict[int, str] | None:
     if classes_file.exists():
         try:
             lines = [
-                line.strip()
-                for line in classes_file.read_text().splitlines()
-                if line.strip()
+                line.strip() for line in classes_file.read_text().splitlines() if line.strip()
             ]
             if lines:
                 labelmap = {i: name for i, name in enumerate(lines)}
                 logger.info("Loaded labelmap from %s: %s", classes_file, labelmap)
                 return labelmap
         except (OSError, UnicodeDecodeError) as exc:
-            logger.warning(
-                "Failed to read %s: %s — falling back to config", classes_file, exc
-            )
+            logger.warning("Failed to read %s: %s — falling back to config", classes_file, exc)
 
     # Fall back to training config
     import yaml
 
     config_path = (
-        Path(__file__).resolve().parent.parent
-        / "configs"
-        / "training"
-        / "breakout-71.yaml"
+        Path(__file__).resolve().parent.parent / "configs" / "training" / "breakout-71.yaml"
     )
     if config_path.exists():
         try:
@@ -321,15 +312,11 @@ def main() -> int:
         args.project = os.environ.get("ROBOFLOW_PROJECT", "breakout71")
 
     if not args.api_key:
-        logger.error(
-            "No API key provided. Set ROBOFLOW_API_KEY env var or pass --api-key."
-        )
+        logger.error("No API key provided. Set ROBOFLOW_API_KEY env var or pass --api-key.")
         return 1
 
     if not args.workspace:
-        logger.error(
-            "No workspace provided. Set ROBOFLOW_WORKSPACE env var or pass --workspace."
-        )
+        logger.error("No workspace provided. Set ROBOFLOW_WORKSPACE env var or pass --workspace.")
         return 1
 
     if args.batch < 1:

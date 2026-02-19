@@ -10,13 +10,12 @@ that return black frames with plain BitBlt.
 
 from __future__ import annotations
 
-
 import numpy as np
 
 try:
+    import win32con
     import win32gui
     import win32ui
-    import win32con
 
     _PYWIN32_AVAILABLE = True
 except ImportError:
@@ -51,8 +50,7 @@ class WindowCapture:
     def __init__(self, window_title: str = "", hwnd: int | None = None) -> None:
         if not _PYWIN32_AVAILABLE:
             raise RuntimeError(
-                "pywin32 is required for WindowCapture. "
-                "Install it with: pip install pywin32"
+                "pywin32 is required for WindowCapture. Install it with: pip install pywin32"
             )
 
         self.window_title = window_title
@@ -112,9 +110,7 @@ class WindowCapture:
         try:
             left, top, right, bottom = win32gui.GetClientRect(self.hwnd)
         except Exception as exc:
-            raise RuntimeError(
-                f"Failed to get client rect for HWND {self.hwnd}: {exc}"
-            ) from exc
+            raise RuntimeError(f"Failed to get client rect for HWND {self.hwnd}: {exc}") from exc
         self.width = right - left
         self.height = bottom - top
 
@@ -150,7 +146,7 @@ class WindowCapture:
 
         # PW_RENDERFULLCONTENT = 2 — tells the window to render its full
         # content (including hardware-accelerated layers) into the DC.
-        PW_RENDERFULLCONTENT = 2  # noqa: N806
+        PW_RENDERFULLCONTENT = 2
 
         hwnd_dc = None
         mfc_dc = None

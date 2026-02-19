@@ -33,7 +33,6 @@ from scripts.upload_to_roboflow import (
 )
 from scripts.validate_model import validate_model
 
-
 # ---------------------------------------------------------------------------
 # Training Config Loading
 # ---------------------------------------------------------------------------
@@ -108,10 +107,7 @@ class TestLoadTrainingConfig:
         """The 'game' field matches a configs/games/*.yaml file."""
         cfg = load_training_config("breakout-71")
         game_config_path = (
-            Path(__file__).resolve().parent.parent
-            / "configs"
-            / "games"
-            / f"{cfg['game']}.yaml"
+            Path(__file__).resolve().parent.parent / "configs" / "games" / f"{cfg['game']}.yaml"
         )
         assert game_config_path.is_file()
 
@@ -449,10 +445,7 @@ class TestPipelineIntegration:
         """Training config's game field matches an existing game config."""
         cfg = load_training_config("breakout-71")
         game_config = (
-            Path(__file__).resolve().parent.parent
-            / "configs"
-            / "games"
-            / f"{cfg['game']}.yaml"
+            Path(__file__).resolve().parent.parent / "configs" / "games" / f"{cfg['game']}.yaml"
         )
         assert game_config.is_file()
 

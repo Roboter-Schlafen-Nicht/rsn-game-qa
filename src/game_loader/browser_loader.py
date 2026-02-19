@@ -14,10 +14,9 @@ import socket
 import subprocess
 import sys
 import time
-from urllib.parse import urlparse
-
-import urllib.request
 import urllib.error
+import urllib.request
+from urllib.parse import urlparse
 
 from src.game_loader.base import GameLoader, GameLoaderError
 from src.game_loader.config import GameLoaderConfig
@@ -262,6 +261,5 @@ class BrowserGameLoader(GameLoader):
         # Timeout — kill the process so we don't leak it
         self.stop()
         raise GameLoaderError(
-            f"Server did not become ready within "
-            f"{self.config.readiness_timeout_s}s at {endpoint}"
+            f"Server did not become ready within {self.config.readiness_timeout_s}s at {endpoint}"
         )

@@ -48,7 +48,7 @@ def main() -> int:
     setup_logging(args.verbose)
 
     # ── Load config ──────────────────────────────────────────────────
-    from src.game_loader import load_game_config, create_loader
+    from src.game_loader import create_loader, load_game_config
 
     logger.info("Loading config: %s", args.config)
     config = load_game_config(args.config)

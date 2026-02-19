@@ -8,8 +8,8 @@ game-specific logic.
 
 from __future__ import annotations
 
-from unittest import mock
 from typing import Any
+from unittest import mock
 
 import gymnasium as gym
 import numpy as np
@@ -40,12 +40,8 @@ class StubEnv(BaseGameEnv):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.observation_space = gym.spaces.Box(
-            low=0.0, high=1.0, shape=(4,), dtype=np.float32
-        )
-        self.action_space = gym.spaces.Box(
-            low=-1.0, high=1.0, shape=(1,), dtype=np.float32
-        )
+        self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(4,), dtype=np.float32)
+        self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
 
         # Game-specific counters
         self._no_ball_count: int = 0
@@ -54,9 +50,7 @@ class StubEnv(BaseGameEnv):
     def game_classes(self) -> list[str]:
         return ["ball", "paddle", "brick"]
 
-    def build_observation(
-        self, detections: dict[str, Any], *, reset: bool = False
-    ) -> np.ndarray:
+    def build_observation(self, detections: dict[str, Any], *, reset: bool = False) -> np.ndarray:
         ball = detections.get("ball")
         bx = ball[0] if ball else 0.5
         by = ball[1] if ball else 0.5
@@ -635,9 +629,7 @@ class TestDismissAllAlerts:
         mock_driver = mock.MagicMock()
         env._driver = mock_driver
 
-        type(mock_driver.switch_to).alert = mock.PropertyMock(
-            side_effect=Exception("no alert")
-        )
+        type(mock_driver.switch_to).alert = mock.PropertyMock(side_effect=Exception("no alert"))
 
         dismissed = env._dismiss_all_alerts()
         assert dismissed == 0
@@ -771,9 +763,7 @@ class TestHeadlessCapture:
         env._driver = mock_driver
 
         # No alerts
-        type(mock_driver.switch_to).alert = mock.PropertyMock(
-            side_effect=Exception("no alert")
-        )
+        type(mock_driver.switch_to).alert = mock.PropertyMock(side_effect=Exception("no alert"))
 
         # All capture methods fail
         mock_driver.execute_script.side_effect = Exception("toDataURL failed")
@@ -794,9 +784,7 @@ class TestHeadlessCapture:
         env._driver = mock_driver
 
         # No alerts
-        type(mock_driver.switch_to).alert = mock.PropertyMock(
-            side_effect=Exception("no alert")
-        )
+        type(mock_driver.switch_to).alert = mock.PropertyMock(side_effect=Exception("no alert"))
 
         # All capture methods fail
         mock_driver.execute_script.side_effect = Exception("toDataURL failed")
@@ -1191,9 +1179,7 @@ class TestGameOverDetectorStepIntegration:
         assert reward == env._SURVIVAL_TERMINAL_REWARD
 
     @mock.patch("src.platform.base_env.time")
-    def test_step_applies_terminal_reward_on_detector_game_over_yolo_mode(
-        self, mock_time
-    ):
+    def test_step_applies_terminal_reward_on_detector_game_over_yolo_mode(self, mock_time):
         """When detector signals game-over in yolo mode, reward uses terminal_reward()."""
         detector = mock.MagicMock()
         detector.update.return_value = True

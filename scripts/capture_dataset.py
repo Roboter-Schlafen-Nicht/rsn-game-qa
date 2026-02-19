@@ -57,10 +57,16 @@ STATE_MENU = "menu"
 STATE_UNKNOWN = "unknown"
 
 # Import canonical JS snippets from the game plugin (single source of truth).
-from games.breakout71.modal_handler import (  # noqa: E402
+from games.breakout71.modal_handler import (
     CLICK_PERK_JS as _CLICK_PERK_JS,
+)
+from games.breakout71.modal_handler import (
     DETECT_STATE_JS as _DETECT_STATE_JS,
+)
+from games.breakout71.modal_handler import (
     DISMISS_GAME_OVER_JS as _DISMISS_GAME_OVER_JS,
+)
+from games.breakout71.modal_handler import (
     DISMISS_MENU_JS as _DISMISS_MENU_JS,
 )
 
@@ -174,9 +180,7 @@ def _random_paddle_action(
     x_offset = int(x_norm * canvas_w) - (canvas_w // 2)  # relative to center
     y_offset = int(canvas_h * 0.85) - (canvas_h // 2)  # paddle zone
 
-    ActionChains(driver).move_to_element_with_offset(
-        game_element, x_offset, y_offset
-    ).perform()
+    ActionChains(driver).move_to_element_with_offset(game_element, x_offset, y_offset).perform()
 
     return {"type": "mouse_move", "x_norm": round(x_norm, 4)}
 
@@ -245,8 +249,8 @@ def main() -> int:
     load_dotenv()
 
     from games import load_game_plugin
-    from src.game_loader import load_game_config, create_loader
     from src.capture import WindowCapture
+    from src.game_loader import create_loader, load_game_config
 
     plugin = load_game_plugin(args.game)
     config_path = Path(args.config if args.config else plugin.default_config)
@@ -303,11 +307,7 @@ def main() -> int:
 
     # ── Capture loop ─────────────────────────────────────────────────
     ts = timestamp_str()
-    out_dir = (
-        ensure_output_dir(f"dataset_{ts}")
-        if args.output_dir is None
-        else args.output_dir
-    )
+    out_dir = ensure_output_dir(f"dataset_{ts}") if args.output_dir is None else args.output_dir
     logger.info("Saving frames to: %s", out_dir)
 
     manifest: list[dict] = []
@@ -349,10 +349,7 @@ def main() -> int:
 
         # ── Periodic random paddle action during gameplay ────────────
         action_meta = None
-        if (
-            game_state in (STATE_GAMEPLAY, STATE_UNKNOWN)
-            and i % args.action_interval == 0
-        ):
+        if game_state in (STATE_GAMEPLAY, STATE_UNKNOWN) and i % args.action_interval == 0:
             try:
                 action_meta = _random_paddle_action(driver, game_canvas, canvas_dims)
             except Exception as exc:
@@ -435,9 +432,7 @@ def main() -> int:
     )
     logger.info("--- State Distribution ---")
     for state_name, count in sorted(state_counts.items()):
-        logger.info(
-            "  %-15s : %d (%.1f%%)", state_name, count, count / len(times) * 100
-        )
+        logger.info("  %-15s : %d (%.1f%%)", state_name, count, count / len(times) * 100)
     if modal_actions:
         logger.info("Modal interactions: %d", len(modal_actions))
 

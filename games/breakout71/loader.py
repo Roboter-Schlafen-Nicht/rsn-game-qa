@@ -64,7 +64,7 @@ class Breakout71Loader(BrowserGameLoader):
         serve_port: int = 1234,
         readiness_timeout_s: float = 120.0,
         window_title: str | None = None,
-    ) -> "Breakout71Loader":
+    ) -> Breakout71Loader:
         """Create a loader from just the repo path, using defaults.
 
         Parameters
@@ -134,7 +134,6 @@ class Breakout71Loader(BrowserGameLoader):
                 result.stderr,
             )
             raise RuntimeError(
-                f"Game build failed: {_BUILD_COMMAND!r} exited with "
-                f"code {result.returncode}"
+                f"Game build failed: {_BUILD_COMMAND!r} exited with code {result.returncode}"
             )
         logger.info("[%s] Build complete — dist/ ready", self.name)

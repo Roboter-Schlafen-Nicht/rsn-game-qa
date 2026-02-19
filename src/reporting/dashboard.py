@@ -10,14 +10,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 try:
-    from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: F401
+    from jinja2 import Environment, FileSystemLoader, select_autoescape
 
     _JINJA2_AVAILABLE = True
 except ImportError:
     _JINJA2_AVAILABLE = False
+
+if TYPE_CHECKING:
+    import jinja2
 
 #: Minimal self-contained Bootstrap 5 dashboard template.
 #: Used as a fallback when no external template file is provided.
@@ -137,14 +140,13 @@ class DashboardRenderer:
     ) -> None:
         if not _JINJA2_AVAILABLE:
             raise RuntimeError(
-                "Jinja2 is required for DashboardRenderer. "
-                "Install it with: pip install Jinja2"
+                "Jinja2 is required for DashboardRenderer. Install it with: pip install Jinja2"
             )
 
         self.template_dir = Path(template_dir)
         self.template_name = template_name
 
-    def _get_template(self) -> "jinja2.Template":  # type: ignore[name-defined]  # noqa: F821
+    def _get_template(self) -> jinja2.Template:
         """Load the Jinja2 template, falling back to the built-in one.
 
         Returns

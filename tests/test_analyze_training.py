@@ -21,7 +21,6 @@ from scripts.analyze_training import (
     parse_jsonl,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -160,9 +159,7 @@ class TestParseJsonl:
         events = parse_jsonl(path)
         assert len(events) == 2
 
-    def test_malformed_line_skipped(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_malformed_line_skipped(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         path = tmp_path / "bad.jsonl"
         path.write_text('{"event": "config"}\nNOT_JSON\n{"event": "episode_end"}\n')
         events = parse_jsonl(path)
@@ -325,9 +322,7 @@ class TestAnalyzePaddleMovement:
 
     def test_degenerate_movement(self) -> None:
         # 9/10 at same position = 90% > 80% threshold
-        steps = [_make_step_event(paddle_x=0.618)] * 9 + [
-            _make_step_event(paddle_x=0.3)
-        ]
+        steps = [_make_step_event(paddle_x=0.618)] * 9 + [_make_step_event(paddle_x=0.3)]
         result = analyze_paddle_movement(steps)
         assert result["degenerate"] is True
         assert result["most_common_position"] == 0.618
@@ -527,17 +522,13 @@ class TestDescribe:
 class TestMain:
     """Tests for main CLI entry point."""
 
-    def test_console_report(
-        self, sample_jsonl: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_console_report(self, sample_jsonl: Path, capsys: pytest.CaptureFixture) -> None:
         main([str(sample_jsonl)])
         captured = capsys.readouterr()
         assert "TRAINING ANALYSIS REPORT" in captured.out
         assert "breakout71" in captured.out
 
-    def test_json_output(
-        self, sample_jsonl: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_json_output(self, sample_jsonl: Path, capsys: pytest.CaptureFixture) -> None:
         main([str(sample_jsonl), "--json"])
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -554,9 +545,7 @@ class TestMain:
         with pytest.raises(SystemExit):
             main([str(path)])
 
-    def test_top_episodes_arg(
-        self, sample_jsonl: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_top_episodes_arg(self, sample_jsonl: Path, capsys: pytest.CaptureFixture) -> None:
         # Just verify the arg is accepted without error
         main([str(sample_jsonl), "--top-episodes", "3"])
         captured = capsys.readouterr()

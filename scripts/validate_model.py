@@ -89,8 +89,7 @@ def validate_model(
         from ultralytics import YOLO
     except ImportError as exc:
         raise RuntimeError(
-            "ultralytics is required for validation. "
-            "Install with: pip install ultralytics"
+            "ultralytics is required for validation. Install with: pip install ultralytics"
         ) from exc
 
     # Load model

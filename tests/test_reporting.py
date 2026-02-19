@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from src.reporting.dashboard import DashboardRenderer
 from src.reporting.report import (
     EpisodeMetrics,
     EpisodeReport,
@@ -18,8 +19,6 @@ from src.reporting.report import (
     ReportGenerator,
     SessionReport,
 )
-from src.reporting.dashboard import DashboardRenderer
-
 
 # ── Helpers ──────────────────────────────────────────────────────────
 

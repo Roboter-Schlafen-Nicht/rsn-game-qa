@@ -137,9 +137,7 @@ class InputController:
         x_abs, y_abs = self._to_screen_coords(x_norm, y_norm)
         pydirectinput.moveTo(x_abs, y_abs)
 
-    def click(
-        self, x_norm: float = 0.5, y_norm: float = 0.5, button: str = "left"
-    ) -> None:
+    def click(self, x_norm: float = 0.5, y_norm: float = 0.5, button: str = "left") -> None:
         """Click at a normalised position within the game window.
 
         Parameters

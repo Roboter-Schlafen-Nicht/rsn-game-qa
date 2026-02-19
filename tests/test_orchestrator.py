@@ -25,6 +25,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from src.oracles.base import Finding
 from src.orchestrator.data_collector import FrameCollector
 from src.orchestrator.session_runner import (
     SessionRunner,
@@ -32,9 +33,7 @@ from src.orchestrator.session_runner import (
     _create_oracles,
     _finding_to_report,
 )
-from src.oracles.base import Finding
 from src.reporting import EpisodeMetrics, FindingReport
-
 
 # -- Helpers -------------------------------------------------------------------
 
@@ -277,9 +276,7 @@ class TestBuildEpisodeMetrics:
         """min_fps should be the minimum across all steps."""
         # 0.1s per step = 10 FPS, 0.01s = 100 FPS
         step_times = [0.1, 0.01, 0.05]
-        metrics = _build_episode_metrics(
-            step_times, [0.0, 0.0, 0.0], time.perf_counter()
-        )
+        metrics = _build_episode_metrics(step_times, [0.0, 0.0, 0.0], time.perf_counter())
         assert metrics.min_fps is not None
         assert metrics.min_fps == pytest.approx(10.0, rel=0.01)
 
@@ -1098,9 +1095,7 @@ class TestSessionRunnerSetup:
         assert runner._env is not None
         assert runner._collector is None
 
-    def _setup_with_js_hooks(
-        self, tmp_path, *, mute_js=None, setup_js=None, reinit_js=None
-    ):
+    def _setup_with_js_hooks(self, tmp_path, *, mute_js=None, setup_js=None, reinit_js=None):
         """Helper: run _setup() with a plugin that has specific JS hooks."""
         runner = SessionRunner(
             game_config="breakout-71",
@@ -1185,9 +1180,7 @@ class TestSessionRunnerSetup:
 
     def test_setup_reinit_js_skipped_without_refresh(self, tmp_path):
         """_setup() does NOT execute reinit_js when no refresh occurred."""
-        _, driver, _ = self._setup_with_js_hooks(
-            tmp_path, reinit_js="window.restart({})"
-        )
+        _, driver, _ = self._setup_with_js_hooks(tmp_path, reinit_js="window.restart({})")
         # reinit_js should not have been called (no mute/setup => no refresh)
         for call in driver.execute_script.call_args_list:
             assert call[0][0] != "window.restart({})"
@@ -1425,9 +1418,7 @@ class TestSessionRunnerPolicyFn:
         mock_env._oracles = []
 
         obs1 = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], dtype=np.float32)
-        obs2 = np.array(
-            [9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0], dtype=np.float32
-        )
+        obs2 = np.array([9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0], dtype=np.float32)
         info = {"frame": None, "detections": {}, "step": 0}
 
         mock_env.reset.return_value = (obs1, info)
@@ -1662,9 +1653,7 @@ class TestSessionRunnerRun:
 
     def test_run_generates_dashboard(self, tmp_path):
         """run() generates an HTML dashboard after the report."""
-        runner = self._make_runner_with_mock_setup(
-            tmp_path, n_episodes=1, steps_per_episode=2
-        )
+        runner = self._make_runner_with_mock_setup(tmp_path, n_episodes=1, steps_per_episode=2)
         runner.run()
 
         # Dashboard file should exist in reports dir
@@ -1805,9 +1794,7 @@ class TestSessionRunnerCNNPolicy:
         # Create a mock wrapper that delegates unwrapped
         mock_wrapped_env = mock.MagicMock()
         mock_wrapped_env.action_space = mock.MagicMock()
-        mock_wrapped_env.action_space.sample.return_value = np.array(
-            [0.0], dtype=np.float32
-        )
+        mock_wrapped_env.action_space.sample.return_value = np.array([0.0], dtype=np.float32)
 
         obs = np.zeros((4, 84, 84), dtype=np.uint8)
         info = {"frame": None, "detections": {}, "step": 0}

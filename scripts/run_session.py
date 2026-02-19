@@ -68,9 +68,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--config",
         type=str,
         default=None,
-        help=(
-            "Path to game config YAML.  If omitted, uses the plugin's default config."
-        ),
+        help=("Path to game config YAML.  If omitted, uses the plugin's default config."),
     )
     parser.add_argument(
         "--episodes",
@@ -143,8 +141,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=_positive_int,
         default=4,
         help=(
-            "Number of frames to stack when --policy=cnn (default: 4).  "
-            "Ignored when --policy=mlp."
+            "Number of frames to stack when --policy=cnn (default: 4).  Ignored when --policy=mlp."
         ),
     )
     parser.add_argument(

@@ -186,9 +186,13 @@ def _norm_to_screen(
 # source of truth).  This is the one place we use the browser driver
 # at runtime; all observation and control is pixel-based via Win32.
 
-from games.breakout71.modal_handler import (  # noqa: E402
+from games.breakout71.modal_handler import (
     CLICK_PERK_JS as _CLICK_PERK_JS,
+)
+from games.breakout71.modal_handler import (
     DETECT_STATE_JS as _DETECT_STATE_JS,
+)
+from games.breakout71.modal_handler import (
     DISMISS_GAME_OVER_JS as _DISMISS_GAME_OVER_JS,
 )
 
@@ -259,9 +263,7 @@ def _ensure_gameplay(
             time.sleep(1.5)
 
         elif state == "perk_picker":
-            logger.info(
-                "  [%s] Perk picker detected — picking (attempt %d)", label, attempt + 1
-            )
+            logger.info("  [%s] Perk picker detected — picking (attempt %d)", label, attempt + 1)
             try:
                 driver.execute_script(_CLICK_PERK_JS)
             except Exception:
@@ -283,9 +285,7 @@ def _ensure_gameplay(
             pydirectinput.click(cx, cy)
             time.sleep(1.0)
 
-    logger.warning(
-        "  [%s] Could not reach gameplay after %d attempts", label, max_retries
-    )
+    logger.warning("  [%s] Could not reach gameplay after %d attempts", label, max_retries)
     return False
 
 
@@ -360,9 +360,7 @@ def phase2_paddle_tracking(
 
     for i, target_x in enumerate(target_x_norms):
         # Move mouse to target position
-        sx, sy = _norm_to_screen(
-            target_x, paddle_y_norm, cap.width, cap.height, client_origin
-        )
+        sx, sy = _norm_to_screen(target_x, paddle_y_norm, cap.width, cap.height, client_origin)
         pydirectinput.moveTo(sx, sy)
         time.sleep(0.3)  # let the game react
 
@@ -445,9 +443,7 @@ def phase3_ball_tracking(
                 if _ensure_gameplay(driver, cap, client_origin, label="phase3"):
                     modal_recoveries += 1
                 else:
-                    logger.warning(
-                        "Phase 3: _ensure_gameplay failed to restore gameplay."
-                    )
+                    logger.warning("Phase 3: _ensure_gameplay failed to restore gameplay.")
 
         frame = cap.capture_frame()
         game_state = detector.detect_to_game_state(frame, cap.width, cap.height)
@@ -592,9 +588,7 @@ def phase4_gameplay_loop(
         if driver is not None:
             if loop_start - last_modal_check >= modal_check_interval:
                 last_modal_check = loop_start
-                gameplay_ok = _ensure_gameplay(
-                    driver, cap, client_origin, label="phase4"
-                )
+                gameplay_ok = _ensure_gameplay(driver, cap, client_origin, label="phase4")
                 if gameplay_ok:
                     modal_recoveries += 1
                 else:
@@ -643,9 +637,7 @@ def phase4_gameplay_loop(
             ball_cx = ball[0]  # normalised X of ball centre
             # Move mouse to ball's X, paddle's Y (near bottom)
             paddle_y_norm = 0.90
-            sx, sy = _norm_to_screen(
-                ball_cx, paddle_y_norm, cap.width, cap.height, client_origin
-            )
+            sx, sy = _norm_to_screen(ball_cx, paddle_y_norm, cap.width, cap.height, client_origin)
 
             # Only move if position changed significantly (>5px)
             if last_paddle_x_screen is None or abs(sx - last_paddle_x_screen) > 5:
@@ -661,8 +653,7 @@ def phase4_gameplay_loop(
             elapsed = now - start
             avg_fps = np.mean(fps_samples[-target_fps:]) if fps_samples else 0
             logger.info(
-                "  t=%5.1fs  FPS=%.0f  ball=%d/%d  paddle=%d/%d  bricks=%d"
-                "  recoveries=%d",
+                "  t=%5.1fs  FPS=%.0f  ball=%d/%d  paddle=%d/%d  bricks=%d  recoveries=%d",
                 elapsed,
                 avg_fps,
                 ball_detected,
@@ -700,9 +691,7 @@ def phase4_gameplay_loop(
     logger.info("  Duration       : %.1fs", total_elapsed)
     logger.info("  Total frames   : %d", frame_count)
     logger.info("  Avg FPS        : %.0f", avg_fps)
-    logger.info(
-        "  Ball detected  : %d/%d (%.0f%%)", ball_detected, frame_count, ball_rate * 100
-    )
+    logger.info("  Ball detected  : %d/%d (%.0f%%)", ball_detected, frame_count, ball_rate * 100)
     logger.info(
         "  Paddle detected: %d/%d (%.0f%%)",
         paddle_detected,
@@ -740,11 +729,7 @@ def phase4_gameplay_loop(
             t_save_total / total_elapsed * 100,
         )
         t_other = total_elapsed - (
-            t_capture_total
-            + t_infer_total
-            + t_modal_total
-            + t_input_total
-            + t_save_total
+            t_capture_total + t_infer_total + t_modal_total + t_input_total + t_save_total
         )
         logger.info(
             "  Other/overhead : %6.1fms  (%4.1f%%)",
@@ -838,9 +823,7 @@ def main() -> int:
     # ── Setup output directory ───────────────────────────────────────
     ts = timestamp_str()
     out_dir = (
-        ensure_output_dir(f"debug_pixel_{ts}")
-        if args.output_dir is None
-        else args.output_dir
+        ensure_output_dir(f"debug_pixel_{ts}") if args.output_dir is None else args.output_dir
     )
     logger.info("Output directory: %s", out_dir)
 
@@ -908,9 +891,7 @@ def main() -> int:
             cap.height,
         )
     except (ImportError, RuntimeError, OSError) as exc:
-        logger.warning(
-            "WinCamCapture unavailable (%s), falling back to PrintWindow", exc
-        )
+        logger.warning("WinCamCapture unavailable (%s), falling back to PrintWindow", exc)
         from src.capture import WindowCapture
 
         cap = WindowCapture(window_title=window_title)
@@ -955,9 +936,7 @@ def main() -> int:
             results["phase1"] = phase1_capture_and_overlay(cap, detector, out_dir)
 
         if run_all or args.phase == 2:
-            results["phase2"] = phase2_paddle_tracking(
-                cap, detector, out_dir, client_origin
-            )
+            results["phase2"] = phase2_paddle_tracking(cap, detector, out_dir, client_origin)
 
         # -- Click canvas centre to release the ball -------------------
         # Ball was stuck to paddle through phases 1-2.  One click on the

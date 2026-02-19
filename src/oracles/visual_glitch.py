@@ -130,9 +130,7 @@ class VisualGlitchOracle(Oracle):
                     self._last_finding_step = self._step_count
 
             # Check SSIM (re-check rate limit after potential phash finding)
-            still_can_report = (
-                self._step_count - self._last_finding_step
-            ) >= self.min_interval
+            still_can_report = (self._step_count - self._last_finding_step) >= self.min_interval
 
             if still_can_report:
                 ssim_val = self._compute_ssim(self._prev_frame, frame)

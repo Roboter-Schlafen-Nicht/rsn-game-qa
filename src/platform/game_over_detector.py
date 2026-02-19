@@ -519,7 +519,7 @@ class GameOverDetector:
         per_strategy: dict[str, float] = {}
         weighted_sum = 0.0
 
-        for strategy, weight in zip(self._strategies, self._weights):
+        for strategy, weight in zip(self._strategies, self._weights, strict=False):
             conf = strategy.update(frame)
             per_strategy[strategy.name] = conf
             weighted_sum += conf * weight

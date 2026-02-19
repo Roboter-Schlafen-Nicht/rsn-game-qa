@@ -55,8 +55,8 @@ def main() -> int:
     args = parser.parse_args()
     setup_logging(args.verbose)
 
-    from src.game_loader import load_game_config, create_loader
     from src.capture import WindowCapture
+    from src.game_loader import create_loader, load_game_config
 
     config = load_game_config(args.config)
     loader = create_loader(config)
@@ -86,11 +86,7 @@ def main() -> int:
 
     # ── Capture loop ─────────────────────────────────────────────────
     ts = timestamp_str()
-    out_dir = (
-        ensure_output_dir(f"frames_{ts}")
-        if args.output_dir is None
-        else args.output_dir
-    )
+    out_dir = ensure_output_dir(f"frames_{ts}") if args.output_dir is None else args.output_dir
     logger.info("Saving frames to: %s", out_dir)
 
     capture_times: list[float] = []
