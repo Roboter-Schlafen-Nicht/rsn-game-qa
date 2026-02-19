@@ -26,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts._smoke_utils import BrowserInstance
 
-
 # JS to read ball + game state from gameState (gray-box)
 READ_BALL_STATE_JS = """
 return (function() {
@@ -94,9 +93,7 @@ def _action_to_client_x(action: float, canvas_left: float, canvas_w: float) -> f
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Verify ball release AND random paddle movement"
-    )
+    parser = argparse.ArgumentParser(description="Verify ball release AND random paddle movement")
     parser.add_argument("--browser", default="chrome")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--url", default="http://localhost:1234")
@@ -174,10 +171,7 @@ def main() -> None:
         canvas_w = rect["width"]
         canvas_h = rect["height"]
         client_y = canvas_top + 0.9 * canvas_h  # paddle Y
-        print(
-            f"[OK] Canvas: left={canvas_left}, top={canvas_top}, "
-            f"w={canvas_w}, h={canvas_h}"
-        )
+        print(f"[OK] Canvas: left={canvas_left}, top={canvas_top}, w={canvas_w}, h={canvas_h}")
 
         # Step 3: Pre-start state
         pre_state = driver.execute_script(READ_BALL_STATE_JS)
@@ -189,9 +183,7 @@ def main() -> None:
         driver.save_screenshot(str(output_dir / "00_pre_start.png"))
 
         # Step 4: Start game
-        driver.execute_script(
-            "gameState.running = true; gameState.ballStickToPuck = false;"
-        )
+        driver.execute_script("gameState.running = true; gameState.ballStickToPuck = false;")
         print("[START] running=true, ballStickToPuck=false\n")
 
         # Step 5: Run random actions + observe
@@ -211,9 +203,7 @@ def main() -> None:
             client_x = _action_to_client_x(action, canvas_left, canvas_w)
 
             # Move paddle via JS (same as env)
-            move_result = driver.execute_script(
-                MOVE_MOUSE_JS, canvas_selector, client_x, client_y
-            )
+            move_result = driver.execute_script(MOVE_MOUSE_JS, canvas_selector, client_x, client_y)
             if not move_result.get("ok"):
                 print(f"[WARN] mousemove failed: {move_result}")
 
@@ -255,9 +245,7 @@ def main() -> None:
         puck_max = max(puck_positions)
         puck_range = puck_max - puck_min
         print(f"\nPaddle positions: {unique_puck} unique values")
-        print(
-            f"Paddle range: {puck_min:.0f} - {puck_max:.0f} (span={puck_range:.0f}px)"
-        )
+        print(f"Paddle range: {puck_min:.0f} - {puck_max:.0f} (span={puck_range:.0f}px)")
 
         if puck_range > 50:
             print("PADDLE: MOVING (random actions working)")
@@ -291,8 +279,7 @@ def main() -> None:
                 break
         if game_over_step is not None:
             print(
-                f"\nGame over at step {game_over_step} "
-                f"(t={game_over_step * args.interval:.1f}s)"
+                f"\nGame over at step {game_over_step} (t={game_over_step * args.interval:.1f}s)"
             )
         else:
             print(f"\nGame still running after {args.steps} steps")

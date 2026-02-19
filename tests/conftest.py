@@ -32,9 +32,7 @@ def _get_test_browsers() -> list[str]:
     """Return the subset of _TARGET_BROWSERS that are installed."""
     if not _WINDOWS:
         return []
-    sys.path.insert(
-        0, str(__import__("pathlib").Path(__file__).resolve().parent.parent)
-    )
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
     from scripts._smoke_utils import get_available_browsers
 
     available = get_available_browsers()
@@ -56,7 +54,7 @@ def _breakout71_server():
     if not _WINDOWS:
         pytest.skip("Integration tests require Windows (GDI capture)")
 
-    from src.game_loader import load_game_config, create_loader
+    from src.game_loader import create_loader, load_game_config
 
     config = load_game_config("breakout-71")
     loader = create_loader(config)
@@ -90,9 +88,7 @@ def breakout71_loader(request, _breakout71_server) -> Generator:
     The current browser name is available as
     ``request.param`` and is also set as ``loader._test_browser``.
     """
-    sys.path.insert(
-        0, str(__import__("pathlib").Path(__file__).resolve().parent.parent)
-    )
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
     from scripts._smoke_utils import BrowserInstance
 
     loader, config = _breakout71_server

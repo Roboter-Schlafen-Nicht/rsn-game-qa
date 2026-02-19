@@ -224,12 +224,8 @@ class TestCrashOracle:
         oracle.on_reset(_obs(), {})
 
         # Two different frames
-        oracle.on_step(
-            _obs(), 0.0, False, False, {"frame": _frame(color=(100, 100, 100))}
-        )
-        oracle.on_step(
-            _obs(), 0.0, False, False, {"frame": _frame(color=(120, 120, 120))}
-        )
+        oracle.on_step(_obs(), 0.0, False, False, {"frame": _frame(color=(100, 100, 100))})
+        oracle.on_step(_obs(), 0.0, False, False, {"frame": _frame(color=(120, 120, 120))})
 
         assert len(oracle.get_findings()) == 0
 
@@ -262,9 +258,7 @@ class TestCrashOracle:
         # 3 identical frames, then a different one, then 3 more identical
         for _ in range(3):
             oracle.on_step(_obs(), 0.0, False, False, {"frame": same.copy()})
-        oracle.on_step(
-            _obs(), 0.0, False, False, {"frame": _frame(color=(200, 200, 200))}
-        )
+        oracle.on_step(_obs(), 0.0, False, False, {"frame": _frame(color=(200, 200, 200))})
         for _ in range(3):
             oracle.on_step(_obs(), 0.0, False, False, {"frame": same.copy()})
 
@@ -593,9 +587,7 @@ class TestScoreAnomalyOracle:
         oracle.on_step(_obs(), 0.0, False, False, {"score": 0})
 
         findings = oracle.get_findings()
-        jump_findings = [
-            f for f in findings if "Impossible score jump" in f.description
-        ]
+        jump_findings = [f for f in findings if "Impossible score jump" in f.description]
         assert len(jump_findings) >= 1
 
 
@@ -819,9 +811,7 @@ class TestPerformanceOracle:
             for _ in range(9):
                 oracle.on_step(_obs(), 0.0, False, False, {})
 
-        fps_findings = [
-            f for f in oracle.get_findings() if f.data.get("type") == "low_fps"
-        ]
+        fps_findings = [f for f in oracle.get_findings() if f.data.get("type") == "low_fps"]
         assert len(fps_findings) == 0
 
     def test_fps_drop_resets_counter(self):
@@ -851,9 +841,7 @@ class TestPerformanceOracle:
                 oracle.on_step(_obs(), 0.0, False, False, {})
 
         # Should NOT trigger: neither slow run reached sustained_frames of 5
-        fps_findings = [
-            f for f in oracle.get_findings() if f.data.get("type") == "low_fps"
-        ]
+        fps_findings = [f for f in oracle.get_findings() if f.data.get("type") == "low_fps"]
         assert len(fps_findings) == 0
 
     def test_cpu_threshold_finding(self):
@@ -880,9 +868,7 @@ class TestPerformanceOracle:
                 for _ in range(60):
                     oracle.on_step(_obs(), 0.0, False, False, {})
 
-        cpu_findings = [
-            f for f in oracle.get_findings() if f.data.get("type") == "high_cpu"
-        ]
+        cpu_findings = [f for f in oracle.get_findings() if f.data.get("type") == "high_cpu"]
         assert len(cpu_findings) >= 1
         assert cpu_findings[0].data["cpu_percent"] == 95.0
 
@@ -908,9 +894,7 @@ class TestPerformanceOracle:
                 for _ in range(60):
                     oracle.on_step(_obs(), 0.0, False, False, {})
 
-        ram_findings = [
-            f for f in oracle.get_findings() if f.data.get("type") == "high_ram"
-        ]
+        ram_findings = [f for f in oracle.get_findings() if f.data.get("type") == "high_ram"]
         assert len(ram_findings) >= 1
         assert ram_findings[0].data["ram_mb"] > 500.0
 
@@ -958,9 +942,7 @@ class TestPerformanceOracle:
             for _ in range(11):
                 oracle.on_step(_obs(), 0.0, False, False, {})
 
-        fps_findings = [
-            f for f in oracle.get_findings() if f.data.get("type") == "low_fps"
-        ]
+        fps_findings = [f for f in oracle.get_findings() if f.data.get("type") == "low_fps"]
         # Should fire exactly once (at sustained_frames == count)
         assert len(fps_findings) == 1
 
@@ -1187,9 +1169,7 @@ class TestPhysicsViolationOracle:
         )
 
         findings = oracle.get_findings()
-        passthrough = [
-            f for f in findings if f.data.get("type") == "paddle_pass_through"
-        ]
+        passthrough = [f for f in findings if f.data.get("type") == "paddle_pass_through"]
         assert len(passthrough) == 1
         assert passthrough[0].severity == "critical"
 
@@ -1226,9 +1206,7 @@ class TestPhysicsViolationOracle:
         )
 
         passthrough = [
-            f
-            for f in oracle.get_findings()
-            if f.data.get("type") == "paddle_pass_through"
+            f for f in oracle.get_findings() if f.data.get("type") == "paddle_pass_through"
         ]
         assert len(passthrough) == 0
 
@@ -1503,9 +1481,7 @@ class TestStateTransitionOracle:
 
         findings = oracle.get_findings()
         level_findings = [
-            f
-            for f in findings
-            if f.data.get("type") in ("level_skip", "level_decrease")
+            f for f in findings if f.data.get("type") in ("level_skip", "level_decrease")
         ]
         assert len(level_findings) == 0
 
@@ -1546,11 +1522,7 @@ class TestStateTransitionOracle:
 
         oracle.on_step(_obs(), 0.0, False, False, {"game_state": "playing"})
 
-        trans = [
-            f
-            for f in oracle.get_findings()
-            if f.data.get("type") == "invalid_transition"
-        ]
+        trans = [f for f in oracle.get_findings() if f.data.get("type") == "invalid_transition"]
         assert len(trans) == 0
 
     def test_no_transition_map_skips_state_check(self):
@@ -1562,11 +1534,7 @@ class TestStateTransitionOracle:
 
         oracle.on_step(_obs(), 0.0, False, False, {"game_state": "game_over"})
 
-        trans = [
-            f
-            for f in oracle.get_findings()
-            if f.data.get("type") == "invalid_transition"
-        ]
+        trans = [f for f in oracle.get_findings() if f.data.get("type") == "invalid_transition"]
         assert len(trans) == 0
 
     def test_missing_state_keys_safe(self):
@@ -1651,9 +1619,7 @@ class TestEpisodeLengthOracle:
         for _ in range(20):
             oracle.on_step(_obs(), 0.0, False, False, {})
 
-        long_f = [
-            f for f in oracle.get_findings() if f.data.get("type") == "long_episode"
-        ]
+        long_f = [f for f in oracle.get_findings() if f.data.get("type") == "long_episode"]
         assert len(long_f) == 1
 
     def test_normal_episode_no_findings(self):
@@ -1669,9 +1635,7 @@ class TestEpisodeLengthOracle:
 
         findings = oracle.get_findings()
         length_findings = [
-            f
-            for f in findings
-            if f.data.get("type") in ("short_episode", "long_episode")
+            f for f in findings if f.data.get("type") in ("short_episode", "long_episode")
         ]
         assert len(length_findings) == 0
 
@@ -1803,9 +1767,7 @@ class TestTemporalAnomalyOracle:
             {"ball_pos": [0.15, 0.12]},
         )
 
-        teleport = [
-            f for f in oracle.get_findings() if f.data.get("type") == "teleportation"
-        ]
+        teleport = [f for f in oracle.get_findings() if f.data.get("type") == "teleportation"]
         assert len(teleport) == 0
 
     def test_flickering_detected(self):
@@ -1858,9 +1820,7 @@ class TestTemporalAnomalyOracle:
                 {"ball_pos": [0.5, 0.5]},
             )
 
-        flicker = [
-            f for f in oracle.get_findings() if f.data.get("type") == "flickering"
-        ]
+        flicker = [f for f in oracle.get_findings() if f.data.get("type") == "flickering"]
         assert len(flicker) == 0
 
     def test_missing_key_safe(self):
@@ -1918,9 +1878,7 @@ class TestRewardConsistencyOracle:
         )
 
         findings = oracle.get_findings()
-        mismatch = [
-            f for f in findings if f.data.get("type") == "score_reward_mismatch"
-        ]
+        mismatch = [f for f in findings if f.data.get("type") == "score_reward_mismatch"]
         assert len(mismatch) == 1
         assert mismatch[0].severity == "warning"
 
@@ -1940,9 +1898,7 @@ class TestRewardConsistencyOracle:
         )
 
         mismatch = [
-            f
-            for f in oracle.get_findings()
-            if f.data.get("type") == "score_reward_mismatch"
+            f for f in oracle.get_findings() if f.data.get("type") == "score_reward_mismatch"
         ]
         assert len(mismatch) == 0
 
@@ -2060,9 +2016,7 @@ class TestRewardConsistencyOracle:
         )
 
         lives_m = [
-            f
-            for f in oracle.get_findings()
-            if f.data.get("type") == "lives_reward_mismatch"
+            f for f in oracle.get_findings() if f.data.get("type") == "lives_reward_mismatch"
         ]
         assert len(lives_m) == 0
 
@@ -2195,9 +2149,7 @@ class TestSoakOracle:
         oracle._total_steps = 1
         oracle.on_step(_obs(), 0.0, True, False, {})
 
-        degradation = [
-            f for f in oracle.get_findings() if f.data.get("type") == "fps_degradation"
-        ]
+        degradation = [f for f in oracle.get_findings() if f.data.get("type") == "fps_degradation"]
         assert len(degradation) == 0
 
     def test_get_soak_summary_empty(self):
@@ -2392,9 +2344,7 @@ class TestTemporalAnomalyCooldown:
             oracle.on_step(_obs(), 0.0, False, False, info)
 
         # Should have fired once
-        flicker1 = [
-            f for f in oracle.get_findings() if f.data.get("type") == "flickering"
-        ]
+        flicker1 = [f for f in oracle.get_findings() if f.data.get("type") == "flickering"]
         assert len(flicker1) == 1
 
         # Continue flickering immediately — still within cooldown
@@ -2402,9 +2352,7 @@ class TestTemporalAnomalyCooldown:
             info = {"ball_pos": [0.5, 0.5]} if i % 2 == 0 else {}
             oracle.on_step(_obs(), 0.0, False, False, info)
 
-        flicker2 = [
-            f for f in oracle.get_findings() if f.data.get("type") == "flickering"
-        ]
+        flicker2 = [f for f in oracle.get_findings() if f.data.get("type") == "flickering"]
         # Should still be just 1 — cooldown suppresses
         assert len(flicker2) == 1
 

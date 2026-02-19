@@ -22,12 +22,12 @@ _REGISTRY_INITIALIZED: bool = False
 
 def _ensure_registry() -> None:
     """Lazily populate the registry to avoid circular imports."""
-    global _REGISTRY_INITIALIZED  # noqa: PLW0603
+    global _REGISTRY_INITIALIZED
     if _REGISTRY_INITIALIZED:
         return
 
-    from src.game_loader.browser_loader import BrowserGameLoader
     from games.breakout71.loader import Breakout71Loader
+    from src.game_loader.browser_loader import BrowserGameLoader
 
     _LOADER_REGISTRY.setdefault("browser", BrowserGameLoader)
     _LOADER_REGISTRY.setdefault("breakout-71", Breakout71Loader)
@@ -58,8 +58,7 @@ def create_loader(config: GameLoaderConfig) -> GameLoader:
     loader_cls = _LOADER_REGISTRY.get(config.loader_type)
     if loader_cls is None:
         raise GameLoaderError(
-            f"Unknown loader_type {config.loader_type!r}. "
-            f"Available: {sorted(_LOADER_REGISTRY)}"
+            f"Unknown loader_type {config.loader_type!r}. Available: {sorted(_LOADER_REGISTRY)}"
         )
 
     logger.info(

@@ -193,13 +193,11 @@ def load_game_config(
         )
 
     logger.info("Loading game config from %s", config_path)
-    with open(config_path, "r", encoding="utf-8") as fh:
+    with open(config_path, encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
 
     if not isinstance(raw, dict):
-        raise ValueError(
-            f"Expected a YAML mapping in {config_path}, got {type(raw).__name__}"
-        )
+        raise ValueError(f"Expected a YAML mapping in {config_path}, got {type(raw).__name__}")
 
     # Expand environment variables in string values.
     raw = _expand_vars_recursive(raw)
@@ -217,6 +215,5 @@ def load_game_config(
         return GameLoaderConfig(**raw)
     except TypeError as exc:
         raise ValueError(
-            f"Invalid config in {config_path}: {exc}. "
-            f"Valid fields: {sorted(valid_fields)}"
+            f"Invalid config in {config_path}: {exc}. Valid fields: {sorted(valid_fields)}"
         ) from exc

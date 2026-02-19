@@ -143,8 +143,7 @@ class PerformanceOracle(Oracle):
                         severity="warning",
                         step=self._step_count,
                         description=(
-                            f"CPU usage {cpu:.1f}% exceeds threshold "
-                            f"{self.cpu_threshold}%"
+                            f"CPU usage {cpu:.1f}% exceeds threshold {self.cpu_threshold}%"
                         ),
                         data={
                             "type": "high_cpu",
@@ -158,8 +157,7 @@ class PerformanceOracle(Oracle):
                         severity="warning",
                         step=self._step_count,
                         description=(
-                            f"RAM usage {ram:.1f} MB exceeds threshold "
-                            f"{self.ram_threshold_mb} MB"
+                            f"RAM usage {ram:.1f} MB exceeds threshold {self.ram_threshold_mb} MB"
                         ),
                         data={
                             "type": "high_ram",

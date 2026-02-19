@@ -109,9 +109,7 @@ def compute_episode_stats(episodes: list[dict]) -> dict:
         term = ep.get("termination", "unknown")
         termination_counts[term] = termination_counts.get(term, 0) + 1
 
-    rnd_means = [
-        ep["rnd_intrinsic_mean"] for ep in episodes if "rnd_intrinsic_mean" in ep
-    ]
+    rnd_means = [ep["rnd_intrinsic_mean"] for ep in episodes if "rnd_intrinsic_mean" in ep]
 
     return {
         "count": len(episodes),
@@ -173,10 +171,7 @@ def compute_coverage_stats(coverage_events: list[dict]) -> dict:
     if not coverage_events:
         return {"count": 0}
 
-    entries = [
-        {"step": c["step"], "unique_states": c["unique_states"]}
-        for c in coverage_events
-    ]
+    entries = [{"step": c["step"], "unique_states": c["unique_states"]} for c in coverage_events]
 
     # Growth rate: unique states per 1K steps
     if len(entries) >= 2:
@@ -287,9 +282,7 @@ def analyze_per_episode_rnd(episodes: list[dict]) -> list[dict]:
     return results
 
 
-def identify_degenerate_episodes(
-    episodes: list[dict], threshold: int = 500
-) -> list[dict]:
+def identify_degenerate_episodes(episodes: list[dict], threshold: int = 500) -> list[dict]:
     """Identify episodes with degenerate survival behavior.
 
     Degenerate episodes are long (>threshold steps) and end by
@@ -453,8 +446,7 @@ def format_report(analysis: dict) -> str:
             lines.append("  Timeline:")
             for entry in cov["entries"]:
                 lines.append(
-                    f"    Step {entry['step']:>7,}: "
-                    f"{entry['unique_states']:,} unique states"
+                    f"    Step {entry['step']:>7,}: {entry['unique_states']:,} unique states"
                 )
 
     # Paddle analysis
@@ -497,8 +489,7 @@ def format_report(analysis: dict) -> str:
         lines.append("RND Collapse Analysis:")
         lines.append(f"  Total episodes:    {len(rnd_data)}")
         lines.append(
-            f"  RND collapsed:     {len(collapsed)} "
-            f"({len(collapsed) / len(rnd_data) * 100:.1f}%)"
+            f"  RND collapsed:     {len(collapsed)} ({len(collapsed) / len(rnd_data) * 100:.1f}%)"
         )
         if collapsed:
             lines.append("  Collapsed episodes (RND mean < 1e-4):")
@@ -542,9 +533,7 @@ def _describe(values: list[float | int]) -> dict:
     mean = sum(values) / n
     sorted_vals = sorted(values)
     median = (
-        sorted_vals[n // 2]
-        if n % 2 == 1
-        else (sorted_vals[n // 2 - 1] + sorted_vals[n // 2]) / 2
+        sorted_vals[n // 2] if n % 2 == 1 else (sorted_vals[n // 2 - 1] + sorted_vals[n // 2]) / 2
     )
     variance = sum((v - mean) ** 2 for v in values) / n if n > 1 else 0
     std = math.sqrt(variance)

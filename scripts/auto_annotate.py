@@ -258,9 +258,7 @@ def _detect_game_zone(gray: np.ndarray) -> tuple[int, int] | None:
     margin = 10
     threshold = max(col_brightness.max() * 0.08, 5)
     game_cols = np.where(col_brightness > threshold)[0]
-    game_cols = game_cols[
-        (game_cols >= margin) & (game_cols < len(col_brightness) - margin)
-    ]
+    game_cols = game_cols[(game_cols >= margin) & (game_cols < len(col_brightness) - margin)]
     if len(game_cols) < 50:
         return None
     return int(game_cols[0]), int(game_cols[-1])
@@ -544,10 +542,7 @@ def _deduplicate_bricks(
             cj_h = dj["height"] * img_h
 
             # Check overlap: centers within half a brick size
-            if (
-                abs(ci_x - cj_x) < (ci_w + cj_w) * 0.3
-                and abs(ci_y - cj_y) < (ci_h + cj_h) * 0.3
-            ):
+            if abs(ci_x - cj_x) < (ci_w + cj_w) * 0.3 and abs(ci_y - cj_y) < (ci_h + cj_h) * 0.3:
                 # Overlapping — keep the more specific color
                 si = specificity.get(di.get("meta", ""), 1)
                 sj = specificity.get(dj.get("meta", ""), 1)
@@ -557,7 +552,7 @@ def _deduplicate_bricks(
                     keep[i] = False
                     break
 
-    return [d for d, k in zip(detections, keep) if k]
+    return [d for d, k in zip(detections, keep, strict=True) if k]
 
 
 def _detect_paddle(
@@ -595,9 +590,7 @@ def _detect_paddle(
     white_mask[:, :15] = 0
     white_mask[:, img_w - 15 :] = 0
 
-    contours, _ = cv2.findContours(
-        white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )
+    contours, _ = cv2.findContours(white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     best = None
     best_area = 0
@@ -917,9 +910,7 @@ def _detect_coins(
         yellow_mask[:, : game_zone[0]] = 0
         yellow_mask[:, game_zone[1] :] = 0
 
-    contours, _ = cv2.findContours(
-        yellow_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )
+    contours, _ = cv2.findContours(yellow_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     detections = []
     for cnt in contours:
@@ -1061,9 +1052,7 @@ def annotate_frame(
     # Detect objects
     bricks = _detect_bricks(hsv, ui_mask, img_h, img_w, game_zone)
     paddle = _detect_paddle(hsv, motion_mask, img_h, img_w)
-    ball = _detect_ball(
-        hsv, ui_mask, motion_mask, img_h, img_w, game_zone, bricks, paddle
-    )
+    ball = _detect_ball(hsv, ui_mask, motion_mask, img_h, img_w, game_zone, bricks, paddle)
     coins = _detect_coins(
         hsv,
         ui_mask,

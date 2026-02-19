@@ -28,7 +28,6 @@ from unittest import mock
 import numpy as np
 import pytest
 
-
 # ── Helpers ─────────────────────────────────────────────────────────
 
 
@@ -99,6 +98,7 @@ class TestWindowCaptureInit:
             {"win32gui": None, "win32ui": None, "win32con": None},
         ):
             import importlib
+
             import src.capture.window_capture as wc_mod
 
             importlib.reload(wc_mod)
@@ -362,6 +362,7 @@ class TestInputControllerInit:
         sys.modules.pop("src.capture.input_controller", None)
         with mock.patch.dict(sys.modules, {"pydirectinput": None}):
             import importlib
+
             import src.capture.input_controller as ic_mod
 
             importlib.reload(ic_mod)
@@ -489,9 +490,7 @@ class TestMouseAndKeyboard:
         IC = _import_input_controller(mocks)
         ic = IC(window_rect=(0, 0, 800, 600))
         ic.click(0.25, 0.75, button="right")
-        mocks["pydirectinput"].click.assert_called_once_with(
-            x=200, y=450, button="right"
-        )
+        mocks["pydirectinput"].click.assert_called_once_with(x=200, y=450, button="right")
 
     def test_press_key(self):
         """press_key sends keyDown then keyUp."""
@@ -576,6 +575,7 @@ class TestWinCamCaptureInit:
             {"wincam": None, "wincam.desktop": None},
         ):
             import importlib
+
             import src.capture.wincam_capture as wc_mod
 
             importlib.reload(wc_mod)
@@ -600,6 +600,7 @@ class TestWinCamCaptureInit:
             },
         ):
             import importlib
+
             import src.capture.wincam_capture as wc_mod
 
             importlib.reload(wc_mod)

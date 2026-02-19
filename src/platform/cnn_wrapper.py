@@ -138,9 +138,7 @@ class CnnObservationWrapper(gym.ObservationWrapper):
 
         return _frame_to_obs(frame, self._obs_size)
 
-    def step(
-        self, action: np.ndarray
-    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Take a step and convert the observation to a grayscale image.
 
         Parameters
@@ -380,9 +378,7 @@ class CnnEvalWrapper(gym.Wrapper):
         info["mlp_obs"] = mlp_obs
         return self._get_stacked_obs(), info
 
-    def step(
-        self, action: np.ndarray
-    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Take a step and return a stacked CHW observation.
 
         Parameters

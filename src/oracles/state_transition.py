@@ -134,8 +134,7 @@ class StateTransitionOracle(Oracle):
                     severity="info",
                     step=self._step_count,
                     description=(
-                        f"Lives increased: {self._prev_lives} -> {lives} "
-                        f"(+{-lives_delta})"
+                        f"Lives increased: {self._prev_lives} -> {lives} (+{-lives_delta})"
                     ),
                     data={
                         "type": "lives_increase",
@@ -155,8 +154,7 @@ class StateTransitionOracle(Oracle):
                     severity="critical",
                     step=self._step_count,
                     description=(
-                        f"Level skipped: {self._prev_level} -> {level} "
-                        f"(delta={level_delta})"
+                        f"Level skipped: {self._prev_level} -> {level} (delta={level_delta})"
                     ),
                     data={
                         "type": "level_skip",

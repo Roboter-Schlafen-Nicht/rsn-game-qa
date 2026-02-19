@@ -44,7 +44,7 @@ import logging
 import platform
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, Any
 
@@ -95,7 +95,7 @@ class TrainingLogger:
         event : dict
             Event payload.  Must include ``"event"`` key.
         """
-        event.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+        event.setdefault("timestamp", datetime.now(UTC).isoformat())
         self._fh.write(json.dumps(event, default=str) + "\n")
 
     def close(self) -> None:
@@ -136,9 +136,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--config",
         type=str,
         default=None,
-        help=(
-            "Path to game config YAML.  If omitted, uses the plugin's default config."
-        ),
+        help=("Path to game config YAML.  If omitted, uses the plugin's default config."),
     )
     parser.add_argument(
         "--timesteps",
@@ -422,8 +420,7 @@ def resolve_window_size(args: argparse.Namespace, config: Any) -> tuple[int, int
         parts = args.window_size.lower().split("x")
         if len(parts) != 2:
             raise ValueError(
-                f"Invalid --window-size format: {args.window_size!r}. "
-                "Expected WxH, e.g. 768x1024"
+                f"Invalid --window-size format: {args.window_size!r}. Expected WxH, e.g. 768x1024"
             )
         try:
             w, h = int(parts[0]), int(parts[1])
@@ -562,8 +559,7 @@ class FrameCollectionCallback:
                     elapsed = now - self._train_start_time
                     if elapsed >= max_time:
                         logger.info(
-                            "Max time reached (%.0fs >= %ds) at step %d — "
-                            "stopping training",
+                            "Max time reached (%.0fs >= %ds) at step %d — stopping training",
                             elapsed,
                             max_time,
                             self.num_timesteps,
@@ -604,7 +600,7 @@ class FrameCollectionCallback:
                     # Uses deterministic MD5 for reproducible counts across runs.
                     obs_flat = new_obs[0]
                     if obs_flat.ndim >= 2:
-                        import numpy as _np  # noqa: PLC0415
+                        import numpy as _np
 
                         h, w = obs_flat.shape[-2], obs_flat.shape[-1]
                         # Use linspace indices for exact 8x8 regardless of size
@@ -613,9 +609,7 @@ class FrameCollectionCallback:
                         fingerprint = obs_flat[..., rows[:, None], cols[None, :]]
                         # Quantise to reduce noise sensitivity (16 bins)
                         quantised = (fingerprint * 16).astype("uint8")
-                        digest = hashlib.md5(  # noqa: S324
-                            quantised.tobytes()
-                        ).digest()
+                        digest = hashlib.md5(quantised.tobytes()).digest()
                         self._unique_obs_hashes.add(digest)
 
                 # Log coverage stats periodically
@@ -642,9 +636,7 @@ class FrameCollectionCallback:
                     info = infos[0] if infos else {}
                     actions = self.locals.get("actions")
                     action_val = (
-                        float(actions[0][0])
-                        if actions is not None and len(actions) > 0
-                        else None
+                        float(actions[0][0]) if actions is not None and len(actions) > 0 else None
                     )
                     paddle_pos = info.get("paddle_pos")
 
@@ -672,8 +664,7 @@ class FrameCollectionCallback:
                         tlog.log(step_event)
                     if rnd_raw is not None:
                         logger.info(
-                            "Step %d | ep %d | r=%.3f | rnd=%.4f | "
-                            "bricks=%d | fps=%.1f",
+                            "Step %d | ep %d | r=%.3f | rnd=%.4f | bricks=%d | fps=%.1f",
                             self.num_timesteps,
                             self._episode_count,
                             step_reward,
@@ -711,8 +702,7 @@ class FrameCollectionCallback:
                     if done:
                         ep_duration = now - self._episode_start_time
                         mean_fps = (
-                            sum(self._episode_fps_samples)
-                            / len(self._episode_fps_samples)
+                            sum(self._episode_fps_samples) / len(self._episode_fps_samples)
                             if self._episode_fps_samples
                             else 0.0
                         )
@@ -744,9 +734,7 @@ class FrameCollectionCallback:
                         }
                         # Include RND intrinsic reward stats if available
                         if self._episode_rnd_sum > 0:
-                            ep_event["rnd_intrinsic_total"] = round(
-                                self._episode_rnd_sum, 4
-                            )
+                            ep_event["rnd_intrinsic_total"] = round(self._episode_rnd_sum, 4)
                             ep_event["rnd_intrinsic_mean"] = round(
                                 self._episode_rnd_sum / max(ep_length, 1), 6
                             )
@@ -770,13 +758,9 @@ class FrameCollectionCallback:
                         self._episode_fps_samples = []
 
                         # -- Episode limit check --------------------------
-                        if (
-                            max_episodes is not None
-                            and self._episode_count >= max_episodes
-                        ):
+                        if max_episodes is not None and self._episode_count >= max_episodes:
                             logger.info(
-                                "Max episodes reached (%d >= %d) at step %d "
-                                "— stopping training",
+                                "Max episodes reached (%d >= %d) at step %d — stopping training",
                                 self._episode_count,
                                 max_episodes,
                                 self.num_timesteps,
@@ -841,15 +825,13 @@ def _setup_logging(
         ``(log_path, jsonl_path, training_logger, file_handler)``
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 
     # Console handler — INFO by default, DEBUG with -v
     console_level = logging.DEBUG if verbose else logging.INFO
     console = logging.StreamHandler(sys.stderr)
     console.setLevel(console_level)
-    console.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s")
-    )
+    console.setFormatter(logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s"))
 
     # File handler — always DEBUG for post-mortem analysis
     log_path = output_dir / f"training_{ts}.log"
@@ -913,12 +895,12 @@ def main(argv: list[str] | None = None) -> int:
     # -- Lazy imports (avoid CI failures) ----------------------------------
     from stable_baselines3 import PPO
 
-    from scripts._smoke_utils import BrowserInstance
     from games import load_game_plugin
-    from src.platform.cnn_wrapper import CnnObservationWrapper
+    from scripts._smoke_utils import BrowserInstance
     from src.game_loader import create_loader
     from src.game_loader.config import load_game_config
     from src.orchestrator.data_collector import FrameCollector
+    from src.platform.cnn_wrapper import CnnObservationWrapper
 
     # -- Load game plugin --------------------------------------------------
     plugin = load_game_plugin(args.game)
@@ -1206,8 +1188,7 @@ def main(argv: list[str] | None = None) -> int:
                 except ImportError:
                     sb3_device = "cpu"
                     logger.warning(
-                        "PyTorch could not be imported; "
-                        "falling back to CPU for CnnPolicy device."
+                        "PyTorch could not be imported; falling back to CPU for CnnPolicy device."
                     )
             else:
                 # MlpPolicy: CPU is faster than GPU for tiny networks
@@ -1242,7 +1223,7 @@ def main(argv: list[str] | None = None) -> int:
                     env=train_env,
                     device=sb3_device,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.error(
                     "Failed to load checkpoint from %s: %s. "
                     "The checkpoint may be corrupted or incompatible "
@@ -1326,10 +1307,7 @@ def main(argv: list[str] | None = None) -> int:
                     "step": num_steps,
                     "episodes_completed": len(cb_factory._episode_rewards),
                     "mean_reward": (
-                        float(
-                            sum(cb_factory._episode_rewards)
-                            / len(cb_factory._episode_rewards)
-                        )
+                        float(sum(cb_factory._episode_rewards) / len(cb_factory._episode_rewards))
                         if cb_factory._episode_rewards
                         else 0.0
                     ),
@@ -1383,8 +1361,7 @@ def main(argv: list[str] | None = None) -> int:
             "model_path": str(model_path) if model_path else None,
             "frames_collected": (collector.frame_count if collector else 0),
             "completed": not interrupted,
-            "stop_reason": stop_reason
-            or ("interrupted" if interrupted else "completed"),
+            "stop_reason": stop_reason or ("interrupted" if interrupted else "completed"),
         }
         # Add state coverage data if tracked
         unique_states = len(callback._unique_obs_hashes) if callback is not None else 0

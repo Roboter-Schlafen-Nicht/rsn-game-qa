@@ -39,7 +39,6 @@ import pytest  # noqa: E402
 from games.breakout71.env import Breakout71Env  # noqa: E402
 from src.platform.cnn_wrapper import CNN_OBS_SIZE, CnnObservationWrapper  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Mock cv2 for CI Docker (missing libGL.so.1)
 # ---------------------------------------------------------------------------
@@ -58,7 +57,7 @@ def _build_cv2_mock() -> mock.MagicMock:
     m.COLOR_BGR2GRAY = 6
     m.INTER_AREA = 3
 
-    def _fake_cvtColor(frame, code):  # noqa: N802
+    def _fake_cvtColor(frame, code):
         if frame.ndim == 3 and frame.shape[2] >= 3:
             return (
                 0.114 * frame[:, :, 0] + 0.587 * frame[:, :, 1] + 0.299 * frame[:, :, 2]
@@ -617,9 +616,7 @@ class TestCnnEvalWrapperStep:
         mlp_obs = np.zeros(8, dtype=np.float32)
 
         base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
-        base_env.step = mock.MagicMock(
-            return_value=(mlp_obs, 1.0, False, False, {"frame": frame})
-        )
+        base_env.step = mock.MagicMock(return_value=(mlp_obs, 1.0, False, False, {"frame": frame}))
 
         env.reset()
         obs, reward, terminated, truncated, info = env.step(np.array([0.0]))
@@ -658,9 +655,7 @@ class TestCnnEvalWrapperStep:
         mlp_obs = np.zeros(8, dtype=np.float32)
 
         base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
-        base_env.step = mock.MagicMock(
-            return_value=(mlp_obs, 0.0, True, False, {"frame": frame})
-        )
+        base_env.step = mock.MagicMock(return_value=(mlp_obs, 0.0, True, False, {"frame": frame}))
 
         env.reset()
         _, _, terminated, truncated, _ = env.step(np.array([0.0]))
@@ -714,9 +709,7 @@ class TestCnnEvalWrapperStep:
         mlp_obs = np.arange(8, dtype=np.float32)
 
         base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
-        base_env.step = mock.MagicMock(
-            return_value=(mlp_obs, 0.0, False, False, {"frame": frame})
-        )
+        base_env.step = mock.MagicMock(return_value=(mlp_obs, 0.0, False, False, {"frame": frame}))
 
         env.reset()
         _, _, _, _, info = env.step(np.array([0.0]))
@@ -734,9 +727,7 @@ class TestCnnEvalWrapperStep:
         mlp_obs = np.zeros(8, dtype=np.float32)
 
         base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
-        base_env.step = mock.MagicMock(
-            return_value=(mlp_obs, 0.0, False, False, {"frame": None})
-        )
+        base_env.step = mock.MagicMock(return_value=(mlp_obs, 0.0, False, False, {"frame": None}))
 
         env.reset()
         obs, _, _, _, _ = env.step(np.array([0.0]))
@@ -776,9 +767,7 @@ class TestCnnEvalWrapperMatchesTraining:
         mlp_obs = np.zeros(8, dtype=np.float32)
 
         base_env.reset = mock.MagicMock(return_value=(mlp_obs, {"frame": frame}))
-        base_env.step = mock.MagicMock(
-            return_value=(mlp_obs, 0.0, False, False, {"frame": frame})
-        )
+        base_env.step = mock.MagicMock(return_value=(mlp_obs, 0.0, False, False, {"frame": frame}))
 
         obs, _ = env.reset()
         assert env.observation_space.contains(obs)

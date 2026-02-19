@@ -138,9 +138,7 @@ class RewardConsistencyOracle(Oracle):
             # Reward given but score didn't change (and no life lost)
             lives = info.get(self.lives_key)
             lives_changed = (
-                lives is not None
-                and self._prev_lives is not None
-                and lives != self._prev_lives
+                lives is not None and self._prev_lives is not None and lives != self._prev_lives
             )
             if has_reward and not score_changed and not lives_changed:
                 self._mismatch_count += 1
@@ -148,8 +146,7 @@ class RewardConsistencyOracle(Oracle):
                     severity="info",
                     step=self._step_count,
                     description=(
-                        f"Reward {reward:.6f} given but no score or lives "
-                        f"change detected"
+                        f"Reward {reward:.6f} given but no score or lives change detected"
                     ),
                     data={
                         "type": "phantom_reward",
@@ -169,8 +166,7 @@ class RewardConsistencyOracle(Oracle):
                     severity="warning",
                     step=self._step_count,
                     description=(
-                        f"Lost {-lives_delta} life(s) but reward is "
-                        f"positive ({reward:.6f})"
+                        f"Lost {-lives_delta} life(s) but reward is positive ({reward:.6f})"
                     ),
                     data={
                         "type": "lives_reward_mismatch",
@@ -182,11 +178,7 @@ class RewardConsistencyOracle(Oracle):
 
         # 3. Check brick count vs reward consistency
         brick_count = info.get(self.brick_count_key)
-        if (
-            self.check_bricks
-            and brick_count is not None
-            and self._prev_brick_count is not None
-        ):
+        if self.check_bricks and brick_count is not None and self._prev_brick_count is not None:
             bricks_destroyed = self._prev_brick_count - brick_count
             if bricks_destroyed > 0 and reward <= self.reward_tolerance:
                 self._mismatch_count += 1

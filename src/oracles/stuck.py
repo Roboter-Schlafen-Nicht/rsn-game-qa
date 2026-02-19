@@ -141,21 +141,15 @@ class StuckOracle(Oracle):
         ):
             # Only fire if no_progress_steps is a multiple of patience
             # to avoid spamming — fire once every patience steps
-            if (
-                self._no_progress_steps > 0
-                and self._no_progress_steps % self.patience == 0
-            ):
+            if self._no_progress_steps > 0 and self._no_progress_steps % self.patience == 0:
                 self._add_finding(
                     severity="info",
                     step=self._step_count,
                     description=(
-                        "Observation variance extremely low — "
-                        "agent may be stuck in a corner"
+                        "Observation variance extremely low — agent may be stuck in a corner"
                     ),
                     data={
-                        "obs_variance": float(
-                            np.var([o.mean() for o in self._obs_buffer])
-                        ),
+                        "obs_variance": float(np.var([o.mean() for o in self._obs_buffer])),
                     },
                 )
 

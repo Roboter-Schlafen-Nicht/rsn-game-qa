@@ -11,7 +11,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -469,9 +468,9 @@ class TestGameOverDetector:
     def test_update_uses_weighted_average_when_multiple_strategies(self):
         """Multiple strategies combine via weighted average."""
         from src.platform.game_over_detector import (
+            EntropyCollapseStrategy,
             GameOverDetector,
             ScreenFreezeStrategy,
-            EntropyCollapseStrategy,
         )
 
         freeze = ScreenFreezeStrategy(threshold=3)
@@ -566,9 +565,9 @@ class TestGameOverDetector:
     def test_weights_normalized_when_not_summing_to_one(self):
         """Weights are auto-normalized if they don't sum to 1.0."""
         from src.platform.game_over_detector import (
+            EntropyCollapseStrategy,
             GameOverDetector,
             ScreenFreezeStrategy,
-            EntropyCollapseStrategy,
         )
 
         detector = GameOverDetector(
@@ -593,9 +592,9 @@ class TestGameOverDetector:
     def test_default_weights_are_equal(self):
         """When no weights specified, all strategies get equal weight."""
         from src.platform.game_over_detector import (
+            EntropyCollapseStrategy,
             GameOverDetector,
             ScreenFreezeStrategy,
-            EntropyCollapseStrategy,
         )
 
         detector = GameOverDetector(

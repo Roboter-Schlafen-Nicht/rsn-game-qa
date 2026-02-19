@@ -11,7 +11,7 @@ import argparse
 import logging
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ class _ColorFormatter(logging.Formatter):
     """Formatter that prepends a colored level tag and timestamp."""
 
     def format(self, record: logging.LogRecord) -> str:
-        ts = datetime.now(tz=timezone.utc).strftime("%H:%M:%S")
+        ts = datetime.now(tz=UTC).strftime("%H:%M:%S")
         color = _COLORS.get(record.levelname, "")
         tag = f"{color}[{ts}] {record.levelname:<8}{_RESET}"
         return f"{tag} {record.getMessage()}"
@@ -104,7 +104,7 @@ class Timer:
         self.elapsed: float = 0.0
         self._start: float = 0.0
 
-    def __enter__(self) -> "Timer":
+    def __enter__(self) -> Timer:
         self._start = time.perf_counter()
         return self
 
@@ -150,7 +150,7 @@ def base_argparser(description: str) -> argparse.ArgumentParser:
 
 def timestamp_str() -> str:
     """Return a filesystem-safe UTC timestamp string."""
-    return datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
 
 
 def save_frame_png(frame, path: Path) -> None:

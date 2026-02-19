@@ -20,7 +20,6 @@ Key differences from WindowCapture
 
 from __future__ import annotations
 
-
 import numpy as np
 
 try:
@@ -79,8 +78,7 @@ class WinCamCapture:
     ) -> None:
         if not _WINCAM_AVAILABLE:
             raise RuntimeError(
-                "wincam is required for WinCamCapture. "
-                "Install it with: pip install wincam"
+                "wincam is required for WinCamCapture. Install it with: pip install wincam"
             )
         if not _PYWIN32_AVAILABLE:
             raise RuntimeError(
@@ -151,9 +149,7 @@ class WinCamCapture:
         try:
             left, top, right, bottom = win32gui.GetClientRect(self.hwnd)
         except Exception as exc:
-            raise RuntimeError(
-                f"Failed to get client rect for HWND {self.hwnd}: {exc}"
-            ) from exc
+            raise RuntimeError(f"Failed to get client rect for HWND {self.hwnd}: {exc}") from exc
         self.width = right - left
         self.height = bottom - top
 
@@ -246,7 +242,7 @@ class WinCamCapture:
             )
 
         self._ensure_camera()
-        assert self._camera is not None  # noqa: S101
+        assert self._camera is not None
 
         frame, _timestamp = self._camera.get_bgr_frame()
         return frame

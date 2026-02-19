@@ -22,7 +22,6 @@ import time
 import numpy as np
 import pytest
 
-
 # ======================================================================
 # Lifecycle tests
 # ======================================================================
@@ -107,9 +106,7 @@ class TestBreakout71Capture:
                 unique += 1
 
         if unique < 2:
-            pytest.skip(
-                f"Only {unique}/10 unique frames — game may be on a static menu screen"
-            )
+            pytest.skip(f"Only {unique}/10 unique frames — game may be on a static menu screen")
 
 
 # ======================================================================
@@ -169,6 +166,5 @@ class TestBreakout71OracleSmoke:
         # The game might legitimately idle on a menu, so we just log
         if warnings:
             pytest.skip(
-                f"StuckOracle fired {len(warnings)} warnings — "
-                "game may be on a menu screen"
+                f"StuckOracle fired {len(warnings)} warnings — game may be on a menu screen"
             )

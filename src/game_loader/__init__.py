@@ -18,19 +18,19 @@ Typical usage::
 
 from typing import Any
 
-from src.game_loader.config import GameLoaderConfig, load_game_config
 from src.game_loader.base import GameLoader, GameLoaderError
 from src.game_loader.browser_loader import BrowserGameLoader
+from src.game_loader.config import GameLoaderConfig, load_game_config
 from src.game_loader.factory import create_loader
 
 __all__ = [
-    "GameLoaderConfig",
-    "load_game_config",
-    "GameLoader",
-    "GameLoaderError",
-    "BrowserGameLoader",
     "Breakout71Loader",
+    "BrowserGameLoader",
+    "GameLoader",
+    "GameLoaderConfig",
+    "GameLoaderError",
     "create_loader",
+    "load_game_config",
 ]
 
 

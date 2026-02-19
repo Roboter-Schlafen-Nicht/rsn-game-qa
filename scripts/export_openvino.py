@@ -90,9 +90,7 @@ def export_openvino(
 
     # Verify the exported model directory exists
     if not export_dir.exists():
-        raise RuntimeError(
-            f"Export reported success but output not found: {export_dir}"
-        )
+        raise RuntimeError(f"Export reported success but output not found: {export_dir}")
 
     return export_dir
 
@@ -145,9 +143,7 @@ def main() -> int:
     )
 
     logger.info("OpenVINO model ready at: %s", export_dir)
-    logger.info(
-        "YoloDetector will auto-select this model when device is 'cpu' or Intel."
-    )
+    logger.info("YoloDetector will auto-select this model when device is 'cpu' or Intel.")
     return 0
 
 

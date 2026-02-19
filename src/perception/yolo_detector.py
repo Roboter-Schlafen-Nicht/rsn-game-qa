@@ -304,9 +304,7 @@ class YoloDetector:
                 self.model.to(self.device)
                 logger.info("YOLO model loaded on device: %s", self.device)
             except Exception:
-                logger.warning(
-                    "Device '%s' unavailable, falling back to CPU", self.device
-                )
+                logger.warning("Device '%s' unavailable, falling back to CPU", self.device)
                 self.device = "cpu"
                 try:
                     self.model.to("cpu")

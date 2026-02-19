@@ -145,8 +145,7 @@ class ScoreAnomalyOracle(Oracle):
                 severity="warning",
                 step=self._step_count,
                 description=(
-                    f"Statistical score anomaly: score={current_score:.1f}, "
-                    f"z-score={z_score:.2f}"
+                    f"Statistical score anomaly: score={current_score:.1f}, z-score={z_score:.2f}"
                 ),
                 data={
                     "score": current_score,

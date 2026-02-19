@@ -295,9 +295,7 @@ class RNDRewardWrapper(VecEnvWrapper):
         self.ext_coeff = ext_coeff
         self.embedding_dim = embedding_dim
         if not (0.0 < update_proportion <= 1.0):
-            raise ValueError(
-                f"update_proportion must be in (0.0, 1.0], got {update_proportion}"
-            )
+            raise ValueError(f"update_proportion must be in (0.0, 1.0], got {update_proportion}")
         self.update_proportion = update_proportion
 
         # Resolve "auto" to a concrete device (xpu > cuda > cpu).
@@ -315,9 +313,7 @@ class RNDRewardWrapper(VecEnvWrapper):
         # Infer observation shape from the VecEnv
         obs_shape = venv.observation_space.shape
         if obs_shape is None or len(obs_shape) != 3:
-            raise ValueError(
-                f"RNDRewardWrapper requires 3D (CHW) observations, got {obs_shape}"
-            )
+            raise ValueError(f"RNDRewardWrapper requires 3D (CHW) observations, got {obs_shape}")
 
         # Build networks
         self.target_network = RNDTargetNetwork(
@@ -329,9 +325,7 @@ class RNDRewardWrapper(VecEnvWrapper):
 
         self.target_network.eval()
 
-        self.optimizer = torch.optim.Adam(
-            self.predictor_network.parameters(), lr=predictor_lr
-        )
+        self.optimizer = torch.optim.Adam(self.predictor_network.parameters(), lr=predictor_lr)
 
         # Normalisation trackers (non-episodic)
         # Obs normalisation: per-pixel running mean/std
@@ -383,9 +377,7 @@ class RNDRewardWrapper(VecEnvWrapper):
         # Compute intrinsic reward using detached predictor output
         with torch.no_grad():
             predicted_embed_reward = self.predictor_network(obs_tensor)
-        intrinsic_reward = (
-            ((target_embed - predicted_embed_reward) ** 2).mean(dim=1).cpu().numpy()
-        )
+        intrinsic_reward = ((target_embed - predicted_embed_reward) ** 2).mean(dim=1).cpu().numpy()
 
         # Normalise intrinsic reward using non-episodic discounted return
         self._int_return = self._int_return * self._gamma_int + intrinsic_reward
@@ -394,9 +386,7 @@ class RNDRewardWrapper(VecEnvWrapper):
         normalised_intrinsic = intrinsic_reward / reward_std
 
         # Combine rewards
-        combined_reward = (
-            self.ext_coeff * extrinsic_reward + self.int_coeff * normalised_intrinsic
-        )
+        combined_reward = self.ext_coeff * extrinsic_reward + self.int_coeff * normalised_intrinsic
 
         # Update predictor network (subsample, single forward pass)
         self._update_predictor_with_targets(obs_tensor, target_embed)

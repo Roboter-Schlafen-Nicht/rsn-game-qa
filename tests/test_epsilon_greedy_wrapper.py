@@ -26,9 +26,7 @@ class _DummyEnv(gym.Env):
 
     def __init__(self):
         super().__init__()
-        self.observation_space = gym.spaces.Box(
-            low=0, high=1, shape=(4,), dtype=np.float32
-        )
+        self.observation_space = gym.spaces.Box(low=0, high=1, shape=(4,), dtype=np.float32)
         self.action_space = gym.spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
         self._last_action = None
 
@@ -189,9 +187,7 @@ class TestMultiEnv:
         patterns = set()
         for _ in range(50):
             wrapper.step(actions.copy())
-            received = tuple(
-                abs(vec_env.envs[i]._last_action[0] - 0.999) > 1e-6 for i in range(4)
-            )
+            received = tuple(abs(vec_env.envs[i]._last_action[0] - 0.999) > 1e-6 for i in range(4))
             patterns.add(received)
 
         # Should have more than 1 unique pattern (not all same decision)

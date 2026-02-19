@@ -95,9 +95,7 @@ class CrashOracle(Oracle):
             self._add_finding(
                 severity="critical",
                 step=self._step_count,
-                description=(
-                    f"Game process '{self.process_name}' is no longer running"
-                ),
+                description=(f"Game process '{self.process_name}' is no longer running"),
                 data={"process_name": self.process_name},
             )
             return  # No point checking frames if the process is dead

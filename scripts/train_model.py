@@ -229,8 +229,7 @@ def train(config: dict, overrides: dict | None = None) -> Path:
         from ultralytics import YOLO
     except ImportError as exc:
         raise RuntimeError(
-            "ultralytics is required for training. "
-            "Install with: pip install ultralytics"
+            "ultralytics is required for training. Install with: pip install ultralytics"
         ) from exc
 
     # Resolve device

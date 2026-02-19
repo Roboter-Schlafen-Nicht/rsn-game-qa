@@ -248,9 +248,7 @@ class Breakout71Env(BaseGameEnv):
         """
         return "game"
 
-    def build_observation(
-        self, detections: dict[str, Any], *, reset: bool = False
-    ) -> np.ndarray:
+    def build_observation(self, detections: dict[str, Any], *, reset: bool = False) -> np.ndarray:
         """Convert YOLO detections into the flat observation vector.
 
         Parameters
@@ -432,7 +430,7 @@ class Breakout71Env(BaseGameEnv):
 
         return terminated, level_cleared
 
-    def apply_action(self, action: "np.ndarray") -> None:
+    def apply_action(self, action: np.ndarray) -> None:
         """Send the chosen action to the game via JavaScript mousemove.
 
         Dispatches a synthetic ``mousemove`` event on the game canvas
@@ -600,9 +598,7 @@ class Breakout71Env(BaseGameEnv):
                 try:
                     from selenium.webdriver.common.action_chains import ActionChains
 
-                    ActionChains(self._driver).move_to_element(
-                        self._game_canvas
-                    ).click().perform()
+                    ActionChains(self._driver).move_to_element(self._game_canvas).click().perform()
                 except Exception as exc:
                     logger.debug("Canvas click failed: %s", exc)
 

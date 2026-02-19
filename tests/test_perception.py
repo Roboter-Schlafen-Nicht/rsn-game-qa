@@ -32,8 +32,8 @@ import numpy as np
 import pytest
 
 from src.perception.yolo_detector import (
-    YoloDetector,
     _ULTRALYTICS_AVAILABLE,
+    YoloDetector,
     _find_openvino_model,
     _resolve_openvino_device,
 )
@@ -75,9 +75,7 @@ def _make_mock_results(boxes_data: list[tuple[int, float, tuple[int, int, int, i
         result.boxes = mock_boxes
         return [result]
 
-    mock_boxes_list = [
-        _make_mock_box(cls_id, conf, xyxy) for cls_id, conf, xyxy in boxes_data
-    ]
+    mock_boxes_list = [_make_mock_box(cls_id, conf, xyxy) for cls_id, conf, xyxy in boxes_data]
     result.boxes = mock_boxes_list
     return [result]
 
