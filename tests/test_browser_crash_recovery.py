@@ -403,6 +403,176 @@ class TestStepCrashRecoveryYoloMode:
 
 
 # ===========================================================================
+# BaseGameEnv crash recovery in step() — cached frame scenario
+# ===========================================================================
+
+
+class TestStepCrashRecoveryWithCachedFrame:
+    """Tests for crash recovery when _last_frame is populated.
+
+    This is the critical real-world scenario: in training, _last_frame
+    is always populated after the first frame.  Before the fix,
+    _capture_frame_headless() would silently return the stale cached
+    frame instead of triggering crash recovery.
+    """
+
+    @_skip_no_cv2
+    @mock.patch("src.platform.base_env.time")
+    def test_step_detects_crash_with_cached_frame(self, mock_time):
+        """When browser crashes and _last_frame exists, step() still detects the crash."""
+        browser_instance = mock.MagicMock()
+        browser_instance.is_alive.return_value = False
+        new_driver = mock.MagicMock()
+        browser_instance.restart.return_value = new_driver
+        browser_instance.driver = new_driver
+
+        env = _make_ready_env(
+            headless=True,
+            reward_mode="survival",
+            browser_instance=browser_instance,
+        )
+        env._driver = mock.MagicMock()
+
+        # _last_frame is populated (as it always is after first frame)
+        env._last_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        # Make all capture attempts fail (tab crashed)
+        env._driver.execute_script.side_effect = Exception("tab crashed")
+        env._driver.get_screenshot_as_png.side_effect = Exception("tab crashed")
+
+        obs, reward, terminated, truncated, info = env.step(_action())
+
+        assert terminated is True
+        assert info["browser_crashed"] is True
+        browser_instance.restart.assert_called_once()
+
+    @_skip_no_cv2
+    @mock.patch("src.platform.base_env.time")
+    def test_cached_frame_returned_when_browser_alive(self, mock_time):
+        """When capture fails but browser is alive, return cached frame (transient error)."""
+        browser_instance = mock.MagicMock()
+        browser_instance.is_alive.return_value = True
+
+        env = _make_ready_env(
+            headless=True,
+            reward_mode="survival",
+            browser_instance=browser_instance,
+        )
+        env._driver = mock.MagicMock()
+
+        cached_frame = np.ones((480, 640, 3), dtype=np.uint8) * 42
+        env._last_frame = cached_frame.copy()
+
+        # Capture fails but browser is alive
+        env._driver.execute_script.side_effect = Exception("transient error")
+        env._driver.get_screenshot_as_png.side_effect = Exception("transient error")
+
+        obs, reward, terminated, truncated, info = env.step(_action())
+
+        # Should NOT trigger crash recovery — just use cached frame
+        browser_instance.restart.assert_not_called()
+        assert info.get("browser_crashed") is not True
+
+    @_skip_no_cv2
+    @mock.patch("src.platform.base_env.time")
+    def test_cached_frame_returned_without_browser_instance(self, mock_time):
+        """Without browser_instance, capture failure returns cached frame."""
+        env = _make_ready_env(headless=True, reward_mode="survival")
+        env._driver = mock.MagicMock()
+
+        cached_frame = np.ones((480, 640, 3), dtype=np.uint8) * 42
+        env._last_frame = cached_frame.copy()
+
+        # Capture fails, no browser_instance to check
+        env._driver.execute_script.side_effect = Exception("transient error")
+        env._driver.get_screenshot_as_png.side_effect = Exception("transient error")
+
+        # Should not raise — falls back to cached frame
+        obs, reward, terminated, truncated, info = env.step(_action())
+        assert "browser_crashed" not in info or info.get("browser_crashed") is not True
+
+
+# ===========================================================================
+# _capture_frame_headless() direct tests
+# ===========================================================================
+
+
+class TestCaptureFrameHeadlessCrashDetection:
+    """Direct tests for crash detection in _capture_frame_headless()."""
+
+    @_skip_no_cv2
+    def test_raises_when_browser_crashed_and_cached_frame_exists(self):
+        """_capture_frame_headless raises RuntimeError when browser is dead."""
+        browser_instance = mock.MagicMock()
+        browser_instance.is_alive.return_value = False
+
+        env = _make_ready_env(
+            headless=True,
+            reward_mode="survival",
+            browser_instance=browser_instance,
+        )
+        env._driver = mock.MagicMock()
+        env._last_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        # All capture methods fail
+        env._driver.execute_script.side_effect = Exception("tab crashed")
+        env._driver.get_screenshot_as_png.side_effect = Exception("tab crashed")
+
+        with pytest.raises(RuntimeError, match="Browser tab crashed"):
+            env._capture_frame_headless()
+
+    @_skip_no_cv2
+    def test_returns_cached_frame_when_browser_alive(self):
+        """_capture_frame_headless returns cached frame when browser is alive."""
+        browser_instance = mock.MagicMock()
+        browser_instance.is_alive.return_value = True
+
+        env = _make_ready_env(
+            headless=True,
+            reward_mode="survival",
+            browser_instance=browser_instance,
+        )
+        env._driver = mock.MagicMock()
+
+        cached = np.ones((480, 640, 3), dtype=np.uint8) * 99
+        env._last_frame = cached.copy()
+
+        env._driver.execute_script.side_effect = Exception("transient")
+        env._driver.get_screenshot_as_png.side_effect = Exception("transient")
+
+        result = env._capture_frame_headless()
+        np.testing.assert_array_equal(result, cached)
+
+    @_skip_no_cv2
+    def test_returns_cached_frame_without_browser_instance(self):
+        """Without browser_instance, returns cached frame (can't check liveness)."""
+        env = _make_ready_env(headless=True, reward_mode="survival")
+        env._driver = mock.MagicMock()
+
+        cached = np.ones((480, 640, 3), dtype=np.uint8) * 77
+        env._last_frame = cached.copy()
+
+        env._driver.execute_script.side_effect = Exception("error")
+        env._driver.get_screenshot_as_png.side_effect = Exception("error")
+
+        result = env._capture_frame_headless()
+        np.testing.assert_array_equal(result, cached)
+
+    @_skip_no_cv2
+    def test_raises_when_no_cached_frame_and_no_browser_instance(self):
+        """Without cached frame or browser_instance, raises RuntimeError."""
+        env = _make_ready_env(headless=True, reward_mode="survival")
+        env._driver = mock.MagicMock()
+        env._last_frame = None
+
+        env._driver.execute_script.side_effect = Exception("error")
+        env._driver.get_screenshot_as_png.side_effect = Exception("error")
+
+        with pytest.raises(RuntimeError, match="Failed to decode screenshot"):
+            env._capture_frame_headless()
+
+
+# ===========================================================================
 # BaseGameEnv crash recovery in reset()
 # ===========================================================================
 

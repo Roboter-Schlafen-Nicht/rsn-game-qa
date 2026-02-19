@@ -606,7 +606,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         if mid_state == "game_over":
             try:
                 frame = self._capture_frame()
-            except RuntimeError:
+            except Exception:
                 if self._browser_instance is not None:
                     self._restart_browser()
                     return self._make_crash_transition()
@@ -637,7 +637,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         # Capture and detect
         try:
             frame = self._capture_frame()
-        except RuntimeError:
+        except Exception:
             if self._browser_instance is not None:
                 self._restart_browser()
                 return self._make_crash_transition()
@@ -1050,11 +1050,14 @@ class BaseGameEnv(gym.Env, abc.ABC):
                         inner_exc,
                     )
 
-        # Last resort: if frame is still None, try one more time after
-        # clearing any lingering alerts.  Return the last cached frame
-        # rather than crashing the entire training run.
+        # Last resort: if frame is still None, check whether the browser
+        # has actually crashed vs a transient alert issue.  If the browser
+        # is dead, raise RuntimeError so that step()/reset() can trigger
+        # crash recovery instead of silently spinning on stale frames.
         if frame is None:
             self._dismiss_all_alerts()
+            if self._browser_instance is not None and not self._browser_instance.is_alive():
+                raise RuntimeError("Browser tab crashed — all capture attempts failed")
             if self._last_frame is not None:
                 logger.warning("Returning cached frame after all capture attempts failed")
                 return self._last_frame
