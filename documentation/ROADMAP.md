@@ -3,17 +3,20 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 45):** Phase 1 complete. Phase 2 complete.
+**Current state (session 47):** Phase 1 complete. Phase 2 complete.
 Phase 2b complete (RND rescue FAILED) — multi-level play (PR #94) and
 survival/RND bug fix (PR #96) both merged. GameOverDetector CLI wired
 (PR #103). RND exploration fix merged (PR #105) — configurable
 `survival_bonus`, `EpsilonGreedyWrapper`, RND hyperparameter CLI flags.
 Critical MOVE_MOUSE_JS bug fixed (PR #107) — paddle never moved in any
-training run due to IIFE arguments shadowing. Code quality cleanup merged
-(PR #109) — PEP 604 type annotations, expanded coverage tracking.
-962 tests, 96.03% coverage. 200K training run in progress with working
-paddle movement (`--reward-mode rnd --survival-bonus 0.0 --epsilon-greedy
-0.1`). Phase 3 strategies all implemented — only live validation remains.
+training run due to IIFE arguments shadowing. Browser crash recovery
+merged (PR #114) — `BrowserInstance.is_alive()` + `restart()`, crash
+recovery in `step()`/`reset()`. Training log analysis (PR #111), dead
+code cleanup (PR #112), ruff config (PR #113). 1023 tests, 95.47%
+coverage. 200K training run in progress (PID 53751, at 70K steps) with
+working paddle movement (`--reward-mode rnd --survival-bonus 0.0
+--epsilon-greedy 0.1 --max-steps 2000`). Phase 3 strategies all
+implemented — only live validation remains.
 
 ---
 
