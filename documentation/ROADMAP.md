@@ -3,18 +3,12 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 51):** Phase 1 complete. Phase 2 complete.
-Phase 2b complete (RND rescue FAILED). Phase 2c complete — first 200K
-training with working paddle movement (PR #107 IIFE fix) and crash
-recovery (PR #117). Training showed real gameplay: 89% game_over
-episodes, 15K+ unique visual states, diverse episode lengths. However,
-**evaluation regressed** — trained model (mean 204 steps) performs worse
-than random baseline (mean 608 steps). The model fails to generalize
-from training to evaluation. Phase 3 complete — GameOverDetector achieves
-0% false positive rate on Breakout 71, meeting <5% criterion. 1135 tests,
-95.26% coverage. Phase 4 in progress: Hextris plugin complete (PR #120),
-live validation complete (session 51). CNN training and cross-game QA
-comparison remaining.
+**Current state (session 52):** Phases 1-3 complete. Phase 4 complete —
+Hextris plugin (PR #120), CNN training (200K steps, 323 episodes, 184K
+unique visual states), 10-episode evaluation (trained model mean 404
+steps, 3 critical findings vs random baseline mean 374 steps, 0 critical
+findings), cross-game QA comparison complete. Discrete action logging fix
+(PR #122). 1137 tests, 95.26% coverage.
 
 ---
 
@@ -242,7 +236,7 @@ this DOM-enabled game.
 
 ---
 
-## Phase 4: Second Game Onboarding (IN PROGRESS)
+## Phase 4: Second Game Onboarding ✓
 
 **Goal:** Validate the plugin architecture by onboarding a completely
 different game with zero platform code changes.
@@ -256,8 +250,10 @@ different game with zero platform code changes.
 | Clone Hextris repo | Clone to local directory, set `$HEXTRIS_DIR` — **DONE** |
 | Auto-discover plugin loaders | Factory scans `games/` for plugin loader classes — **DONE** |
 | Live validation | `--game hextris --headless --episodes 3` with random policy — **DONE** (session 51) |
-| CNN + survival training | No YOLO model needed |
-| QA report comparison | Cross-game oracle findings |
+| Discrete action logging fix | `Discrete` action spaces crash callback — **DONE** (PR #122) |
+| CNN + survival training | 200K steps, 323 episodes, 184K unique visual states, mean reward 1.18 — **DONE** (session 52) |
+| 10-episode evaluation | Trained mean 404 steps, 3 critical findings vs random mean 374, 0 critical — **DONE** (session 52) |
+| QA report comparison | Cross-game oracle findings — **DONE** (session 52) |
 
 **Hextris plugin architecture (PR #120):**
 - `Discrete(3)` action space: noop / rotate_left / rotate_right (via JS
@@ -281,8 +277,62 @@ different game with zero platform code changes.
 **Onboarding & validation success criteria:** MET. Hextris running with
 `--game hextris`, producing QA reports. Plugin code complete (PR #120),
 live validation successful. Auto-discover plugin loaders added to factory
-for seamless multi-game support. Remaining Phase 4 tasks (CNN training,
-cross-game QA comparison) tracked in the task table above.
+for seamless multi-game support.
+
+**CNN training results (200K steps, session 52):**
+- 200,704 timesteps in 3h 6m (~19 it/s, ~20 FPS)
+- 323 episodes, ALL terminated via natural game_over (no degenerate
+  truncation at max_steps — unlike Breakout71's 10.8% truncation rate)
+- Episode length: mean=620, diverse range (no bimodal degenerate pattern)
+- Reward: mean=1.18, std=1.78, best=9.10, worst=-2.45
+- **184,314 unique visual states** (12x more than Breakout71's 15,521)
+- Explained variance: 0.883 (strong value function learning)
+- 4 checkpoints saved (50K, 100K, 150K, 200K)
+- Zero browser crashes (crash recovery from PR #114 working)
+- Discrete action logging fix required (PR #122) — `Discrete(3)` actions
+  are scalars, not arrays
+
+**Hextris evaluation results (200K model, session 52):**
+
+| Metric | Random | Trained (200K) |
+|---|---|---|
+| Mean episode length | 374 | 404 |
+| Mean reward | -1.28 | -0.98 |
+| Critical findings | 0 | **3** |
+| Warning findings | 462 | 735 |
+| Total findings | 4,186 | 4,741 |
+| Game over rate | 10/10 | 10/10 |
+
+**Cross-game QA comparison (Breakout71 vs Hextris, trained models):**
+
+| Metric | Breakout71 Trained | Hextris Trained |
+|---|---|---|
+| Training steps | 200K | 200K |
+| Training episodes | 259 | 323 |
+| Unique visual states | 15,521 | 184,314 |
+| Eval mean length | 204 | 404 |
+| Eval mean reward | -2.48 | -0.98 |
+| Eval critical findings | 1 | 3 |
+| Eval total findings | 2,055 | 4,741 |
+| vs random (length) | 0.34x (worse) | 1.08x (better) |
+| vs random (critical) | 1 vs 0 | 3 vs 0 |
+| Plugin code changes to `src/` | N/A (reference) | 0 files |
+
+**Phase 4 success criteria:** MET. The plugin architecture is validated:
+- A completely different game (hexagonal puzzle vs brick-breaking arcade)
+  was onboarded with **zero changes to `src/` or `src/platform/`** (PR #120)
+- CNN training required a separate bug fix (PR #122) in the training
+  script (`scripts/train_rl.py`) — a pre-existing `Discrete` action space
+  handling bug, not a plugin architecture limitation
+- CNN training ran successfully with a different action space (`Discrete(3)`
+  vs `Box(-1,1)`) after that fix
+- Trained model found **3 critical findings** that random baseline missed
+  (same pattern as Breakout71)
+- 184K unique visual states demonstrate the platform generalizes to
+  diverse game types
+- The Hextris trained model performs **better** than random (unlike
+  Breakout71 where it performed worse), suggesting the simpler
+  rotation-based action space is easier to learn than paddle positioning
 
 ---
 
