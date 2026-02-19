@@ -236,7 +236,7 @@ this DOM-enabled game.
 
 ---
 
-## Phase 4: Second Game Onboarding (IN PROGRESS)
+## Phase 4: Second Game Onboarding ✓
 
 **Goal:** Validate the plugin architecture by onboarding a completely
 different game with zero platform code changes.
@@ -316,13 +316,16 @@ for seamless multi-game support.
 | Eval total findings | 2,055 | 4,741 |
 | vs random (length) | 0.34x (worse) | 1.08x (better) |
 | vs random (critical) | 1 vs 0 | 3 vs 0 |
-| Platform code changes | N/A (reference) | 0 files |
+| Plugin code changes to `src/` | N/A (reference) | 0 files |
 
 **Phase 4 success criteria:** MET. The plugin architecture is validated:
 - A completely different game (hexagonal puzzle vs brick-breaking arcade)
-  was onboarded with **zero platform code changes**
+  was onboarded with **zero changes to `src/` or `src/platform/`** (PR #120)
+- CNN training required a separate bug fix (PR #122) in the training
+  script (`scripts/train_rl.py`) — a pre-existing `Discrete` action space
+  handling bug, not a plugin architecture limitation
 - CNN training ran successfully with a different action space (`Discrete(3)`
-  vs `Box(-1,1)`) after fixing the action logging bug (PR #122)
+  vs `Box(-1,1)`) after that fix
 - Trained model found **3 critical findings** that random baseline missed
   (same pattern as Breakout71)
 - 184K unique visual states demonstrate the platform generalizes to
