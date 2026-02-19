@@ -8,7 +8,7 @@ mechanism the env uses), and confirms both the ball and paddle move.
 Usage::
 
     # Start server first:
-    python -m http.server 1234 --directory /mnt/f/work/breakout71-testbed/dist
+    python -m http.server 1234 --directory $BREAKOUT71_DIR/dist
 
     # Then run:
     python scripts/verify_ball_release.py --browser chrome --headless
@@ -102,7 +102,7 @@ def main() -> None:
     parser.add_argument("--url", default="http://localhost:1234")
     parser.add_argument(
         "--output-dir",
-        default="/mnt/e/rsn-game-qa/output/verify_ball_release",
+        default="output/verify_ball_release",
     )
     parser.add_argument(
         "--steps",
