@@ -635,9 +635,12 @@ class FrameCollectionCallback:
                     infos = self.locals.get("infos", [])
                     info = infos[0] if infos else {}
                     actions = self.locals.get("actions")
-                    action_val = (
-                        float(actions[0][0]) if actions is not None and len(actions) > 0 else None
-                    )
+                    action_val = None
+                    if actions is not None and len(actions) > 0:
+                        act = actions[0]
+                        # Continuous action spaces produce arrays; discrete
+                        # action spaces produce scalar integers/floats.
+                        action_val = float(act[0]) if hasattr(act, "__len__") else float(act)
                     paddle_pos = info.get("paddle_pos")
 
                     step_event = {
