@@ -8,7 +8,6 @@ the active game window.
 from __future__ import annotations
 
 import time
-from typing import Optional
 
 try:
     import pydirectinput
@@ -58,7 +57,7 @@ class InputController:
 
     def __init__(
         self,
-        window_rect: Optional[tuple[int, int, int, int]] = None,
+        window_rect: tuple[int, int, int, int] | None = None,
     ) -> None:
         if not _PYDIRECTINPUT_AVAILABLE:
             raise RuntimeError(

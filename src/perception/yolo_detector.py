@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -211,7 +211,7 @@ class YoloDetector:
         confidence_threshold: float = 0.5,
         iou_threshold: float = 0.45,
         img_size: int = 640,
-        classes: Optional[list[str]] = None,
+        classes: list[str] | None = None,
     ) -> None:
         if not _ULTRALYTICS_AVAILABLE:
             raise RuntimeError(

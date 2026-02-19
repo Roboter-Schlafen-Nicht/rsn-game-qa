@@ -17,7 +17,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 from src.game_loader.browser_loader import BrowserGameLoader
 from src.game_loader.config import GameLoaderConfig
@@ -64,7 +63,7 @@ class Breakout71Loader(BrowserGameLoader):
         *,
         serve_port: int = 1234,
         readiness_timeout_s: float = 120.0,
-        window_title: Optional[str] = None,
+        window_title: str | None = None,
     ) -> "Breakout71Loader":
         """Create a loader from just the repo path, using defaults.
 

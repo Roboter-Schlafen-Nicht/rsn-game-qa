@@ -14,7 +14,6 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Optional
 from urllib.parse import urlparse
 
 import urllib.request
@@ -49,7 +48,7 @@ class BrowserGameLoader(GameLoader):
 
     def __init__(self, config: GameLoaderConfig) -> None:
         super().__init__(config)
-        self._process: Optional[subprocess.Popen] = None
+        self._process: subprocess.Popen | None = None
 
     # -- Lifecycle -----------------------------------------------------
 
