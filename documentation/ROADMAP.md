@@ -3,11 +3,12 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 39):** Phase 1 complete. Phase 2 complete.
-Phase 2b complete — multi-level play (PR #94) and survival/RND bug fix
-(PR #96) both merged. 912 tests, 96% coverage.
-Next: Run short debug training to verify multi-level + RND, then full
-200K training with evaluation.
+**Current state (session 42):** Phase 1 complete. Phase 2 complete.
+Phase 2b complete (RND rescue FAILED) — multi-level play (PR #94) and
+survival/RND bug fix (PR #96) both merged. GameOverDetector CLI wired
+(PR #103). 928 tests, 96.20% coverage.
+Next: Phase 3 live validation (GameOverDetector on Breakout 71) and
+strategic pivot on exploration approach.
 
 ---
 
@@ -100,12 +101,32 @@ with random perk selection, creating diverse visual states across levels.
 | Bug fix: perk_picker routing | Route perk_picker modals through `_handle_level_transition()` instead of `start_game()` — **DONE** (PR #96) |
 | Bug fix: survival level clear | Add modal-based `level_cleared` signal (`modal_level_cleared`) bypassing YOLO suppression, add non-terminal level clear bonus (+1.0) — **DONE** (PR #96) |
 | Bug fix tests | 3 new tests (912 total, 96.31% coverage) — **DONE** (PR #96) |
-| RND training validation | Run 200K+ with multi-level, verify RND stays alive — TODO |
-| Evaluation comparison | Compare vs Phase 2 single-level results — TODO |
+| RND training validation | Run 200K+ with multi-level, verify RND stays alive — **FAILED** (100K steps, RND collapsed, degenerate policy) |
+| Evaluation comparison | Compare vs Phase 2 single-level results — **DONE** (identical: mean 3003, 3 critical) |
 
-**Success criteria:** RND intrinsic reward stays above zero through
-multi-level episodes. State coverage (unique fingerprints) significantly
-exceeds Phase 2's 98.
+**Success criteria:** NOT MET. RND intrinsic reward collapsed to zero
+within first 100 steps. Agent learned degenerate survival policy (paddle
+frozen at x=0.618), never cleared bricks, never triggered multi-level
+play. Evaluation results identical to Phase 2.
+
+**Phase 2b Evaluation Results:**
+
+| Metric | Random | Phase 1 CNN | Phase 2 RND | Phase 2b RND |
+|---|---|---|---|---|
+| Mean episode length | 5.1 | 402.6 | 3003.0 | 3003.0 |
+| Mean reward | -4.96 | 1.01 | 26.52 | 26.51 |
+| Survival rate | 0/10 | 4/10 (1K cap) | 3/10 (10K cap) | 3/10 (10K cap) |
+| Critical findings | 0 | 4 | 3 | 3 |
+| Performance warnings | 0 | 4 | 270 | 297 |
+| Total findings | 64 | 4,045 | 30,316 | 30,328 |
+
+**Root cause analysis:** The survival reward (+0.01/step) creates a
+trivially exploitable local optimum. The agent learns to park the paddle
+and collect survival reward indefinitely. RND intrinsic reward, which
+should drive exploration, collapses because the predictor network learns
+the target network's output for the static frame within ~100 gradient
+updates. Multi-level play cannot rescue this because the agent never
+clears bricks to trigger a level transition.
 
 ---
 
@@ -116,11 +137,14 @@ work with any game (not just web games with inspectable DOM).
 
 | Task | Details |
 |---|---|
-| Screen freeze detector | Pixel diff < threshold for N consecutive frames |
-| Entropy collapse detector | Static/uniform screen detection |
+| Screen freeze detector | Pixel diff < threshold for N consecutive frames — **DONE** (PR #91) |
+| Entropy collapse detector | Static/uniform screen detection — **DONE** (PR #91) |
 | Input responsiveness detector | Send actions, check if state changes |
 | OCR terminal text detector | "Game Over", "You Died", "Continue?" patterns |
-| Ensemble `GameOverDetector` | Configurable strategies with per-game weights |
+| Ensemble `GameOverDetector` | Configurable strategies with per-game weights — **DONE** (PR #91) |
+| Integrate into BaseGameEnv | `step()` and `reset()` lifecycle — **DONE** (PR #92) |
+| Wire into CLI scripts | `--game-over-detector`, `--detector-threshold` flags — **DONE** (PR #103) |
+| Live validation on Breakout 71 | Run with `--game-over-detector` flag, measure false positive rate — TODO |
 
 **Success criteria:** Pixel-based game-over detection works on Breakout 71
 without any JS injection, with <5% false positive rate.
