@@ -16,6 +16,8 @@ Covers:
 - Reset termination state
 - JS game state reading (_read_game_state)
 - _should_check_modals always returns True
+- _lazy_init override (skip YOLO for CNN-only game)
+- _detect_objects override (empty detections)
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from typing import Any
 from unittest import mock
 
 import numpy as np
+import pytest
 
 from games.hextris.env import HextrisEnv
 from games.hextris.modal_handler import (
@@ -700,3 +703,79 @@ class TestConfirmFrames:
     def test_confirm_frames_is_3(self):
         """Game over requires 3 consecutive confirmed frames."""
         assert HextrisEnv._GAME_OVER_CONFIRM_FRAMES == 3
+
+
+# -- _lazy_init (skip YOLO) ---------------------------------------------------
+
+
+class TestLazyInit:
+    """Tests for _lazy_init() override that skips YOLO initialization."""
+
+    def test_lazy_init_skips_yolo_headless(self):
+        """In headless mode, _lazy_init completes without YOLO detector."""
+        driver = _mock_driver()
+        env = _make_env(driver=driver, headless=True)
+
+        # _lazy_init should succeed without needing YOLO weights
+        env._lazy_init()
+
+        assert env._initialized is True
+        # _detector should remain None (no YOLO loaded)
+        assert env._detector is None
+
+    def test_lazy_init_idempotent(self):
+        """Second call to _lazy_init is a no-op."""
+        driver = _mock_driver()
+        env = _make_env(driver=driver, headless=True)
+
+        env._lazy_init()
+        env._lazy_init()  # Should not raise
+
+        assert env._initialized is True
+
+    def test_lazy_init_requires_driver_in_headless(self):
+        """Headless mode without driver raises RuntimeError."""
+        env = _make_env(headless=True)
+
+        with pytest.raises(RuntimeError, match="Headless mode requires"):
+            env._lazy_init()
+
+    def test_lazy_init_calls_on_lazy_init_hook(self):
+        """on_lazy_init() hook is called after initialization."""
+        driver = _mock_driver()
+        env = _make_env(driver=driver, headless=True)
+
+        with mock.patch.object(env, "on_lazy_init") as mock_hook:
+            env._lazy_init()
+            mock_hook.assert_called_once()
+
+    def test_lazy_init_sets_initialized_flag(self):
+        """_initialized flag is set to True after init."""
+        driver = _mock_driver()
+        env = _make_env(driver=driver, headless=True)
+
+        assert env._initialized is False
+        env._lazy_init()
+        assert env._initialized is True
+
+
+# -- _detect_objects (empty detections) ----------------------------------------
+
+
+class TestDetectObjects:
+    """Tests for _detect_objects() override returning empty detections."""
+
+    def test_returns_empty_dict(self):
+        """_detect_objects always returns empty dict (no YOLO)."""
+        env = _make_env()
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        result = env._detect_objects(frame)
+        assert result == {}
+
+    def test_ignores_frame_content(self):
+        """Frame content is irrelevant (no detection model)."""
+        env = _make_env()
+        frame = np.random.randint(0, 255, (200, 300, 3), dtype=np.uint8)
+        result = env._detect_objects(frame)
+        assert result == {}
+        assert isinstance(result, dict)

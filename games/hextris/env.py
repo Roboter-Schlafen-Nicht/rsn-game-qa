@@ -428,6 +428,73 @@ class HextrisEnv(BaseGameEnv):
         self._game_over_count = 0
 
     # ------------------------------------------------------------------
+    # Platform overrides (skip YOLO for CNN-only game)
+    # ------------------------------------------------------------------
+
+    def _lazy_init(self) -> None:
+        """Initialise capture and canvas, skipping YOLO detector.
+
+        Hextris is a CNN-only game with no YOLO model.  This override
+        performs the same setup as ``BaseGameEnv._lazy_init()`` but
+        skips ``YoloDetector`` construction and loading, which would
+        fail because there are no weights to load.
+        """
+        if self._initialized:
+            return
+
+        if self.headless:
+            if self._driver is None:
+                raise RuntimeError(
+                    "Headless mode requires a Selenium WebDriver "
+                    f"(pass driver= to {type(self).__name__})"
+                )
+        else:
+            try:
+                from src.capture.wincam_capture import WinCamCapture
+
+                self._capture = WinCamCapture(window_title=self.window_title, fps=60)
+                logger.info(
+                    "Capture: WinCamCapture (Direct3D11) HWND=%s, %dx%d",
+                    self._capture.hwnd,
+                    self._capture.width,
+                    self._capture.height,
+                )
+            except (ImportError, RuntimeError, OSError) as exc:
+                logger.warning(
+                    "WinCamCapture unavailable (%s), falling back to PrintWindow",
+                    exc,
+                )
+                from src.capture.window_capture import WindowCapture
+
+                self._capture = WindowCapture(window_title=self.window_title)
+                logger.info(
+                    "Capture: WindowCapture (PrintWindow) HWND=%s, %dx%d",
+                    self._capture.hwnd,
+                    self._capture.width,
+                    self._capture.height,
+                )
+
+        self._init_canvas()
+        # Skip YoloDetector — Hextris is CNN-only (no weights)
+        self._initialized = True
+        self.on_lazy_init()
+
+    def _detect_objects(self, frame: np.ndarray) -> dict[str, Any]:
+        """Return empty detections (Hextris has no YOLO model).
+
+        Parameters
+        ----------
+        frame : np.ndarray
+            Captured game frame (unused).
+
+        Returns
+        -------
+        dict[str, Any]
+            Empty detection results.
+        """
+        return {}
+
+    # ------------------------------------------------------------------
     # Optional hooks
     # ------------------------------------------------------------------
 

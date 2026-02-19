@@ -104,10 +104,10 @@ class HextrisLoader(BrowserGameLoader):
         return cls(config)
 
     def setup(self) -> None:
-        """No-op — Hextris has no build step.
+        """Validate game directory — Hextris has no build step.
 
-        The game is pure static HTML/JS/CSS.  Just ensure the game
-        directory exists.
+        The game is pure static HTML/JS/CSS.  This method validates
+        that the game directory exists and contains ``index.html``.
         """
         game_dir = Path(self.config.game_dir)
         if not game_dir.is_dir():
