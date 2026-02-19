@@ -233,9 +233,10 @@ work with any game (not just web games with inspectable DOM).
   ~16 consecutive frozen frames (~1.1s at 15 FPS) before reaching
   confidence threshold. The detector's value is for non-DOM games.
 
-**Success criteria:** MET. Pixel-based game-over detection works on
-Breakout 71 without any JS injection, with 0% false positive rate
-(criterion was <5%).
+**Success criteria:** MET. Pixel-based game-over detection was validated on
+Breakout 71 to have 0% false positive rate without any JS injection
+(criterion was <5%); DOM-based detection handled all true positives in
+this DOM-enabled game.
 
 ---
 
