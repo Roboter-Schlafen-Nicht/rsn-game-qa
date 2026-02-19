@@ -160,20 +160,19 @@ return (function() {
 # ---------------------------------------------------------------------------
 
 MOVE_MOUSE_JS = """
-return (function() {
-    var canvas = document.getElementById(arguments[0]);
+var _sel_args = arguments;
+return (function(id, cx, cy) {
+    var canvas = document.getElementById(id);
     if (!canvas) return {ok: false, error: "canvas not found"};
-    var clientX = arguments[1];
-    var clientY = arguments[2];
     var evt = new MouseEvent('mousemove', {
-        clientX: clientX,
-        clientY: clientY,
+        clientX: cx,
+        clientY: cy,
         bubbles: true,
         cancelable: true
     });
     canvas.dispatchEvent(evt);
     return {ok: true};
-})();
+})(_sel_args[0], _sel_args[1], _sel_args[2]);
 """
 
 # ---------------------------------------------------------------------------
