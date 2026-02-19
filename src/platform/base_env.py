@@ -86,6 +86,10 @@ class BaseGameEnv(gym.Env, abc.ABC):
         ``update(frame)`` is called every step.  If it signals
         game-over, the episode terminates without requiring DOM/JS
         modal checks.  See ``src.platform.game_over_detector``.
+    survival_bonus : float
+        Per-step survival reward in ``"survival"`` mode.  Default
+        ``0.01``.  Set to ``0.0`` when using RND intrinsic reward to
+        eliminate the degenerate "park and collect" local optimum.
     """
 
     _VALID_REWARD_MODES = ("yolo", "survival")
@@ -104,6 +108,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         headless: bool = False,
         reward_mode: str = "yolo",
         game_over_detector: Optional[Any] = None,
+        survival_bonus: float = 0.01,
     ) -> None:
         super().__init__()
 
@@ -120,6 +125,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         self.device = device
         self.headless = headless
         self.reward_mode = reward_mode
+        self._survival_bonus = survival_bonus
         self._game_over_detector = game_over_detector
 
         # Internal state
@@ -363,10 +369,10 @@ class BaseGameEnv(gym.Env, abc.ABC):
     def _compute_survival_reward(self, terminated: bool, level_cleared: bool) -> float:
         """Compute a game-agnostic survival reward.
 
-        Returns ``+0.01`` per step survived.  On termination:
-        ``-5.0`` for game over, ``+5.0`` for level clear.
-        Level clear bonus (``+1.0``) is also awarded for non-terminal
-        level transitions (multi-level play).
+        Returns ``self._survival_bonus`` per step survived (default
+        ``0.01``).  On termination: ``-5.0`` for game over, ``+5.0``
+        for level clear.  Level clear bonus (``+1.0``) is also awarded
+        for non-terminal level transitions (multi-level play).
 
         Parameters
         ----------
@@ -380,7 +386,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         float
             Survival reward signal.
         """
-        reward = 0.01
+        reward = self._survival_bonus
         if terminated and level_cleared:
             reward += 5.0
         elif terminated:
@@ -390,10 +396,18 @@ class BaseGameEnv(gym.Env, abc.ABC):
             reward += 1.0
         return reward
 
-    _SURVIVAL_TERMINAL_REWARD: float = -5.0 - 0.01
-    """Terminal penalty for survival mode when a forced termination is
-    detected (modal-based game-over, pixel-based detector, or late
-    game-over via ball disappearance)."""
+    @property
+    def _SURVIVAL_TERMINAL_REWARD(self) -> float:
+        """Terminal penalty for survival mode when a forced termination is
+        detected (modal-based game-over, pixel-based detector, or late
+        game-over via ball disappearance).
+
+        Combines the game-over penalty (``-5.0``) with the negated
+        per-step survival bonus to ensure the net reward for a terminal
+        step is exactly ``-5.0`` (the bonus is pre-applied in
+        ``_compute_survival_reward``).
+        """
+        return -5.0 - self._survival_bonus
 
     # ------------------------------------------------------------------
     # Gymnasium lifecycle — generic implementation

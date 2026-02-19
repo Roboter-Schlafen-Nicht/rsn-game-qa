@@ -255,11 +255,48 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["yolo", "survival", "rnd"],
         help=(
             "Reward signal strategy.  'yolo' uses YOLO-based brick/score "
-            "deltas (noisy).  'survival' uses +0.01 per step, -5.01 on game "
-            "over (modal-based terminal penalty).  'rnd' uses survival "
+            "deltas (noisy).  'survival' uses per-step bonus (see "
+            "--survival-bonus), terminal penalties.  'rnd' uses survival "
             "reward + RND intrinsic novelty bonus for exploration-driven QA.  "
             "Default: survival."
         ),
+    )
+    parser.add_argument(
+        "--survival-bonus",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help=(
+            "Per-step survival reward bonus.  Default: 0.01 for survival "
+            "mode, 0.0 for rnd mode (to prevent degenerate 'park and "
+            "collect' local optimum).  Override explicitly to change."
+        ),
+    )
+    parser.add_argument(
+        "--epsilon-greedy",
+        type=float,
+        default=0.0,
+        metavar="FLOAT",
+        help=(
+            "Probability of replacing agent action with a random action "
+            "each step.  Forces visual diversity in observations, "
+            "preventing RND predictor collapse.  Default: 0.0 (disabled).  "
+            "Recommended: 0.05-0.2 for RND exploration."
+        ),
+    )
+
+    # -- RND hyperparameters -----------------------------------------------
+    parser.add_argument(
+        "--rnd-int-coeff",
+        type=float,
+        default=1.0,
+        help="Weight for RND intrinsic reward (default: 1.0)",
+    )
+    parser.add_argument(
+        "--rnd-ext-coeff",
+        type=float,
+        default=2.0,
+        help="Weight for extrinsic reward in RND mode (default: 2.0)",
     )
 
     # -- Game-over detector ------------------------------------------------
@@ -964,6 +1001,17 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             logger.warning("Failed to re-initialise game: %s", exc)
 
+    # -- Resolve survival_bonus before logging ----------------------------
+    # - Explicit CLI value takes precedence
+    # - RND mode defaults to 0.0 (prevents degenerate "park and collect")
+    # - Survival mode defaults to 0.01
+    if args.survival_bonus is not None:
+        survival_bonus = args.survival_bonus
+    elif args.reward_mode == "rnd":
+        survival_bonus = 0.0
+    else:
+        survival_bonus = 0.01
+
     # -- Log config event --------------------------------------------------
     tlog.log(
         {
@@ -981,6 +1029,10 @@ def main(argv: list[str] | None = None) -> int:
                 "policy": args.policy,
                 "frame_stack": args.frame_stack,
                 "reward_mode": args.reward_mode,
+                "survival_bonus": survival_bonus,
+                "epsilon_greedy": args.epsilon_greedy,
+                "rnd_int_coeff": args.rnd_int_coeff,
+                "rnd_ext_coeff": args.rnd_ext_coeff,
                 "yolo_weights": yolo_weights,
                 "max_steps": args.max_steps,
                 "n_steps": args.n_steps,
@@ -1014,6 +1066,12 @@ def main(argv: list[str] | None = None) -> int:
         # the intrinsic bonus externally via VecEnvWrapper.
         env_reward_mode = "survival" if args.reward_mode == "rnd" else args.reward_mode
 
+        logger.info(
+            "Reward mode: %s, survival_bonus: %.4f",
+            args.reward_mode,
+            survival_bonus,
+        )
+
         # -- Pixel-based game-over detector (optional) ---------------------
         detector = None
         if args.game_over_detector:
@@ -1037,6 +1095,7 @@ def main(argv: list[str] | None = None) -> int:
             headless=args.headless,
             reward_mode=env_reward_mode,
             game_over_detector=detector,
+            survival_bonus=survival_bonus,
         )
 
         # -- Wrap for CNN policy (if requested) ----------------------------
@@ -1060,11 +1119,19 @@ def main(argv: list[str] | None = None) -> int:
             if args.reward_mode == "rnd":
                 from src.platform.rnd_wrapper import RNDRewardWrapper
 
-                vec_env = RNDRewardWrapper(vec_env, device=args.device)
+                vec_env = RNDRewardWrapper(
+                    vec_env,
+                    int_coeff=args.rnd_int_coeff,
+                    ext_coeff=args.rnd_ext_coeff,
+                    device=args.device,
+                )
                 logger.info(
                     "CNN pipeline: CnnObservationWrapper → DummyVecEnv → "
-                    "VecFrameStack(%d) → VecTransposeImage → RNDRewardWrapper",
+                    "VecFrameStack(%d) → VecTransposeImage → RNDRewardWrapper"
+                    "(int=%.2f, ext=%.2f)",
                     args.frame_stack,
+                    args.rnd_int_coeff,
+                    args.rnd_ext_coeff,
                 )
             else:
                 logger.info(
@@ -1073,6 +1140,18 @@ def main(argv: list[str] | None = None) -> int:
                     args.frame_stack,
                 )
             logger.info("CNN observation space: %s", vec_env.observation_space.shape)
+
+            # -- Epsilon-greedy action noise (optional, CNN only) -----------
+            if args.epsilon_greedy > 0.0:
+                from src.platform.epsilon_greedy_wrapper import EpsilonGreedyWrapper
+
+                vec_env = EpsilonGreedyWrapper(vec_env, epsilon=args.epsilon_greedy)
+                logger.info(
+                    "EpsilonGreedyWrapper: epsilon=%.3f (%.1f%% random actions)",
+                    args.epsilon_greedy,
+                    args.epsilon_greedy * 100,
+                )
+
             train_env = vec_env
             sb3_policy = "CnnPolicy"
         else:

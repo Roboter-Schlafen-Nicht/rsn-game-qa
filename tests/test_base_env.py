@@ -1058,6 +1058,81 @@ class TestSurvivalResetDetections:
 
 
 # ===========================================================================
+# Survival bonus parameter
+# ===========================================================================
+
+
+class TestSurvivalBonus:
+    """Tests for the configurable survival_bonus parameter."""
+
+    def test_default_survival_bonus_is_001(self):
+        """Default survival_bonus is 0.01."""
+        env = StubEnv(reward_mode="survival")
+        assert env._survival_bonus == 0.01
+
+    def test_custom_survival_bonus_zero(self):
+        """survival_bonus=0.0 is accepted and stored."""
+        env = StubEnv(reward_mode="survival", survival_bonus=0.0)
+        assert env._survival_bonus == 0.0
+
+    def test_custom_survival_bonus_positive(self):
+        """survival_bonus=0.05 is accepted and stored."""
+        env = StubEnv(reward_mode="survival", survival_bonus=0.05)
+        assert env._survival_bonus == 0.05
+
+    def test_survival_reward_per_step_uses_custom_bonus(self):
+        """Per-step reward uses the configured survival_bonus."""
+        env = StubEnv(reward_mode="survival", survival_bonus=0.0)
+        reward = env._compute_survival_reward(terminated=False, level_cleared=False)
+        assert abs(reward - 0.0) < 1e-6
+
+    def test_survival_reward_game_over_with_zero_bonus(self):
+        """Game over with survival_bonus=0.0 gives -5.0."""
+        env = StubEnv(reward_mode="survival", survival_bonus=0.0)
+        reward = env._compute_survival_reward(terminated=True, level_cleared=False)
+        assert abs(reward - (-5.0)) < 1e-6
+
+    def test_survival_reward_level_clear_with_zero_bonus(self):
+        """Level clear with survival_bonus=0.0 gives +5.0."""
+        env = StubEnv(reward_mode="survival", survival_bonus=0.0)
+        reward = env._compute_survival_reward(terminated=True, level_cleared=True)
+        assert abs(reward - 5.0) < 1e-6
+
+    def test_survival_reward_non_terminal_level_clear_with_zero_bonus(self):
+        """Non-terminal level clear with survival_bonus=0.0 gives +1.0."""
+        env = StubEnv(reward_mode="survival", survival_bonus=0.0)
+        reward = env._compute_survival_reward(terminated=False, level_cleared=True)
+        assert abs(reward - 1.0) < 1e-6
+
+    def test_terminal_reward_property_adapts_to_bonus(self):
+        """_SURVIVAL_TERMINAL_REWARD adapts to survival_bonus value."""
+        env_default = StubEnv(reward_mode="survival", survival_bonus=0.01)
+        assert abs(env_default._SURVIVAL_TERMINAL_REWARD - (-5.01)) < 1e-6
+
+        env_zero = StubEnv(reward_mode="survival", survival_bonus=0.0)
+        assert abs(env_zero._SURVIVAL_TERMINAL_REWARD - (-5.0)) < 1e-6
+
+        env_custom = StubEnv(reward_mode="survival", survival_bonus=0.05)
+        assert abs(env_custom._SURVIVAL_TERMINAL_REWARD - (-5.05)) < 1e-6
+
+    def test_step_uses_custom_survival_bonus(self):
+        """Full step() cycle uses the configured survival_bonus."""
+        env = _make_ready_env(reward_mode="survival", survival_bonus=0.0)
+        env.compute_reward = lambda *a, **kw: 999.0  # would be used in yolo mode
+        obs, reward, terminated, truncated, info = env.step(_action())
+        assert abs(reward - 0.0) < 1e-6  # survival_bonus=0.0, not 999.0
+
+    def test_mid_step_game_over_uses_adapted_terminal_reward(self):
+        """Mid-step game-over with survival_bonus=0.0 gives -5.0 (not -5.01)."""
+        env = _make_ready_env(reward_mode="survival", survival_bonus=0.0)
+        env.handle_modals = lambda **kw: "game_over"
+        env._no_ball_count = 1  # triggers _should_check_modals -> True
+        obs, reward, terminated, truncated, info = env.step(_action())
+        assert terminated is True
+        assert abs(reward - (-5.0)) < 1e-6
+
+
+# ===========================================================================
 # GameOverDetector integration with step() and reset()
 # ===========================================================================
 
