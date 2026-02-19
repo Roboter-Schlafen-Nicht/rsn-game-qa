@@ -470,8 +470,8 @@ class TestStepCrashRecoveryWithCachedFrame:
         obs, reward, terminated, truncated, info = env.step(_action())
 
         # Should NOT trigger crash recovery — just use cached frame
-        assert terminated is False or terminated is True  # depends on detections
         browser_instance.restart.assert_not_called()
+        assert info.get("browser_crashed") is not True
 
     @_skip_no_cv2
     @mock.patch("src.platform.base_env.time")
