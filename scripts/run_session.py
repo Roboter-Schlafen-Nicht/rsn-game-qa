@@ -168,14 +168,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "DOM/JS modal checks."
         ),
     )
+
+    def _threshold_float(value: str) -> float:
+        """Argparse type that enforces 0.0 <= threshold <= 1.0."""
+        fval = float(value)
+        if not 0.0 <= fval <= 1.0:
+            raise argparse.ArgumentTypeError(
+                f"--detector-threshold must be between 0.0 and 1.0, got {fval}"
+            )
+        return fval
+
     parser.add_argument(
         "--detector-threshold",
-        type=float,
+        type=_threshold_float,
         default=0.6,
         metavar="FLOAT",
         help=(
             "Confidence threshold for the game-over detector ensemble "
-            "(default: 0.6).  Only used when --game-over-detector is set."
+            "(default: 0.6, range: 0.0-1.0).  Only used when "
+            "--game-over-detector is set."
         ),
     )
     parser.add_argument(

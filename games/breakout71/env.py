@@ -142,6 +142,7 @@ class Breakout71Env(BaseGameEnv):
         device: str = "auto",
         headless: bool = False,
         reward_mode: str = "yolo",
+        game_over_detector: Optional[Any] = None,
     ) -> None:
         super().__init__(
             window_title=window_title,
@@ -153,6 +154,7 @@ class Breakout71Env(BaseGameEnv):
             device=device,
             headless=headless,
             reward_mode=reward_mode,
+            game_over_detector=game_over_detector,
         )
 
         # Observation: 8-element vector

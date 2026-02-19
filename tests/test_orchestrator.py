@@ -2033,3 +2033,67 @@ class TestSessionRunnerGameOverDetector:
         # Verify detector was passed to env constructor
         call_kwargs = MockEnvCls.call_args[1]
         assert call_kwargs["game_over_detector"] is detector
+
+    def test_train_rl_threshold_rejects_negative(self):
+        """--detector-threshold rejects negative values."""
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from scripts.train_rl import parse_args; parse_args(['--detector-threshold', '-0.1'])",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert "0.0 and 1.0" in result.stderr
+
+    def test_train_rl_threshold_rejects_above_one(self):
+        """--detector-threshold rejects values > 1.0."""
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from scripts.train_rl import parse_args; parse_args(['--detector-threshold', '1.5'])",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert "0.0 and 1.0" in result.stderr
+
+    def test_run_session_threshold_rejects_negative(self):
+        """--detector-threshold rejects negative values in run_session.py."""
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from scripts.run_session import parse_args; parse_args(['--detector-threshold', '-0.1'])",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert "0.0 and 1.0" in result.stderr
+
+    def test_plugin_env_accepts_game_over_detector(self):
+        """Real Breakout71Env __init__ accepts game_over_detector kwarg."""
+        import inspect
+
+        from games import load_game_plugin
+
+        plugin = load_game_plugin("breakout71")
+        sig = inspect.signature(plugin.env_class.__init__)
+        assert "game_over_detector" in sig.parameters, (
+            f"{plugin.env_class.__name__}.__init__ must accept "
+            f"game_over_detector; params: {list(sig.parameters)}"
+        )
