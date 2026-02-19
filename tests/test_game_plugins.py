@@ -111,6 +111,58 @@ class TestLoadGamePlugin:
         reinit_js = plugin.reinit_js
         assert "restart" in reinit_js
 
+    # -- Hextris plugin tests --------------------------------------------------
+
+    def test_loads_hextris_plugin(self):
+        """Loading 'hextris' returns a module with all required attrs."""
+        plugin = load_game_plugin("hextris")
+
+        assert isinstance(plugin, types.ModuleType)
+        assert hasattr(plugin, "env_class")
+        assert hasattr(plugin, "loader_class")
+        assert hasattr(plugin, "game_name")
+        assert hasattr(plugin, "default_config")
+        assert hasattr(plugin, "default_weights")
+
+    def test_hextris_plugin_metadata(self):
+        """Hextris plugin has correct metadata values."""
+        plugin = load_game_plugin("hextris")
+
+        assert plugin.game_name == "hextris"
+        assert "hextris" in plugin.default_config
+        assert plugin.default_weights == ""  # CNN-only, no YOLO weights
+
+    def test_hextris_env_class_is_class(self):
+        """Hextris env_class is an actual class (not an instance)."""
+        plugin = load_game_plugin("hextris")
+
+        assert isinstance(plugin.env_class, type)
+
+    def test_hextris_loader_class_is_class(self):
+        """Hextris loader_class is an actual class."""
+        plugin = load_game_plugin("hextris")
+
+        assert isinstance(plugin.loader_class, type)
+
+    def test_hextris_has_mute_js(self):
+        """Hextris plugin defines mute_js for audio muting."""
+        plugin = load_game_plugin("hextris")
+
+        assert hasattr(plugin, "mute_js")
+        assert "Audio" in plugin.mute_js
+
+    def test_hextris_no_setup_js(self):
+        """Hextris plugin does not define setup_js (not needed)."""
+        plugin = load_game_plugin("hextris")
+
+        assert not hasattr(plugin, "setup_js")
+
+    def test_hextris_no_reinit_js(self):
+        """Hextris plugin does not define reinit_js (not needed)."""
+        plugin = load_game_plugin("hextris")
+
+        assert not hasattr(plugin, "reinit_js")
+
 
 class TestGetEnvClass:
     """Tests for get_env_class()."""
@@ -122,6 +174,14 @@ class TestGetEnvClass:
         from games.breakout71.env import Breakout71Env
 
         assert env_cls is Breakout71Env
+
+    def test_returns_hextris_env_class(self):
+        """get_env_class('hextris') returns the HextrisEnv class."""
+        env_cls = get_env_class("hextris")
+
+        from games.hextris.env import HextrisEnv
+
+        assert env_cls is HextrisEnv
 
     def test_nonexistent_game_raises(self):
         """get_env_class for nonexistent game raises ImportError."""

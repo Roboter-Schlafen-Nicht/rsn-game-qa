@@ -1,0 +1,40 @@
+# Hextris -- browser game loader configuration
+#
+# Hexagonal puzzle game. Pure static HTML5 -- no build step needed.
+# The loader serves the cloned repository root via Python's http.server.
+#
+# Source: https://github.com/Hextris/hextris
+# Live:   https://hextris.io
+#
+# Usage:
+#   from src.game_loader import load_game_config, create_loader
+#   config = load_game_config("hextris")
+#   loader = create_loader(config)
+#   loader.start()
+#
+# Note: game_dir supports environment variable expansion ($VAR or
+# ${VAR}) and ~ for home directory.  Set HEXTRIS_DIR in your
+# environment to override the default path, e.g.:
+#   export HEXTRIS_DIR=/home/user/hextris
+
+name: hextris
+game_dir: ${HEXTRIS_DIR:-./hextris}
+loader_type: hextris
+
+# -- Build / serve -----------------------------------------------------
+# No install_command -- Hextris is pure static HTML/JS/CSS.
+# serve_command serves the repo root directly (index.html at top level).
+install_command:
+serve_command: python3 -m http.server 8271
+serve_port: 8271
+url: http://localhost:8271
+readiness_endpoint: http://localhost:8271
+
+# -- Readiness ---------------------------------------------------------
+readiness_timeout_s: 30.0
+readiness_poll_interval_s: 1.0
+
+# -- Window identification (for WindowCapture) -------------------------
+window_title: HEXTRIS
+window_width: 1280
+window_height: 1024
