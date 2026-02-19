@@ -31,7 +31,11 @@ from src.game_loader.config import (
     _expand_vars,
     load_game_config,
 )
-from src.game_loader.factory import create_loader, register_loader
+from src.game_loader.factory import (
+    _auto_discover_plugin_loaders,
+    create_loader,
+    register_loader,
+)
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -664,3 +668,37 @@ class TestFactory:
         loader = create_loader(cfg)
         assert isinstance(loader, BrowserGameLoader)
         assert loader.name == "e2e-game"
+
+    def test_auto_discover_registers_hextris(self):
+        """Auto-discovery finds and registers the Hextris plugin loader."""
+        from src.game_loader.factory import _LOADER_REGISTRY
+
+        # Force re-discovery into a clean state
+        saved = dict(_LOADER_REGISTRY)
+        try:
+            _LOADER_REGISTRY.pop("hextris", None)
+            _auto_discover_plugin_loaders()
+            assert "hextris" in _LOADER_REGISTRY
+
+            from games.hextris.loader import HextrisLoader
+
+            assert _LOADER_REGISTRY["hextris"] is HextrisLoader
+        finally:
+            _LOADER_REGISTRY.clear()
+            _LOADER_REGISTRY.update(saved)
+
+    def test_auto_discover_skips_non_loader_plugins(self):
+        """Auto-discovery skips plugins without a valid loader_class."""
+        from src.game_loader.factory import _LOADER_REGISTRY
+
+        saved = dict(_LOADER_REGISTRY)
+        try:
+            _LOADER_REGISTRY.clear()
+            # Pre-populate with a fake entry to confirm it's not overwritten
+            _LOADER_REGISTRY["breakout-71"] = BrowserGameLoader
+            _auto_discover_plugin_loaders()
+            # breakout-71 should still map to our injected class, not the real one
+            assert _LOADER_REGISTRY["breakout-71"] is BrowserGameLoader
+        finally:
+            _LOADER_REGISTRY.clear()
+            _LOADER_REGISTRY.update(saved)

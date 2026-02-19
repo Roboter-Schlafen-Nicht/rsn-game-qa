@@ -31,7 +31,70 @@ def _ensure_registry() -> None:
 
     _LOADER_REGISTRY.setdefault("browser", BrowserGameLoader)
     _LOADER_REGISTRY.setdefault("breakout-71", Breakout71Loader)
+
+    # Auto-discover loaders from game plugins
+    _auto_discover_plugin_loaders()
+
     _REGISTRY_INITIALIZED = True
+
+
+def _auto_discover_plugin_loaders() -> None:
+    """Scan the ``games`` package for plugins and register their loaders.
+
+    Each plugin module is expected to have a ``loader_class`` attribute
+    (a :class:`GameLoader` subclass) and a ``game_name`` attribute.
+    The loader is registered under the ``game_name`` key so that
+    ``loader_type`` in the game's YAML config can reference it directly.
+
+    Uses :mod:`pkgutil` for discovery so it works regardless of
+    filesystem layout (editable installs, packaged distributions, etc.).
+    """
+    import importlib
+    import pkgutil
+
+    try:
+        import games as _games_pkg  # type: ignore[import]
+    except Exception:
+        logger.debug(
+            "games package not available; skipping plugin auto-discovery",
+            exc_info=True,
+        )
+        return
+
+    for module_info in pkgutil.iter_modules(
+        getattr(_games_pkg, "__path__", []),
+    ):
+        if not module_info.ispkg:
+            continue
+        name = module_info.name
+        try:
+            mod = importlib.import_module(f"games.{name}")
+        except (ImportError, ModuleNotFoundError):
+            logger.debug(
+                "Skipping plugin %r (import failed)",
+                name,
+                exc_info=True,
+            )
+            continue
+
+        loader_cls = getattr(mod, "loader_class", None)
+        game_name: str = getattr(mod, "game_name", name)
+
+        if loader_cls is None:
+            continue
+        if not (isinstance(loader_cls, type) and issubclass(loader_cls, GameLoader)):
+            logger.debug(
+                "Skipping plugin %r: loader_class is not a GameLoader subclass",
+                name,
+            )
+            continue
+        if game_name not in _LOADER_REGISTRY:
+            _LOADER_REGISTRY[game_name] = loader_cls
+            logger.debug(
+                "Auto-registered loader %r → %s",
+                game_name,
+                loader_cls.__name__,
+            )
 
 
 def create_loader(config: GameLoaderConfig) -> GameLoader:
