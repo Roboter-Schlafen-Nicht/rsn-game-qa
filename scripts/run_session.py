@@ -159,6 +159,37 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--game-over-detector",
+        action="store_true",
+        help=(
+            "Enable pixel-based game-over detection.  Uses the "
+            "GameOverDetector ensemble (screen freeze + motion cessation) "
+            "to detect terminal states from raw frames, without requiring "
+            "DOM/JS modal checks."
+        ),
+    )
+
+    def _threshold_float(value: str) -> float:
+        """Argparse type that enforces 0.0 <= threshold <= 1.0."""
+        fval = float(value)
+        if not 0.0 <= fval <= 1.0:
+            raise argparse.ArgumentTypeError(
+                f"--detector-threshold must be between 0.0 and 1.0, got {fval}"
+            )
+        return fval
+
+    parser.add_argument(
+        "--detector-threshold",
+        type=_threshold_float,
+        default=0.6,
+        metavar="FLOAT",
+        help=(
+            "Confidence threshold for the game-over detector ensemble "
+            "(default: 0.6, range: 0.0-1.0).  Only used when "
+            "--game-over-detector is set."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -214,6 +245,20 @@ def main(argv: list[str] | None = None) -> int:
             action, _ = model.predict(obs, deterministic=True)
             return action
 
+    # Build game-over detector if requested
+    detector = None
+    if args.game_over_detector:
+        from src.platform.game_over_detector import GameOverDetector
+
+        detector = GameOverDetector(
+            confidence_threshold=args.detector_threshold,
+        )
+        logger.info(
+            "GameOverDetector enabled: strategies=%s, threshold=%.2f",
+            [s.name for s in detector.strategies],
+            args.detector_threshold,
+        )
+
     runner = SessionRunner(
         game=args.game,
         game_config=args.config,
@@ -229,6 +274,7 @@ def main(argv: list[str] | None = None) -> int:
         policy=args.policy,
         frame_stack=args.frame_stack,
         reward_mode=args.reward_mode,
+        game_over_detector=detector,
     )
 
     report = runner.run()

@@ -262,6 +262,39 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
 
+    # -- Game-over detector ------------------------------------------------
+    parser.add_argument(
+        "--game-over-detector",
+        action="store_true",
+        help=(
+            "Enable pixel-based game-over detection.  Uses the "
+            "GameOverDetector ensemble (screen freeze + motion cessation) "
+            "to detect terminal states from raw frames, without requiring "
+            "DOM/JS modal checks.  Useful for games without inspectable DOM."
+        ),
+    )
+
+    def _threshold_float(value: str) -> float:
+        """Argparse type that enforces 0.0 <= threshold <= 1.0."""
+        fval = float(value)
+        if not 0.0 <= fval <= 1.0:
+            raise argparse.ArgumentTypeError(
+                f"--detector-threshold must be between 0.0 and 1.0, got {fval}"
+            )
+        return fval
+
+    parser.add_argument(
+        "--detector-threshold",
+        type=_threshold_float,
+        default=0.6,
+        metavar="FLOAT",
+        help=(
+            "Confidence threshold for the game-over detector ensemble "
+            "(default: 0.6, range: 0.0-1.0).  Only used when "
+            "--game-over-detector is set."
+        ),
+    )
+
     # -- Resume from checkpoint --------------------------------------------
     parser.add_argument(
         "--resume",
@@ -962,6 +995,8 @@ def main(argv: list[str] | None = None) -> int:
                 "log_interval": args.log_interval,
                 "max_time": args.max_time,
                 "max_episodes": args.max_episodes,
+                "game_over_detector": args.game_over_detector,
+                "detector_threshold": args.detector_threshold,
             },
             "browser": browser_instance.name,
             "python_version": platform.python_version(),
@@ -979,6 +1014,20 @@ def main(argv: list[str] | None = None) -> int:
         # the intrinsic bonus externally via VecEnvWrapper.
         env_reward_mode = "survival" if args.reward_mode == "rnd" else args.reward_mode
 
+        # -- Pixel-based game-over detector (optional) ---------------------
+        detector = None
+        if args.game_over_detector:
+            from src.platform.game_over_detector import GameOverDetector
+
+            detector = GameOverDetector(
+                confidence_threshold=args.detector_threshold,
+            )
+            logger.info(
+                "GameOverDetector enabled: strategies=%s, threshold=%.2f",
+                [s.name for s in detector.strategies],
+                args.detector_threshold,
+            )
+
         env = EnvClass(
             window_title=window_title,
             yolo_weights=yolo_weights,
@@ -987,6 +1036,7 @@ def main(argv: list[str] | None = None) -> int:
             device=args.device,
             headless=args.headless,
             reward_mode=env_reward_mode,
+            game_over_detector=detector,
         )
 
         # -- Wrap for CNN policy (if requested) ----------------------------
