@@ -2097,3 +2097,88 @@ class TestSessionRunnerGameOverDetector:
             f"{plugin.env_class.__name__}.__init__ must accept "
             f"game_over_detector; params: {list(sig.parameters)}"
         )
+
+
+# ===========================================================================
+# Exploration Fix CLI Flags
+# ===========================================================================
+
+
+class TestExplorationFixCLI:
+    """Tests for --survival-bonus, --epsilon-greedy, --rnd-int-coeff, --rnd-ext-coeff."""
+
+    def test_survival_bonus_default_none(self):
+        """--survival-bonus defaults to None (resolved at runtime)."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args([])
+        assert args.survival_bonus is None
+
+    def test_survival_bonus_explicit_zero(self):
+        """--survival-bonus 0.0 sets explicit zero."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args(["--survival-bonus", "0.0"])
+        assert args.survival_bonus == 0.0
+
+    def test_survival_bonus_explicit_value(self):
+        """--survival-bonus 0.05 sets explicit value."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args(["--survival-bonus", "0.05"])
+        assert args.survival_bonus == 0.05
+
+    def test_epsilon_greedy_default_zero(self):
+        """--epsilon-greedy defaults to 0.0 (disabled)."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args([])
+        assert args.epsilon_greedy == 0.0
+
+    def test_epsilon_greedy_custom(self):
+        """--epsilon-greedy 0.1 sets epsilon."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args(["--epsilon-greedy", "0.1"])
+        assert args.epsilon_greedy == 0.1
+
+    def test_rnd_int_coeff_default(self):
+        """--rnd-int-coeff defaults to 1.0."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args([])
+        assert args.rnd_int_coeff == 1.0
+
+    def test_rnd_int_coeff_custom(self):
+        """--rnd-int-coeff 0.5 overrides default."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args(["--rnd-int-coeff", "0.5"])
+        assert args.rnd_int_coeff == 0.5
+
+    def test_rnd_ext_coeff_default(self):
+        """--rnd-ext-coeff defaults to 2.0."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args([])
+        assert args.rnd_ext_coeff == 2.0
+
+    def test_rnd_ext_coeff_custom(self):
+        """--rnd-ext-coeff 1.0 overrides default."""
+        from scripts.train_rl import parse_args
+
+        args = parse_args(["--rnd-ext-coeff", "1.0"])
+        assert args.rnd_ext_coeff == 1.0
+
+    def test_plugin_env_accepts_survival_bonus(self):
+        """Real Breakout71Env __init__ accepts survival_bonus kwarg."""
+        import inspect
+
+        from games import load_game_plugin
+
+        plugin = load_game_plugin("breakout71")
+        sig = inspect.signature(plugin.env_class.__init__)
+        assert "survival_bonus" in sig.parameters, (
+            f"{plugin.env_class.__name__}.__init__ must accept "
+            f"survival_bonus; params: {list(sig.parameters)}"
+        )
