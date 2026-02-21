@@ -6,19 +6,29 @@ game progress, dispatch building/input actions, and dismiss modals.
 
 shapez.io architecture (dev build on port 3005):
 
-- ``window.globalRoot`` -- GameRoot instance (available in dev mode)
-- ``window.globalRoot.app`` -- Application instance
+- ``window.shapez.GLOBAL_APP`` -- Application instance, set during
+  ``Application.boot()`` **before** any state transitions.  Available
+  on the main menu and at all times thereafter.
+- ``window.globalRoot`` -- GameRoot instance, set in
+  ``GameCore.initializeRoot()`` when entering ``InGameState``.
+  **Only available during active gameplay** (not on the main menu).
 - ``window.globalRoot.hubGoals`` -- HubGoals (level, storedShapes)
 - ``document.body.id`` -- current state (e.g. ``"state_InGameState"``)
 - ``window.globalRoot.hud`` -- HUD parts (unlock notification, etc.)
+
+Snippets that must work **before** gameplay (main menu, loading) use
+``window.shapez.GLOBAL_APP``.  Snippets that only run during active
+gameplay can use ``globalRoot`` directly.
 
 These are gray-box signals used to make training feasible for a game
 with no natural game-over and complex progression (26 levels + freeplay).
 Pure pixel-based observation cannot provide reward signals for shape
 delivery or level progression.  The dev build (port 3005 + localhost)
-enables ``G_IS_DEV = true`` and exposes ``window.globalRoot`` for full
-state access.  This is an intentional exception to the pixel-only
-constraint, analogous to Breakout 71's ``READ_GAME_STATE_JS`` for
+enables ``G_IS_DEV = true`` and exposes ``window.shapez`` (for
+application-level state via ``GLOBAL_APP``) together with the usual
+``window.globalRoot`` gameplay state, giving us effective full state
+access.  This is an intentional exception to the pixel-only constraint,
+analogous in spirit to Breakout 71's use of ``READ_GAME_STATE_JS`` for
 score/level/lives.
 """
 
@@ -172,22 +182,20 @@ return (function() {
 
 START_NEW_GAME_JS = """
 return (function() {
-    // shapez.io uses ClickDetector (mousedown/mouseup events), not native
-    // click events.  The most reliable way to start a new game from the
-    // main menu is to call onPlayButtonClicked() directly on the current
-    // state via the globalRoot dev-mode API.
+    // Use window.shapez.GLOBAL_APP which is available from
+    // Application.boot() -- works on the main menu (before globalRoot
+    // is set by GameCore.initializeRoot() during InGameState entry).
     //
-    // Flow in MainMenuState.onPlayButtonClicked():
-    //   1. Checks savegame slot limit (unlimited in dev build) — passes
-    //   2. Calls adProvider.showVideoAd() — resolves immediately (NoAdProvider)
-    //   3. Creates new savegame and moves to InGameState
+    // Creates a new savegame directly and transitions to InGameState,
+    // bypassing the ad provider promise and ClickDetector layer.
 
-    if (typeof globalRoot === 'undefined' || !globalRoot) {
-        return {action: "none", error: "globalRoot not available"};
+    var app = (typeof window.shapez !== 'undefined' && window.shapez)
+        ? window.shapez.GLOBAL_APP : null;
+    if (!app) {
+        return {action: "none", error: "GLOBAL_APP not available"};
     }
 
-    var app = globalRoot.app;
-    if (!app || !app.stateMgr || !app.stateMgr.currentState) {
+    if (!app.stateMgr || !app.stateMgr.currentState) {
         return {action: "none", error: "State manager not available"};
     }
 
@@ -196,13 +204,10 @@ return (function() {
         return {action: "none", error: "Not on main menu (state=" + state.key + ")"};
     }
 
-    // Call the play button handler directly (bypasses ClickDetector)
-    if (typeof state.onPlayButtonClicked === 'function') {
-        state.onPlayButtonClicked();
-        return {action: "play_invoked"};
-    }
-
-    return {action: "none", error: "onPlayButtonClicked not found on state"};
+    // Create a new savegame and move directly to InGameState
+    var savegame = app.savegameMgr.createNewSavegame();
+    app.stateMgr.moveToState("InGameState", {savegame: savegame});
+    return {action: "play_invoked"};
 })();
 """
 
@@ -300,13 +305,16 @@ SETUP_TRAINING_JS = """
 return (function() {
     var actions = [];
 
-    if (typeof globalRoot === 'undefined' || !globalRoot) {
-        return {actions: actions, error: "globalRoot not available"};
+    // Use GLOBAL_APP (available from boot) instead of globalRoot
+    // (only available during InGameState).
+    var app = (typeof window.shapez !== 'undefined' && window.shapez)
+        ? window.shapez.GLOBAL_APP : null;
+    if (!app) {
+        return {actions: actions, error: "GLOBAL_APP not available"};
     }
 
     // Disable tutorial hints
-    var app = globalRoot.app;
-    if (app && app.settings) {
+    if (app.settings) {
         try {
             app.settings.updateSetting("offerHints", false);
             actions.push("tutorials_disabled");
@@ -457,11 +465,19 @@ MUTE_JS = """
     // Override HTML5 Audio
     Audio.prototype.play = function() { return Promise.resolve(); };
 
-    // shapez.io uses app.settings for sound
-    if (typeof globalRoot !== 'undefined' && globalRoot && globalRoot.app) {
+    // Mute via app settings -- try GLOBAL_APP first (available from
+    // boot), fall back to globalRoot.app (available during InGameState).
+    var app = null;
+    if (typeof window.shapez !== 'undefined' && window.shapez &&
+        window.shapez.GLOBAL_APP) {
+        app = window.shapez.GLOBAL_APP;
+    } else if (typeof globalRoot !== 'undefined' && globalRoot) {
+        app = globalRoot.app;
+    }
+    if (app) {
         try {
-            globalRoot.app.settings.updateSetting("musicVolume", 0);
-            globalRoot.app.settings.updateSetting("soundVolume", 0);
+            app.settings.updateSetting("musicVolume", 0);
+            app.settings.updateSetting("soundVolume", 0);
         } catch(e) {}
     }
 })();

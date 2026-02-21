@@ -16,8 +16,11 @@ Key differences from Breakout 71 and Hextris:
   Session ends via ``max_steps`` truncation or idle detection.
 - **Level transitions**: 26 levels + freeplay.  Unlock notifications
   must be dismissed to continue.
-- **Dev mode access**: ``window.globalRoot`` provides level, entity
-  count, shape delivery progress, upgrade levels.
+- **Dev mode access**: ``window.shapez.GLOBAL_APP`` provides app-level
+  access (settings, state manager, savegame manager) from boot time.
+  ``window.globalRoot`` provides in-game access (level, entity count,
+  shape delivery progress, upgrade levels) but is only available during
+  active gameplay (``InGameState``).
 - **Mouse + keyboard input**: Building placement via click, selection
   via digit keys, rotation via R, camera pan via WASD.
 - **Tutorial**: Disabled via ``offerHints = false`` in
