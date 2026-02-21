@@ -21,7 +21,7 @@ provides strategic direction and domain expertise.
 The project demonstrates what this workflow produces:
 
 - **6-8x calendar compression** vs a traditional engineering team
-- **100+ PRs merged** with automated Copilot code review, zero review
+- **123+ PRs merged** with automated Copilot code review, zero review
   bottleneck
 - **95%+ test coverage** not from a coverage sprint, but built into the
   workflow from day one
@@ -90,7 +90,7 @@ The platform uses a two-layer approach to find bugs that human testers miss:
 |------|-------|-------------|-----------|--------|
 | **Breakout 71** | Brick-breaking arcade | Continuous paddle position | Headless Selenium | Complete |
 | **Hextris** | Hexagonal puzzle | Discrete rotation (3 actions) | Headless Selenium | Complete |
-| **shapez.io** | Factory builder | Mouse + keyboard (TBD) | Headless Selenium | In progress |
+| **shapez.io** | Factory builder | Mouse + keyboard (TBD) | Headless Selenium | Onboarding |
 
 New games are added as plugins in `games/` with zero changes to the
 platform code. See [`documentation/ROADMAP.md`](documentation/ROADMAP.md)
@@ -126,8 +126,6 @@ documentation/
 
 This project uses [OpenCode](https://opencode.ai) for autonomous
 development. The build agent follows `AGENTS.md` for project conventions.
-Agent configurations and business subagents are managed externally
-(not in this repo).
 
 ## Hardware
 
@@ -218,13 +216,13 @@ python scripts/capture_dataset.py --frames 500
 # 2. Auto-annotate using color segmentation + frame differencing
 python scripts/auto_annotate.py output/dataset_<timestamp>
 
-# 4. (Optional) Upload to Roboflow for manual review/correction
+# 3. (Optional) Upload to Roboflow for manual review/correction
 python scripts/upload_to_roboflow.py output/dataset_<timestamp>
 
-# 5. Train
+# 4. Train
 python scripts/train_model.py --config breakout-71
 
-# 6. Validate
+# 5. Validate
 python scripts/validate_model.py --config breakout-71 --save-samples 10
 ```
 

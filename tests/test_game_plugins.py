@@ -163,6 +163,59 @@ class TestLoadGamePlugin:
 
         assert not hasattr(plugin, "reinit_js")
 
+    # -- shapez.io plugin tests -------------------------------------------------
+
+    def test_loads_shapez_plugin(self):
+        """Loading 'shapez' returns a module with all required attrs."""
+        plugin = load_game_plugin("shapez")
+
+        assert isinstance(plugin, types.ModuleType)
+        assert hasattr(plugin, "env_class")
+        assert hasattr(plugin, "loader_class")
+        assert hasattr(plugin, "game_name")
+        assert hasattr(plugin, "default_config")
+        assert hasattr(plugin, "default_weights")
+
+    def test_shapez_plugin_metadata(self):
+        """shapez.io plugin has correct metadata values."""
+        plugin = load_game_plugin("shapez")
+
+        assert plugin.game_name == "shapez"
+        assert "shapez" in plugin.default_config
+        assert plugin.default_weights == ""  # CNN-only, no YOLO weights
+
+    def test_shapez_env_class_is_class(self):
+        """shapez.io env_class is an actual class (not an instance)."""
+        plugin = load_game_plugin("shapez")
+
+        assert isinstance(plugin.env_class, type)
+
+    def test_shapez_loader_class_is_class(self):
+        """shapez.io loader_class is an actual class."""
+        plugin = load_game_plugin("shapez")
+
+        assert isinstance(plugin.loader_class, type)
+
+    def test_shapez_has_mute_js(self):
+        """shapez.io plugin defines mute_js for audio muting."""
+        plugin = load_game_plugin("shapez")
+
+        assert hasattr(plugin, "mute_js")
+        assert "Audio" in plugin.mute_js
+
+    def test_shapez_has_setup_js(self):
+        """shapez.io plugin defines setup_js for training settings."""
+        plugin = load_game_plugin("shapez")
+
+        assert hasattr(plugin, "setup_js")
+        assert "offerHints" in plugin.setup_js
+
+    def test_shapez_no_reinit_js(self):
+        """shapez.io plugin does not define reinit_js (not needed)."""
+        plugin = load_game_plugin("shapez")
+
+        assert not hasattr(plugin, "reinit_js")
+
 
 class TestGetEnvClass:
     """Tests for get_env_class()."""
@@ -182,6 +235,14 @@ class TestGetEnvClass:
         from games.hextris.env import HextrisEnv
 
         assert env_cls is HextrisEnv
+
+    def test_returns_shapez_env_class(self):
+        """get_env_class('shapez') returns the ShapezEnv class."""
+        env_cls = get_env_class("shapez")
+
+        from games.shapez.env import ShapezEnv
+
+        assert env_cls is ShapezEnv
 
     def test_nonexistent_game_raises(self):
         """get_env_class for nonexistent game raises ImportError."""
