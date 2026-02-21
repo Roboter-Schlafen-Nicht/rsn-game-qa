@@ -42,7 +42,6 @@ from games.shapez.modal_handler import (
     PAN_CAMERA_JS,
     ROTATE_BUILDING_JS,
     SELECT_BUILDING_JS,
-    START_NEW_GAME_JS,
 )
 
 # -- Helpers -------------------------------------------------------------------
@@ -885,25 +884,140 @@ class TestHandleModals:
 class TestStartGame:
     """Tests for start_game()."""
 
-    def test_start_game_calls_js(self):
-        """start_game executes START_NEW_GAME_JS and sets guard flag."""
+    @mock.patch("games.shapez.env.time")
+    def test_start_game_calls_js_and_waits_for_ingame(self, mock_time):
+        """start_game executes START_NEW_GAME_JS and polls until gameplay."""
+        # Simulate monotonic clock advancing past each sleep
+        mock_time.monotonic.side_effect = [0.0, 0.5, 1.0]
+        mock_time.sleep = mock.MagicMock()
+
+        # detect call 1 = pre-check (main_menu), 2 = poll (loading),
+        # 3 = poll (gameplay)
+        call_count = {"detect": 0}
+
         driver = _mock_driver(ui_state="main_menu")
+        original_side_effect = driver.execute_script.side_effect
+
+        def _script(js, *args):
+            # DETECT_STATE_JS calls during pre-check and polling
+            if "bodyId" in js and "unlockNotification" in js:
+                call_count["detect"] += 1
+                if call_count["detect"] >= 3:
+                    return {"state": "gameplay", "details": {}}
+                if call_count["detect"] == 1:
+                    return {"state": "main_menu", "details": {}}
+                return {"state": "loading", "details": {}}
+            return original_side_effect(js, *args)
+
+        driver.execute_script.side_effect = _script
         env = _make_env(driver=driver)
-        env.start_game()
-        driver.execute_script.assert_called_once_with(START_NEW_GAME_JS)
-        assert env._menu_start_requested is True
+        with mock.patch.object(env, "_ensure_canvas_ready"):
+            env.start_game()
+
+        # Pre-check + at least 2 polls
+        assert call_count["detect"] >= 3
+        # Menu start guard should be cleared after reaching gameplay
+        assert env._menu_start_requested is False
+        # Verify START_NEW_GAME_JS was called (contains createNewSavegame)
+        js_calls = [str(c) for c in driver.execute_script.call_args_list]
+        assert any("createNewSavegame" in c for c in js_calls)
 
     def test_start_game_no_driver(self):
         """start_game without driver is a no-op."""
         env = _make_env()
         env.start_game()  # Should not raise
 
-    def test_start_game_js_exception_caught(self):
-        """JS execution error is caught."""
+    @mock.patch("games.shapez.env.time")
+    def test_start_game_js_exception_caught(self, mock_time):
+        """JS execution error in START_NEW_GAME_JS is caught."""
+        mock_time.monotonic.side_effect = [0.0]
+        mock_time.sleep = mock.MagicMock()
         driver = mock.MagicMock()
         driver.execute_script.side_effect = Exception("JS error")
         env = _make_env(driver=driver)
         env.start_game()  # Should not raise
+
+    @mock.patch("games.shapez.env.time")
+    def test_start_game_timeout_logs_warning(self, mock_time):
+        """start_game logs warning when InGameState is not reached."""
+        # Clock jumps past deadline immediately
+        mock_time.monotonic.side_effect = [0.0, 100.0]
+        mock_time.sleep = mock.MagicMock()
+
+        driver = _mock_driver(ui_state="main_menu")
+        original_side_effect = driver.execute_script.side_effect
+
+        def _script(js, *args):
+            if "bodyId" in js and "unlockNotification" in js:
+                return {"state": "loading", "details": {}}
+            return original_side_effect(js, *args)
+
+        driver.execute_script.side_effect = _script
+        env = _make_env(driver=driver)
+        env.start_game()
+        # Should not raise — just logs a warning
+        assert env._menu_start_requested is True
+
+    @mock.patch("games.shapez.env.time")
+    def test_start_game_immediate_gameplay(self, mock_time):
+        """start_game returns immediately if already in gameplay (pre-check)."""
+        mock_time.monotonic.return_value = 0.0
+        mock_time.sleep = mock.MagicMock()
+
+        driver = _mock_driver(ui_state="gameplay")
+        env = _make_env(driver=driver)
+        with mock.patch.object(env, "_ensure_canvas_ready"):
+            env.start_game()
+        # Gameplay detected on pre-check — guard cleared, no polling
+        assert env._menu_start_requested is False
+        # START_NEW_GAME_JS should NOT have been called
+        js_calls = [str(c) for c in driver.execute_script.call_args_list]
+        assert not any("createNewSavegame" in c for c in js_calls)
+
+    @mock.patch("games.shapez.env.time")
+    def test_start_game_reinits_canvas_on_gameplay(self, mock_time):
+        """start_game resets _canvas_ready and calls _ensure_canvas_ready."""
+        mock_time.monotonic.return_value = 0.0
+        mock_time.sleep = mock.MagicMock()
+
+        driver = _mock_driver(ui_state="gameplay")
+        env = _make_env(driver=driver)
+        env._canvas_ready = True  # Simulate stale canvas
+        with mock.patch.object(env, "_ensure_canvas_ready") as mock_ecr:
+            env.start_game()
+        # _canvas_ready reset to False, then _ensure_canvas_ready called
+        mock_ecr.assert_called_once()
+
+    @mock.patch("games.shapez.env.time")
+    def test_start_game_skips_js_when_already_requested(self, mock_time):
+        """start_game skips START_NEW_GAME_JS if _menu_start_requested."""
+        mock_time.monotonic.side_effect = [0.0, 0.5]
+        mock_time.sleep = mock.MagicMock()
+
+        call_count = {"detect": 0}
+        driver = _mock_driver(ui_state="main_menu")
+        original_side_effect = driver.execute_script.side_effect
+
+        def _script(js, *args):
+            if "bodyId" in js and "unlockNotification" in js:
+                call_count["detect"] += 1
+                # Pre-check returns main_menu, first poll returns gameplay
+                if call_count["detect"] >= 2:
+                    return {"state": "gameplay", "details": {}}
+                return {"state": "main_menu", "details": {}}
+            return original_side_effect(js, *args)
+
+        driver.execute_script.side_effect = _script
+        env = _make_env(driver=driver)
+        env._menu_start_requested = True  # Already requested
+        with mock.patch.object(env, "_ensure_canvas_ready"):
+            env.start_game()
+
+        # START_NEW_GAME_JS should NOT have been called
+        js_calls = [str(c) for c in driver.execute_script.call_args_list]
+        assert not any("createNewSavegame" in c for c in js_calls)
+        # But guard should be cleared after reaching gameplay
+        assert env._menu_start_requested is False
 
 
 # -- build_info ----------------------------------------------------------------
