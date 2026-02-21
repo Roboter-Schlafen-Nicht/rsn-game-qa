@@ -527,6 +527,11 @@ class ShapezEnv(BaseGameEnv):
         transition from ``MainMenuState`` through the save picker dialog
         to ``InGameState``.  Without it, the first several ``step()``
         calls run against an uninitialised canvas with wrong dimensions.
+
+        If the initial ``START_NEW_GAME_JS`` call fails (e.g. because
+        ``GLOBAL_APP`` is not yet available after a page refresh), the
+        polling loop retries the JS call once the detected state
+        transitions to ``main_menu``.
         """
         if self._driver is None:
             return
@@ -563,6 +568,13 @@ class ShapezEnv(BaseGameEnv):
 
         # Poll until the game enters InGameState (gameplay).  shapez.io
         # needs 3-5 s for the full MainMenu → SavePicker → InGame flow.
+        #
+        # After a ``driver.refresh()`` the page reloads through
+        # ``PreloadState`` → ``MainMenuState``.  The initial
+        # ``START_NEW_GAME_JS`` call above may fail because
+        # ``GLOBAL_APP`` is not yet available during ``PreloadState``.
+        # We must retry the JS call once the state transitions to
+        # ``main_menu`` (meaning ``GLOBAL_APP`` is now available).
         deadline = time.monotonic() + 15.0
         while time.monotonic() < deadline:
             state_info = self._detect_ui_state()
@@ -574,6 +586,19 @@ class ShapezEnv(BaseGameEnv):
                 self._canvas_ready = False
                 self._ensure_canvas_ready()
                 return
+            # Retry START_NEW_GAME_JS if we're on the main menu but
+            # haven't successfully requested a game start yet.
+            if state == "main_menu" and not self._menu_start_requested:
+                try:
+                    result = self._driver.execute_script(START_NEW_GAME_JS)
+                    action = result.get("action", "none") if result else "none"
+                    if action == "play_invoked":
+                        self._menu_start_requested = True
+                        logger.info("start_game: retried START_NEW_GAME_JS — success")
+                    else:
+                        logger.debug("start_game: retry returned: %s", result)
+                except Exception as exc:
+                    logger.debug("start_game: retry failed: %s", exc)
             logger.debug("start_game: waiting for InGameState (current: %s)", state)
             time.sleep(0.5)
 
