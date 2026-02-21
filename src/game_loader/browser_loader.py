@@ -112,6 +112,9 @@ class BrowserGameLoader(GameLoader):
         if not game_dir.is_dir():
             raise GameLoaderError(f"Game directory does not exist: {game_dir}")
 
+        # Kill any orphan process on the port from a previous run.
+        self._kill_port_processes()
+
         logger.info(
             "[%s] Starting dev server: %s (in %s)",
             self.name,
@@ -217,9 +220,81 @@ class BrowserGameLoader(GameLoader):
 
         self._process = None
         self._running = False
+
+        # Safety net: kill any orphan children that escaped the
+        # process-group signal (common with deep nvm→node→yarn→gulp trees).
+        self._kill_port_processes()
+
         logger.info("[%s] Server stopped", self.name)
 
     # -- Internal -------------------------------------------------------
+
+    def _kill_port_processes(self) -> None:
+        """Kill any processes listening on the configured serve port.
+
+        Uses ``lsof`` (POSIX) or ``netstat`` + ``taskkill`` (Windows)
+        to find and terminate processes bound to the port.  This
+        prevents stale dev-server instances from a previous run from
+        fooling the readiness check.
+
+        Failures are logged but never raised — this is a best-effort
+        cleanup step.
+        """
+        port = self.config.serve_port
+        if sys.platform == "win32":
+            try:
+                result = subprocess.run(
+                    f'netstat -ano | findstr ":{port} "',
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                )
+                for line in result.stdout.strip().splitlines():
+                    parts = line.split()
+                    if len(parts) >= 5 and "LISTENING" in line:
+                        pid = int(parts[-1])
+                        logger.info(
+                            "[%s] Killing stale process PID %d on port %d",
+                            self.name,
+                            pid,
+                            port,
+                        )
+                        subprocess.run(
+                            ["taskkill", "/F", "/T", "/PID", str(pid)],
+                            capture_output=True,
+                        )
+            except Exception as exc:
+                logger.debug("[%s] Port cleanup failed: %s", self.name, exc)
+        else:
+            try:
+                result = subprocess.run(
+                    ["lsof", "-ti", f":{port}"],
+                    capture_output=True,
+                    text=True,
+                )
+                pids = result.stdout.strip().splitlines()
+                for pid_str in pids:
+                    try:
+                        pid = int(pid_str.strip())
+                    except ValueError:
+                        continue
+                    # Don't kill our own managed process.
+                    if self._process is not None and pid == self._process.pid:
+                        continue
+                    logger.info(
+                        "[%s] Killing stale process PID %d on port %d",
+                        self.name,
+                        pid,
+                        port,
+                    )
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+            except FileNotFoundError:
+                logger.debug("[%s] lsof not found, skipping port cleanup", self.name)
+            except Exception as exc:
+                logger.debug("[%s] Port cleanup failed: %s", self.name, exc)
 
     def _wait_until_ready(self) -> None:
         """Poll the readiness endpoint until it responds or timeout.
