@@ -16,6 +16,7 @@ Tests cover:
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import textwrap
 from pathlib import Path
@@ -431,7 +432,8 @@ class TestBrowserGameLoader:
 
     @mock.patch("subprocess.Popen")
     @mock.patch.object(BrowserGameLoader, "is_ready", return_value=True)
-    def test_start_launches_process(self, mock_ready, mock_popen, tmp_path: Path):
+    @mock.patch.object(BrowserGameLoader, "_kill_port_processes")
+    def test_start_launches_process(self, mock_kill_port, mock_ready, mock_popen, tmp_path: Path):
         """start() spawns a subprocess and sets running=True."""
         mock_proc = mock.MagicMock()
         mock_proc.pid = 12345
@@ -448,7 +450,8 @@ class TestBrowserGameLoader:
 
     @mock.patch("subprocess.Popen")
     @mock.patch.object(BrowserGameLoader, "is_ready", return_value=True)
-    def test_start_then_stop(self, mock_ready, mock_popen, tmp_path: Path):
+    @mock.patch.object(BrowserGameLoader, "_kill_port_processes")
+    def test_start_then_stop(self, mock_kill_port, mock_ready, mock_popen, tmp_path: Path):
         """Full start→stop lifecycle completes cleanly."""
         mock_proc = mock.MagicMock()
         mock_proc.pid = 12345
@@ -467,7 +470,8 @@ class TestBrowserGameLoader:
 
     @mock.patch("subprocess.Popen")
     @mock.patch.object(BrowserGameLoader, "is_ready", return_value=True)
-    def test_context_manager(self, mock_ready, mock_popen, tmp_path: Path):
+    @mock.patch.object(BrowserGameLoader, "_kill_port_processes")
+    def test_context_manager(self, mock_kill_port, mock_ready, mock_popen, tmp_path: Path):
         """GameLoader works as a context manager."""
         mock_proc = mock.MagicMock()
         mock_proc.pid = 12345
@@ -482,7 +486,8 @@ class TestBrowserGameLoader:
             assert not loader.running
 
     @mock.patch("subprocess.Popen")
-    def test_start_raises_on_process_exit(self, mock_popen, tmp_path: Path):
+    @mock.patch.object(BrowserGameLoader, "_kill_port_processes")
+    def test_start_raises_on_process_exit(self, mock_kill_port, mock_popen, tmp_path: Path):
         """start() raises if the server process exits immediately."""
         mock_proc = mock.MagicMock()
         mock_proc.pid = 12345
@@ -503,7 +508,8 @@ class TestBrowserGameLoader:
 
     @mock.patch("subprocess.Popen")
     @mock.patch.object(BrowserGameLoader, "is_ready", return_value=False)
-    def test_start_raises_on_timeout(self, mock_ready, mock_popen, tmp_path: Path):
+    @mock.patch.object(BrowserGameLoader, "_kill_port_processes")
+    def test_start_raises_on_timeout(self, mock_kill_port, mock_ready, mock_popen, tmp_path: Path):
         """start() raises if readiness endpoint never responds."""
         mock_proc = mock.MagicMock()
         mock_proc.pid = 12345
@@ -519,6 +525,234 @@ class TestBrowserGameLoader:
         with mock.patch("subprocess.run"):  # mock taskkill in stop()
             with pytest.raises(GameLoaderError, match="did not become ready"):
                 loader.start()
+
+
+# ── Port cleanup ────────────────────────────────────────────────────
+
+
+class TestPortCleanup:
+    """Tests for _kill_port_processes() stale process cleanup."""
+
+    def test_kill_port_processes_posix_kills_stale_pids(self):
+        """On POSIX, _kill_port_processes kills PIDs from lsof."""
+        cfg = _make_config(serve_port=3005)
+        loader = BrowserGameLoader(cfg)
+
+        lsof_result = mock.MagicMock(stdout="11111\n22222\n", returncode=0)
+        with (
+            mock.patch("sys.platform", "linux"),
+            mock.patch(
+                "src.game_loader.browser_loader.subprocess.run",
+                return_value=lsof_result,
+            ) as mock_run,
+            mock.patch("src.game_loader.browser_loader.os.kill") as mock_kill,
+        ):
+            loader._kill_port_processes()
+
+        mock_run.assert_called_once_with(
+            ["lsof", "-ti", ":3005"],
+            capture_output=True,
+            text=True,
+        )
+        assert mock_kill.call_count == 2
+        mock_kill.assert_any_call(11111, signal.SIGKILL)
+        mock_kill.assert_any_call(22222, signal.SIGKILL)
+
+    def test_kill_port_processes_skips_own_pid(self):
+        """_kill_port_processes does not kill the loader's own process."""
+        cfg = _make_config(serve_port=3005)
+        loader = BrowserGameLoader(cfg)
+        loader._process = mock.MagicMock()
+        loader._process.pid = 11111
+
+        lsof_result = mock.MagicMock(stdout="11111\n22222\n", returncode=0)
+        with (
+            mock.patch("sys.platform", "linux"),
+            mock.patch(
+                "src.game_loader.browser_loader.subprocess.run",
+                return_value=lsof_result,
+            ),
+            mock.patch("src.game_loader.browser_loader.os.kill") as mock_kill,
+        ):
+            loader._kill_port_processes()
+
+        # Only PID 22222 should be killed; 11111 is our own process.
+        mock_kill.assert_called_once_with(22222, signal.SIGKILL)
+
+    def test_kill_port_processes_handles_no_pids(self):
+        """_kill_port_processes is silent when no process is on the port."""
+        cfg = _make_config(serve_port=3005)
+        loader = BrowserGameLoader(cfg)
+
+        lsof_result = mock.MagicMock(stdout="", returncode=1)
+        with (
+            mock.patch("sys.platform", "linux"),
+            mock.patch(
+                "src.game_loader.browser_loader.subprocess.run",
+                return_value=lsof_result,
+            ),
+            mock.patch("src.game_loader.browser_loader.os.kill") as mock_kill,
+        ):
+            loader._kill_port_processes()
+
+        mock_kill.assert_not_called()
+
+    def test_kill_port_processes_handles_lsof_not_found(self):
+        """_kill_port_processes handles missing lsof gracefully."""
+        cfg = _make_config(serve_port=3005)
+        loader = BrowserGameLoader(cfg)
+
+        with (
+            mock.patch("sys.platform", "linux"),
+            mock.patch(
+                "src.game_loader.browser_loader.subprocess.run",
+                side_effect=FileNotFoundError("lsof"),
+            ),
+        ):
+            loader._kill_port_processes()  # Should not raise
+
+    def test_kill_port_processes_handles_process_already_dead(self):
+        """_kill_port_processes handles ProcessLookupError from os.kill."""
+        cfg = _make_config(serve_port=3005)
+        loader = BrowserGameLoader(cfg)
+
+        lsof_result = mock.MagicMock(stdout="99999\n", returncode=0)
+        with (
+            mock.patch("sys.platform", "linux"),
+            mock.patch(
+                "src.game_loader.browser_loader.subprocess.run",
+                return_value=lsof_result,
+            ),
+            mock.patch(
+                "src.game_loader.browser_loader.os.kill",
+                side_effect=ProcessLookupError,
+            ),
+        ):
+            loader._kill_port_processes()  # Should not raise
+
+    def test_kill_port_processes_ignores_invalid_pid_lines(self):
+        """_kill_port_processes skips non-numeric lines from lsof."""
+        cfg = _make_config(serve_port=3005)
+        loader = BrowserGameLoader(cfg)
+
+        lsof_result = mock.MagicMock(stdout="abc\n12345\n\n", returncode=0)
+        with (
+            mock.patch("sys.platform", "linux"),
+            mock.patch(
+                "src.game_loader.browser_loader.subprocess.run",
+                return_value=lsof_result,
+            ),
+            mock.patch("src.game_loader.browser_loader.os.kill") as mock_kill,
+        ):
+            loader._kill_port_processes()
+
+        mock_kill.assert_called_once_with(12345, signal.SIGKILL)
+
+    @mock.patch("subprocess.Popen")
+    @mock.patch.object(BrowserGameLoader, "is_ready", return_value=True)
+    def test_start_calls_kill_port_before_spawning(self, mock_ready, mock_popen, tmp_path: Path):
+        """start() kills stale port processes before spawning the server."""
+        mock_proc = mock.MagicMock()
+        mock_proc.pid = 12345
+        mock_proc.poll.return_value = None
+        mock_popen.return_value = mock_proc
+
+        cfg = _make_config(game_dir=str(tmp_path))
+        loader = BrowserGameLoader(cfg)
+
+        with mock.patch.object(loader, "_kill_port_processes") as mock_kill:
+            loader.start()
+
+        mock_kill.assert_called_once()
+
+    @mock.patch("subprocess.Popen")
+    @mock.patch.object(BrowserGameLoader, "is_ready", return_value=True)
+    def test_stop_calls_kill_port_as_safety_net(self, mock_ready, mock_popen, tmp_path: Path):
+        """stop() kills orphan port processes after terminating the server."""
+        mock_proc = mock.MagicMock()
+        mock_proc.pid = 12345
+        mock_proc.poll.return_value = None
+        mock_popen.return_value = mock_proc
+
+        cfg = _make_config(game_dir=str(tmp_path))
+        loader = BrowserGameLoader(cfg)
+
+        with (
+            mock.patch("subprocess.run"),  # mock taskkill
+            mock.patch.object(loader, "_kill_port_processes") as mock_kill,
+        ):
+            loader.start()
+            loader.stop()
+
+        # Called twice: once in start() and once in stop().
+        assert mock_kill.call_count == 2
+
+    def test_kill_port_processes_windows_path(self):
+        """On Windows, _kill_port_processes uses netstat + taskkill."""
+        cfg = _make_config(serve_port=8080)
+        loader = BrowserGameLoader(cfg)
+
+        netstat_result = mock.MagicMock(
+            stdout="  TCP    0.0.0.0:8080    0.0.0.0:0    LISTENING    55555\n",
+            returncode=0,
+        )
+        with (
+            mock.patch("sys.platform", "win32"),
+            mock.patch(
+                "src.game_loader.browser_loader.subprocess.run",
+                return_value=netstat_result,
+            ) as mock_run,
+        ):
+            loader._kill_port_processes()
+
+        # First call: netstat, second call: taskkill
+        assert mock_run.call_count == 2
+        taskkill_call = mock_run.call_args_list[1]
+        assert taskkill_call[0][0] == ["taskkill", "/F", "/T", "/PID", "55555"]
+
+    def test_kill_port_processes_windows_skips_invalid_pid(self):
+        """On Windows, _kill_port_processes skips non-numeric PID columns."""
+        cfg = _make_config(serve_port=8080)
+        loader = BrowserGameLoader(cfg)
+
+        netstat_result = mock.MagicMock(
+            stdout="  TCP    0.0.0.0:8080    0.0.0.0:0    LISTENING    notapid\n",
+            returncode=0,
+        )
+        with (
+            mock.patch("sys.platform", "win32"),
+            mock.patch(
+                "src.game_loader.browser_loader.subprocess.run",
+                return_value=netstat_result,
+            ) as mock_run,
+        ):
+            loader._kill_port_processes()
+
+        # Only netstat call — no taskkill because PID was invalid.
+        mock_run.assert_called_once()
+
+    def test_kill_port_processes_windows_skips_own_pid(self):
+        """On Windows, _kill_port_processes skips the loader's own process."""
+        cfg = _make_config(serve_port=8080)
+        loader = BrowserGameLoader(cfg)
+        loader._process = mock.MagicMock()
+        loader._process.pid = 55555
+
+        netstat_result = mock.MagicMock(
+            stdout="  TCP    0.0.0.0:8080    0.0.0.0:0    LISTENING    55555\n",
+            returncode=0,
+        )
+        with (
+            mock.patch("sys.platform", "win32"),
+            mock.patch(
+                "src.game_loader.browser_loader.subprocess.run",
+                return_value=netstat_result,
+            ) as mock_run,
+        ):
+            loader._kill_port_processes()
+
+        # Only netstat call — no taskkill because PID matches our own process.
+        mock_run.assert_called_once()
 
 
 # ── Breakout71Loader ────────────────────────────────────────────────
