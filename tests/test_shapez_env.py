@@ -102,7 +102,7 @@ def _mock_driver(
         if "offerHints" in js:
             return {"actions": ["tutorials_disabled"]}
         # START_NEW_GAME_JS
-        if "onPlayButtonClicked" in js:
+        if "createNewSavegame" in js:
             return {"action": "play_invoked"}
         # DISMISS_UNLOCK_JS
         if "unlockNotification" in js and "mainButton" in js:
