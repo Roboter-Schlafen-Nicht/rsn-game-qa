@@ -9,16 +9,12 @@ RL-driven autonomous game testing platform. First target: **Breakout 71**
 You lead this project. Execute autonomously -- read the roadmap, pick the
 next task, do it. Don't ask for permission on engineering decisions.
 
-Use `@business` or `@strategy` subagents for business-related questions
-(pricing, outreach, go-to-market).
-
 ## Workflow
 
 1. Work on feature branches from `main` (`feature/...`, `fix/...`,
    `docs/...`).
-2. Implement -> commit -> push -> create PR -> run the Pre-Merge
-   Checklist (below) -> merge with `--delete-branch` -> delete
-   local branch.
+2. Implement -> commit -> push -> create PR -> verify CI and review ->
+   merge with `--delete-branch` -> delete local branch.
 3. Post-merge admin: update `private/documentation/progress.md` and
    `private/documentation/BigRocks/checklist.md`.
 4. Pre-commit hook runs CI via `act` (Docker). Takes 5+ minutes.
@@ -52,50 +48,7 @@ The agent has full authority to:
 The agent must NOT:
 - Force-push to main
 - Delete data or checkpoints without clear reason
-- Change business strategy or pricing (use `@business`)
 - Commit files from `private/` to git
-- Merge PRs before Copilot review approves (see Pre-Merge Checklist)
-
-## Pre-Merge Checklist
-
-Run these steps in order before every `gh pr merge`. No exceptions.
-
-1. `gh pr diff N` — read the diff. Confirm every file mentioned in
-   the PR description appears in the diff. If the description claims
-   changes not present in the diff, do NOT merge — fix the branch.
-2. `gh pr view N --json reviews` — read the review **body text**,
-   not just the `state` field. `COMMENTED` is not the same as
-   "approved with no issues." Address any concerns or suggestions
-   raised in the body.
-3. `gh pr view N --json statusCheckRollup` — confirm ALL checks
-   show `conclusion: SUCCESS` and `status: COMPLETED`. Do not merge
-   while any check is `IN_PROGRESS` or `FAILURE`.
-4. Only after steps 1-3 pass: `gh pr merge N --merge --delete-branch`.
-5. Verify: `gh pr view N --json state,mergedAt` — confirm
-   `state: MERGED`.
-
-## Safety
-
-Sensitive data procedures — run before every commit:
-
-1. `git diff --cached --name-only` — scan file list for `.env`,
-   `credentials`, `token`, `secret`, or any path under `private/`.
-2. `git diff --cached` — scan content for API keys, tokens,
-   hostnames, or internal paths. If found, `git reset HEAD <file>`
-   and fix before committing.
-3. Never include data from `private/` in PR descriptions or commit
-   messages.
-4. When uncertain whether content is sensitive, add a note in the PR
-   description: "**Review needed:** [describe what might be sensitive]".
-
-## Decision Logging
-
-Log technical decisions that have business impact to
-`private/documentation/decisions_log.md`. This file is shared across
-all agents (build, business, strategy). Examples: choosing a default
-observation mode, deprioritizing a feature, changing supported
-platforms, altering training infrastructure. Include date, decision,
-rationale, and business impact.
 
 ## Conventions
 
