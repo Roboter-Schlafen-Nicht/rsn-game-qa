@@ -514,11 +514,19 @@ class ShapezEnv(BaseGameEnv):
         return state
 
     def start_game(self) -> None:
-        """Start a new game or resume gameplay.
+        """Start a new game and wait for the InGameState transition.
 
         Navigates from main menu to in-game state by calling
-        ``onPlayButtonClicked()`` on the main menu state via JS.
-        Configures training settings (disable tutorials) on first call.
+        ``onPlayButtonClicked()`` on the main menu state via JS, then
+        polls until the game enters ``InGameState`` (up to 15 s).
+        Once gameplay is active, re-initialises the canvas reference
+        so that ``#ingame_Canvas`` is used instead of the ``<body>``
+        fallback from ``_lazy_init()``.
+
+        The polling wait is essential because shapez.io takes 3-5 s to
+        transition from ``MainMenuState`` through the save picker dialog
+        to ``InGameState``.  Without it, the first several ``step()``
+        calls run against an uninitialised canvas with wrong dimensions.
         """
         if self._driver is None:
             return
@@ -533,6 +541,25 @@ class ShapezEnv(BaseGameEnv):
                 logger.debug("start_game: %s", result)
         except Exception as exc:
             logger.debug("Start game failed: %s", exc)
+            return
+
+        # Poll until the game enters InGameState (gameplay).  shapez.io
+        # needs 3-5 s for the full MainMenu → SavePicker → InGame flow.
+        deadline = time.monotonic() + 15.0
+        while time.monotonic() < deadline:
+            time.sleep(0.5)
+            state_info = self._detect_ui_state()
+            state = state_info.get("state", "unknown")
+            if state == "gameplay":
+                logger.info("start_game: InGameState reached")
+                self._menu_start_requested = False
+                # Re-init canvas now that #ingame_Canvas exists
+                self._canvas_ready = False
+                self._ensure_canvas_ready()
+                return
+            logger.debug("start_game: waiting for InGameState (current: %s)", state)
+
+        logger.warning("start_game: timed out waiting for InGameState")
 
     def build_info(self, detections: dict[str, Any]) -> dict[str, Any]:
         """Build the game-specific portion of the info dict.
