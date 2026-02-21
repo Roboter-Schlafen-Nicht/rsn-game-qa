@@ -22,7 +22,6 @@ node_modules/
 package-lock.json
 
 # Private OpenCode data (credentials, local state)
-# Agent configs (.opencode/agents/) and commands (.opencode/commands/) are committed.
 
 # OpenCode project config (contains local paths, not for repo)
 opencode.json

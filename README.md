@@ -130,27 +130,14 @@ docs/                   Sphinx docs (Furo theme, MyST Markdown)
 documentation/
   specs/                Design specs (env, oracles, capture, reporting, loader)
   ROADMAP.md            5-phase development plan
-.opencode/
-  agents/               AI agent configurations (build, business, strategy)
-  commands/             Custom slash commands for agent workflows
 ```
 
 ## AI Agent System
 
-This project uses [OpenCode](https://opencode.ai) with multiple specialized
-AI agents, each with a defined role and access to specific tools. Agent
-configurations are committed to `.opencode/agents/` so they're available
-on any clone.
-
-| Agent | Role | Invocation |
-|-------|------|------------|
-| **Build** (default) | Architecture, code, tests, CI, PRs | Default agent |
-| **Business** | Client outreach, proposals, CRM | `@business` |
-| **Sales Research** | Analyze potential clients and game fit | `@sales-research` |
-| **Strategy** | Go-to-market, financial planning, prioritization | `@strategy` |
-
-The Build agent follows `AGENTS.md` for project conventions. Business agents
-store persistent context in `private/` (gitignored, local-only).
+This project uses [OpenCode](https://opencode.ai) for autonomous
+development. The build agent follows `AGENTS.md` for project conventions.
+Agent configurations and business subagents are managed externally
+(not in this repo).
 
 ## Hardware
 
