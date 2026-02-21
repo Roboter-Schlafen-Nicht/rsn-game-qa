@@ -1,0 +1,41 @@
+# shapez.io -- browser game loader configuration
+#
+# Factory-builder game. Requires Node.js 16, Yarn, Java, ffmpeg.
+# The loader runs `yarn gulp` in the gulp/ directory to start a
+# BrowserSync dev server on port 3005.
+#
+# Source: https://github.com/tobspr-games/shapez.io
+# Steam:  https://get.shapez.io/gh
+#
+# Usage:
+#   from src.game_loader import load_game_config, create_loader
+#   config = load_game_config("shapez")
+#   loader = create_loader(config)
+#   loader.start()
+#
+# Note: game_dir supports environment variable expansion ($VAR or
+# ${VAR}) and ~ for home directory.  Set SHAPEZ_DIR in your
+# environment to override the default path, e.g.:
+#   export SHAPEZ_DIR=/home/user/games/shapez.io
+
+name: shapez
+game_dir: ${SHAPEZ_DIR:-~/games/shapez.io}
+loader_type: shapez
+
+# -- Build / serve -----------------------------------------------------
+# install_command runs `yarn` in both root and gulp/ directories.
+# serve_command starts BrowserSync via gulp (must run in gulp/ subdir).
+install_command:
+serve_command:
+serve_port: 3005
+url: http://localhost:3005
+readiness_endpoint: http://localhost:3005
+
+# -- Readiness ---------------------------------------------------------
+readiness_timeout_s: 120.0
+readiness_poll_interval_s: 2.0
+
+# -- Window identification (for WindowCapture) -------------------------
+window_title: shapez.io
+window_width: 1280
+window_height: 1024

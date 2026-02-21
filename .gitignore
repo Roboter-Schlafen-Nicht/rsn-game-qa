@@ -22,6 +22,7 @@ node_modules/
 /package-lock.json
 
 # Private OpenCode data (credentials, local state)
+.opencode/
 
 # OpenCode project config (contains local paths, not for repo)
 opencode.json
