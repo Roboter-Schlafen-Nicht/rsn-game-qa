@@ -252,7 +252,13 @@ class BrowserGameLoader(GameLoader):
                 for line in result.stdout.strip().splitlines():
                     parts = line.split()
                     if len(parts) >= 5 and "LISTENING" in line:
-                        pid = int(parts[-1])
+                        try:
+                            pid = int(parts[-1])
+                        except ValueError:
+                            continue
+                        # Don't kill our own managed process.
+                        if self._process is not None and pid == self._process.pid:
+                            continue
                         logger.info(
                             "[%s] Killing stale process PID %d on port %d",
                             self.name,

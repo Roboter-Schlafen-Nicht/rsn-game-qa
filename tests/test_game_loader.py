@@ -676,15 +676,16 @@ class TestPortCleanup:
 
         cfg = _make_config(game_dir=str(tmp_path))
         loader = BrowserGameLoader(cfg)
-        loader.start()
 
         with (
             mock.patch("subprocess.run"),  # mock taskkill
             mock.patch.object(loader, "_kill_port_processes") as mock_kill,
         ):
+            loader.start()
             loader.stop()
 
-        mock_kill.assert_called_once()
+        # Called twice: once in start() and once in stop().
+        assert mock_kill.call_count == 2
 
     def test_kill_port_processes_windows_path(self):
         """On Windows, _kill_port_processes uses netstat + taskkill."""
@@ -708,6 +709,50 @@ class TestPortCleanup:
         assert mock_run.call_count == 2
         taskkill_call = mock_run.call_args_list[1]
         assert taskkill_call[0][0] == ["taskkill", "/F", "/T", "/PID", "55555"]
+
+    def test_kill_port_processes_windows_skips_invalid_pid(self):
+        """On Windows, _kill_port_processes skips non-numeric PID columns."""
+        cfg = _make_config(serve_port=8080)
+        loader = BrowserGameLoader(cfg)
+
+        netstat_result = mock.MagicMock(
+            stdout="  TCP    0.0.0.0:8080    0.0.0.0:0    LISTENING    notapid\n",
+            returncode=0,
+        )
+        with (
+            mock.patch("sys.platform", "win32"),
+            mock.patch(
+                "src.game_loader.browser_loader.subprocess.run",
+                return_value=netstat_result,
+            ) as mock_run,
+        ):
+            loader._kill_port_processes()
+
+        # Only netstat call — no taskkill because PID was invalid.
+        mock_run.assert_called_once()
+
+    def test_kill_port_processes_windows_skips_own_pid(self):
+        """On Windows, _kill_port_processes skips the loader's own process."""
+        cfg = _make_config(serve_port=8080)
+        loader = BrowserGameLoader(cfg)
+        loader._process = mock.MagicMock()
+        loader._process.pid = 55555
+
+        netstat_result = mock.MagicMock(
+            stdout="  TCP    0.0.0.0:8080    0.0.0.0:0    LISTENING    55555\n",
+            returncode=0,
+        )
+        with (
+            mock.patch("sys.platform", "win32"),
+            mock.patch(
+                "src.game_loader.browser_loader.subprocess.run",
+                return_value=netstat_result,
+            ) as mock_run,
+        ):
+            loader._kill_port_processes()
+
+        # Only netstat call — no taskkill because PID matches our own process.
+        mock_run.assert_called_once()
 
 
 # ── Breakout71Loader ────────────────────────────────────────────────
