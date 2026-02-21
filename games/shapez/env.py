@@ -531,23 +531,40 @@ class ShapezEnv(BaseGameEnv):
         if self._driver is None:
             return
 
+        # Check if already in gameplay before issuing a new game request.
         try:
-            result = self._driver.execute_script(START_NEW_GAME_JS)
-            action = result.get("action", "none") if result else "none"
-            if action == "play_invoked":
-                self._menu_start_requested = True
-                logger.info("start_game: new game requested")
-            else:
-                logger.debug("start_game: %s", result)
-        except Exception as exc:
-            logger.debug("Start game failed: %s", exc)
+            pre_state = self._detect_ui_state().get("state", "unknown")
+        except Exception:
+            pre_state = "unknown"
+
+        if pre_state == "gameplay":
+            logger.info("start_game: already in gameplay")
+            self._menu_start_requested = False
+            self._canvas_ready = False
+            self._ensure_canvas_ready()
             return
+
+        # Only request a new game if we haven't already (e.g. from
+        # ``handle_modals()`` seeing the main menu during a prior step).
+        if not self._menu_start_requested:
+            try:
+                result = self._driver.execute_script(START_NEW_GAME_JS)
+                action = result.get("action", "none") if result else "none"
+                if action == "play_invoked":
+                    self._menu_start_requested = True
+                    logger.info("start_game: new game requested")
+                else:
+                    logger.debug("start_game: %s", result)
+            except Exception as exc:
+                logger.debug("Start game failed: %s", exc)
+                return
+        else:
+            logger.debug("start_game: transition already requested, polling")
 
         # Poll until the game enters InGameState (gameplay).  shapez.io
         # needs 3-5 s for the full MainMenu → SavePicker → InGame flow.
         deadline = time.monotonic() + 15.0
         while time.monotonic() < deadline:
-            time.sleep(0.5)
             state_info = self._detect_ui_state()
             state = state_info.get("state", "unknown")
             if state == "gameplay":
@@ -558,6 +575,7 @@ class ShapezEnv(BaseGameEnv):
                 self._ensure_canvas_ready()
                 return
             logger.debug("start_game: waiting for InGameState (current: %s)", state)
+            time.sleep(0.5)
 
         logger.warning("start_game: timed out waiting for InGameState")
 
