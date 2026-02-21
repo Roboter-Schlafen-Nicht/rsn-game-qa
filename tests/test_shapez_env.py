@@ -213,6 +213,7 @@ class TestConstruction:
         assert env._prev_entity_count == 0
         assert env._prev_shapes_delivered == 0
         assert env._idle_count == 0
+        assert env._canvas_ready is False
 
     def test_custom_idle_threshold(self):
         """Constructor accepts custom idle_threshold."""
@@ -577,6 +578,7 @@ class TestApplyAction:
         driver = _mock_driver()
         env = _make_env(driver=driver)
         env._canvas_size = (1280, 1024)
+        env._canvas_ready = True
         env.apply_action(np.array([2, 0, 8, 8, 0]))
         # grid (8,8) -> center of canvas
         assert driver.execute_script.called
@@ -588,6 +590,7 @@ class TestApplyAction:
         driver = _mock_driver()
         env = _make_env(driver=driver)
         env._canvas_size = (1280, 1024)
+        env._canvas_ready = True
         env.apply_action(np.array([3, 0, 5, 5, 0]))
         call_args = driver.execute_script.call_args
         assert call_args[0][0] == DELETE_AT_JS
@@ -649,6 +652,88 @@ class TestApplyAction:
         env.apply_action(np.array([4, 0, 0, 0, 0], dtype=np.int64))
         driver.execute_script.assert_called_once_with(ROTATE_BUILDING_JS)
 
+    def test_place_calls_ensure_canvas_ready(self):
+        """Place action calls _ensure_canvas_ready before grid mapping."""
+        driver = _mock_driver()
+        env = _make_env(driver=driver)
+        env._canvas_size = (1280, 1024)
+        with mock.patch.object(env, "_ensure_canvas_ready") as mock_ensure:
+            env.apply_action(np.array([2, 0, 8, 8, 0]))
+            mock_ensure.assert_called_once()
+
+    def test_delete_calls_ensure_canvas_ready(self):
+        """Delete action calls _ensure_canvas_ready before grid mapping."""
+        driver = _mock_driver()
+        env = _make_env(driver=driver)
+        env._canvas_size = (1280, 1024)
+        with mock.patch.object(env, "_ensure_canvas_ready") as mock_ensure:
+            env.apply_action(np.array([3, 0, 5, 5, 0]))
+            mock_ensure.assert_called_once()
+
+    def test_noop_does_not_call_ensure_canvas_ready(self):
+        """Non-coordinate actions skip _ensure_canvas_ready."""
+        driver = _mock_driver()
+        env = _make_env(driver=driver)
+        with mock.patch.object(env, "_ensure_canvas_ready") as mock_ensure:
+            env.apply_action(np.array([0, 0, 0, 0, 0]))
+            mock_ensure.assert_not_called()
+
+
+# -- Canvas readiness --------------------------------------------------------
+
+
+class TestEnsureCanvasReady:
+    """Tests for _ensure_canvas_ready()."""
+
+    def test_calls_init_canvas_when_not_ready(self):
+        """_init_canvas is called when _canvas_ready is False."""
+        driver = _mock_driver()
+        env = _make_env(driver=driver)
+        env._canvas_ready = False
+        with mock.patch.object(env, "_init_canvas") as mock_init:
+
+            def set_canvas():
+                env._canvas_size = (1280, 1024)
+
+            mock_init.side_effect = set_canvas
+            env._ensure_canvas_ready()
+            mock_init.assert_called_once()
+        assert env._canvas_ready is True
+
+    def test_skips_when_already_ready(self):
+        """_init_canvas is not called when _canvas_ready is True."""
+        driver = _mock_driver()
+        env = _make_env(driver=driver)
+        env._canvas_ready = True
+        with mock.patch.object(env, "_init_canvas") as mock_init:
+            env._ensure_canvas_ready()
+            mock_init.assert_not_called()
+
+    def test_not_marked_ready_for_small_canvas(self):
+        """Canvas not marked ready if height is too small (body fallback)."""
+        driver = _mock_driver()
+        env = _make_env(driver=driver)
+        env._canvas_ready = False
+        with mock.patch.object(env, "_init_canvas") as mock_init:
+
+            def set_small_canvas():
+                env._canvas_size = (1264, 15)
+
+            mock_init.side_effect = set_small_canvas
+            env._ensure_canvas_ready()
+            mock_init.assert_called_once()
+        assert env._canvas_ready is False
+
+    def test_not_marked_ready_when_canvas_size_is_none(self):
+        """Canvas not marked ready if _canvas_size is None."""
+        driver = _mock_driver()
+        env = _make_env(driver=driver)
+        env._canvas_ready = False
+        with mock.patch.object(env, "_init_canvas") as mock_init:
+            env._ensure_canvas_ready()
+            mock_init.assert_called_once()
+        assert env._canvas_ready is False
+
 
 # -- Modal handling -----------------------------------------------------------
 
@@ -660,6 +745,7 @@ class TestHandleModals:
         """When game is playing, returns 'gameplay'."""
         driver = _mock_driver(ui_state="gameplay")
         env = _make_env(driver=driver)
+        env._canvas_ready = True  # Avoid canvas re-init in this test
         state = env.handle_modals()
         assert state == "gameplay"
 
@@ -722,8 +808,42 @@ class TestHandleModals:
         driver = _mock_driver(ui_state="gameplay")
         env = _make_env(driver=driver)
         env._menu_start_requested = True
+        env._canvas_ready = True  # Avoid canvas re-init in this test
         env.handle_modals()
         assert env._menu_start_requested is False
+
+    def test_canvas_reinit_on_gameplay_transition(self):
+        """Canvas re-init is triggered when gameplay state is first detected."""
+        driver = _mock_driver(ui_state="gameplay")
+        env = _make_env(driver=driver)
+        env._canvas_ready = False
+        with mock.patch.object(env, "_ensure_canvas_ready") as mock_ensure:
+            env.handle_modals()
+            mock_ensure.assert_called_once()
+
+    def test_canvas_reinit_skipped_when_already_ready(self):
+        """Canvas re-init is skipped if _canvas_ready is True."""
+        driver = _mock_driver(ui_state="gameplay")
+        env = _make_env(driver=driver)
+        env._canvas_ready = True
+        with mock.patch.object(env, "_ensure_canvas_ready") as mock_ensure:
+            env.handle_modals()
+            mock_ensure.assert_not_called()
+
+    def test_canvas_reinit_not_marked_ready_for_small_canvas(self):
+        """Canvas not marked ready if height is too small (body fallback)."""
+        driver = _mock_driver(ui_state="gameplay")
+        env = _make_env(driver=driver)
+        env._canvas_ready = False
+        with mock.patch.object(env, "_init_canvas") as mock_init:
+
+            def set_small_canvas():
+                env._canvas_size = (1264, 15)
+
+            mock_init.side_effect = set_small_canvas
+            env.handle_modals()
+            mock_init.assert_called_once()
+        assert env._canvas_ready is False
 
     def test_no_driver_returns_gameplay(self):
         """Without driver, returns 'gameplay'."""
@@ -922,6 +1042,13 @@ class TestResetTerminationState:
         env._driver = driver
         env.reset_termination_state()
         assert env._menu_start_requested is False
+
+    def test_resets_canvas_ready_flag(self):
+        """_canvas_ready is reset to False for canvas re-init on next episode."""
+        env = _make_env()
+        env._canvas_ready = True
+        env.reset_termination_state()
+        assert env._canvas_ready is False
 
     def test_resets_prev_tracking_state(self):
         """Previous tracking state is updated from JS bridge."""

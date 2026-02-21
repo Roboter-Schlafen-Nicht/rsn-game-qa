@@ -176,6 +176,7 @@ class ShapezEnv(BaseGameEnv):
         self._idle_threshold: int = idle_threshold
         self._training_configured: bool = False
         self._menu_start_requested: bool = False
+        self._canvas_ready: bool = False
 
     # ------------------------------------------------------------------
     # Abstract method implementations
@@ -348,6 +349,24 @@ class ShapezEnv(BaseGameEnv):
 
         return terminated, level_cleared
 
+    def _ensure_canvas_ready(self) -> None:
+        """Re-initialise the canvas reference if not yet valid.
+
+        Called before coordinate-dependent actions (place/delete) so that
+        the very first action of an episode uses correct canvas
+        dimensions, even if ``handle_modals()`` has not run yet.
+        """
+        if self._canvas_ready:
+            return
+        self._init_canvas()
+        if self._canvas_size and self._canvas_size[1] > 100:
+            self._canvas_ready = True
+            logger.info(
+                "Canvas re-initialised (from apply_action): %dx%d",
+                self._canvas_size[0],
+                self._canvas_size[1],
+            )
+
     def apply_action(self, action: np.ndarray | int) -> None:
         """Send the chosen action to the game via JavaScript.
 
@@ -380,10 +399,12 @@ class ShapezEnv(BaseGameEnv):
                 self._driver.execute_script(SELECT_BUILDING_JS, key)
             elif action_type == 2:
                 # Place at grid position
+                self._ensure_canvas_ready()
                 px, py = self._grid_to_canvas(grid_x, grid_y)
                 self._driver.execute_script(CLICK_AT_JS, px, py)
             elif action_type == 3:
                 # Delete at grid position
+                self._ensure_canvas_ready()
                 px, py = self._grid_to_canvas(grid_x, grid_y)
                 self._driver.execute_script(DELETE_AT_JS, px, py)
             elif action_type == 4:
@@ -436,6 +457,13 @@ class ShapezEnv(BaseGameEnv):
         # Clear menu-start guard once we've transitioned to gameplay
         if state not in ("main_menu", "loading") and self._menu_start_requested:
             self._menu_start_requested = False
+
+        # Re-initialise the canvas reference once the in-game canvas
+        # exists.  During ``_lazy_init()`` the game is still on the main
+        # menu so ``#ingame_Canvas`` is absent and the env falls back to
+        # ``<body>`` with incorrect dimensions.
+        if state == "gameplay" and not self._canvas_ready:
+            self._ensure_canvas_ready()
 
         if state == "level_complete" and dismiss_game_over:
             try:
@@ -569,6 +597,7 @@ class ShapezEnv(BaseGameEnv):
         self._prev_shapes_delivered = game_state.get("shapesDelivered", 0)
         self._idle_count = 0
         self._menu_start_requested = False
+        self._canvas_ready = False
 
     # ------------------------------------------------------------------
     # Platform overrides (skip YOLO for CNN-only game)
