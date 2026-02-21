@@ -26,11 +26,8 @@ next task, do it. Don't ask for permission on engineering decisions.
 OpenCode auto-compacts when context is full. After compaction:
 
 1. Re-read this file (`AGENTS.md`).
-2. The following are auto-injected via `opencode.json` instructions:
-   - `documentation/ROADMAP.md` -- the 5-phase plan
-   - `private/documentation/progress.md` -- current status
-   - `private/documentation/BigRocks/checklist.md` -- task tracking
-   - `private/documentation/reference/agent_knowledge_base.md` -- pitfalls
+2. Review the injected context files (roadmap, progress, checklist,
+   knowledge base) -- they are loaded automatically.
 3. Run `git status`, `git log --oneline -5`, `gh pr list` to orient.
 4. Check for running training: `ps aux | grep train_rl`.
 5. Resume the next incomplete task.
@@ -94,9 +91,7 @@ in the auto-injected private docs (see `agent_knowledge_base.md` and
 ## Runtime Environment
 
 This project runs inside **OpenCode on WSL2** (Ubuntu). The host OS is
-**Windows 11**. The company-level `AGENTS.md` is auto-injected via
-`opencode.json` instructions and contains the full runtime environment
-reference, post-work documentation workflow, and shared conventions.
+**Windows 11**.
 
 Key points for this project:
 - **Selenium browsers** run on Windows host via WSLg
