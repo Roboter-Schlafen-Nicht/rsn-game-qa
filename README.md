@@ -90,7 +90,7 @@ The platform uses a two-layer approach to find bugs that human testers miss:
 |------|-------|-------------|-----------|--------|
 | **Breakout 71** | Brick-breaking arcade | Continuous paddle position | Headless Selenium | Complete |
 | **Hextris** | Hexagonal puzzle | Discrete rotation (3 actions) | Headless Selenium | Complete |
-| **shapez.io** | Factory builder | Mouse + keyboard (TBD) | Headless Selenium | Onboarding |
+| **shapez.io** | Factory builder | Mouse + keyboard (MultiDiscrete) | Headless Selenium | Onboarding |
 
 New games are added as plugins in `games/` with zero changes to the
 platform code. See [`documentation/ROADMAP.md`](documentation/ROADMAP.md)

@@ -12,9 +12,14 @@ shapez.io architecture (dev build on port 3005):
 - ``document.body.id`` -- current state (e.g. ``"state_InGameState"``)
 - ``window.globalRoot.hud`` -- HUD parts (unlock notification, etc.)
 
-These are gray-box signals used to make training feasible.  The dev
-build (port 3005 + localhost) enables ``G_IS_DEV = true`` and exposes
-``window.globalRoot`` for full state access.
+These are gray-box signals used to make training feasible for a game
+with no natural game-over and complex progression (26 levels + freeplay).
+Pure pixel-based observation cannot provide reward signals for shape
+delivery or level progression.  The dev build (port 3005 + localhost)
+enables ``G_IS_DEV = true`` and exposes ``window.globalRoot`` for full
+state access.  This is an intentional exception to the pixel-only
+constraint, analogous to Breakout 71's ``READ_GAME_STATE_JS`` for
+score/level/lives.
 """
 
 # ---------------------------------------------------------------------------
