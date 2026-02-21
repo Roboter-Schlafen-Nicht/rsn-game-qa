@@ -919,6 +919,94 @@ class TestFrameCollectionCallback:
 
 
 # ===========================================================================
+# _serialize_action Tests
+# ===========================================================================
+
+
+class TestSerializeAction:
+    """Tests for _serialize_action with different action space types."""
+
+    def test_discrete_scalar_int(self):
+        """Discrete action (scalar int) serializes as float."""
+        import gymnasium as gym
+
+        from scripts.train_rl import _serialize_action
+
+        space = gym.spaces.Discrete(5)
+        result = _serialize_action(2, space)
+        assert result == 2.0
+        assert isinstance(result, float)
+
+    def test_discrete_scalar_float(self):
+        """Discrete action (scalar float) serializes as float."""
+        import gymnasium as gym
+
+        from scripts.train_rl import _serialize_action
+
+        space = gym.spaces.Discrete(3)
+        result = _serialize_action(1.0, space)
+        assert result == 1.0
+        assert isinstance(result, float)
+
+    def test_box_1d_array(self):
+        """Box action (1-D array) serializes as scalar float."""
+        import gymnasium as gym
+        import numpy as np
+
+        from scripts.train_rl import _serialize_action
+
+        space = gym.spaces.Box(-1.0, 1.0, shape=(1,))
+        act = np.array([0.75])
+        result = _serialize_action(act, space)
+        assert abs(result - 0.75) < 1e-6
+        assert isinstance(result, float)
+
+    def test_box_multid_array(self):
+        """Box action (multi-D array) serializes as list of floats."""
+        import gymnasium as gym
+        import numpy as np
+
+        from scripts.train_rl import _serialize_action
+
+        space = gym.spaces.Box(-1.0, 1.0, shape=(3,))
+        act = np.array([0.1, -0.5, 0.9])
+        result = _serialize_action(act, space)
+        assert isinstance(result, list)
+        assert len(result) == 3
+        assert all(isinstance(x, float) for x in result)
+        assert abs(result[0] - 0.1) < 1e-6
+        assert abs(result[1] - (-0.5)) < 1e-6
+        assert abs(result[2] - 0.9) < 1e-6
+
+    def test_multidiscrete_array(self):
+        """MultiDiscrete action serializes as list of ints."""
+        import gymnasium as gym
+        import numpy as np
+
+        from scripts.train_rl import _serialize_action
+
+        space = gym.spaces.MultiDiscrete([7, 10, 16, 16, 4])
+        act = np.array([3, 5, 8, 12, 2])
+        result = _serialize_action(act, space)
+        assert isinstance(result, list)
+        assert len(result) == 5
+        assert all(isinstance(x, int) for x in result)
+        assert result == [3, 5, 8, 12, 2]
+
+    def test_multidiscrete_preserves_all_dims(self):
+        """MultiDiscrete with 2 dims serializes both (not just first)."""
+        import gymnasium as gym
+        import numpy as np
+
+        from scripts.train_rl import _serialize_action
+
+        space = gym.spaces.MultiDiscrete([3, 3])
+        act = np.array([1, 2])
+        result = _serialize_action(act, space)
+        assert result == [1, 2]
+
+
+# ===========================================================================
 # Integration: SessionRunner.run() with mocked subsystems
 # ===========================================================================
 

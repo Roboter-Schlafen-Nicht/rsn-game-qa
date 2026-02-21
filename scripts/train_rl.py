@@ -445,6 +445,39 @@ def resolve_window_size(args: argparse.Namespace, config: Any) -> tuple[int, int
 # ---------------------------------------------------------------------------
 
 
+def _serialize_action(act: Any, action_space: Any) -> Any:
+    """Serialize a single action for JSONL logging.
+
+    Uses the gymnasium action space type to decide how to serialize:
+
+    - ``Discrete``: scalar float
+    - ``Box``: scalar float (1-D) or list of floats (multi-D)
+    - ``MultiDiscrete``: list of ints
+
+    Parameters
+    ----------
+    act : Any
+        Raw action value from SB3 callback locals.
+    action_space : gymnasium.Space
+        The environment action space.
+
+    Returns
+    -------
+    float or list[int] or list[float]
+        JSON-serializable action value.
+    """
+    import gymnasium as gym
+
+    if isinstance(action_space, gym.spaces.MultiDiscrete):
+        return [int(x) for x in act]
+    if isinstance(action_space, gym.spaces.Box):
+        if hasattr(act, "__len__") and len(act) > 1:
+            return [float(x) for x in act]
+        return float(act[0]) if hasattr(act, "__len__") else float(act)
+    # Discrete or anything else: scalar
+    return float(act) if not hasattr(act, "__len__") else float(act[0])
+
+
 class FrameCollectionCallback:
     """SB3 callback for frame collection, training metrics, and JSONL logging.
 
@@ -638,9 +671,7 @@ class FrameCollectionCallback:
                     action_val = None
                     if actions is not None and len(actions) > 0:
                         act = actions[0]
-                        # Continuous action spaces produce arrays; discrete
-                        # action spaces produce scalar integers/floats.
-                        action_val = float(act[0]) if hasattr(act, "__len__") else float(act)
+                        action_val = _serialize_action(act, self.model.action_space)
                     paddle_pos = info.get("paddle_pos")
 
                     step_event = {
