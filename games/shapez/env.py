@@ -176,6 +176,7 @@ class ShapezEnv(BaseGameEnv):
         self._idle_threshold: int = idle_threshold
         self._training_configured: bool = False
         self._menu_start_requested: bool = False
+        self._canvas_ready: bool = False
 
     # ------------------------------------------------------------------
     # Abstract method implementations
@@ -437,6 +438,20 @@ class ShapezEnv(BaseGameEnv):
         if state not in ("main_menu", "loading") and self._menu_start_requested:
             self._menu_start_requested = False
 
+        # Re-initialise the canvas reference once the in-game canvas
+        # exists.  During ``_lazy_init()`` the game is still on the main
+        # menu so ``#ingame_Canvas`` is absent and the env falls back to
+        # ``<body>`` with incorrect dimensions.
+        if state == "gameplay" and not self._canvas_ready:
+            self._init_canvas()
+            if self._canvas_size and self._canvas_size[1] > 100:
+                self._canvas_ready = True
+                logger.info(
+                    "Canvas re-initialised: %dx%d",
+                    self._canvas_size[0],
+                    self._canvas_size[1],
+                )
+
         if state == "level_complete" and dismiss_game_over:
             try:
                 self._driver.execute_script(DISMISS_UNLOCK_JS)
@@ -569,6 +584,7 @@ class ShapezEnv(BaseGameEnv):
         self._prev_shapes_delivered = game_state.get("shapesDelivered", 0)
         self._idle_count = 0
         self._menu_start_requested = False
+        self._canvas_ready = False
 
     # ------------------------------------------------------------------
     # Platform overrides (skip YOLO for CNN-only game)
