@@ -638,9 +638,12 @@ class FrameCollectionCallback:
                     action_val = None
                     if actions is not None and len(actions) > 0:
                         act = actions[0]
-                        # Continuous action spaces produce arrays; discrete
-                        # action spaces produce scalar integers/floats.
-                        action_val = float(act[0]) if hasattr(act, "__len__") else float(act)
+                        if hasattr(act, "__len__"):
+                            # MultiDiscrete: list of ints; Box: single float
+                            action_val = [int(x) for x in act] if len(act) > 1 else float(act[0])
+                        else:
+                            # Discrete: scalar int/float
+                            action_val = float(act)
                     paddle_pos = info.get("paddle_pos")
 
                     step_event = {
