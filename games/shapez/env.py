@@ -175,6 +175,7 @@ class ShapezEnv(BaseGameEnv):
         self._idle_count: int = 0
         self._idle_threshold: int = idle_threshold
         self._training_configured: bool = False
+        self._menu_start_requested: bool = False
 
     # ------------------------------------------------------------------
     # Abstract method implementations
@@ -432,6 +433,10 @@ class ShapezEnv(BaseGameEnv):
 
         state = state_info.get("state", "unknown")
 
+        # Clear menu-start guard once we've transitioned to gameplay
+        if state not in ("main_menu", "loading") and self._menu_start_requested:
+            self._menu_start_requested = False
+
         if state == "level_complete" and dismiss_game_over:
             try:
                 self._driver.execute_script(DISMISS_UNLOCK_JS)
@@ -457,26 +462,44 @@ class ShapezEnv(BaseGameEnv):
             time.sleep(0.3)
 
         elif state == "main_menu":
-            try:
-                self._driver.execute_script(START_NEW_GAME_JS)
-                logger.info("New game started from main menu")
-            except Exception as exc:
-                logger.warning("Start new game failed: %s", exc)
-            time.sleep(1.0)
+            if not self._menu_start_requested:
+                try:
+                    result = self._driver.execute_script(START_NEW_GAME_JS)
+                    action = result.get("action", "none") if result else "none"
+                    if action == "play_invoked":
+                        self._menu_start_requested = True
+                        logger.info("New game requested from main menu")
+                    else:
+                        error = result.get("error", "") if result else ""
+                        logger.warning("Start new game returned: %s (%s)", action, error)
+                except Exception as exc:
+                    logger.warning("Start new game failed: %s", exc)
+                time.sleep(2.0)
+            else:
+                # Already requested, wait for state transition
+                logger.debug("Waiting for main menu -> InGameState transition")
+                time.sleep(1.0)
 
         return state
 
     def start_game(self) -> None:
         """Start a new game or resume gameplay.
 
-        Navigates from main menu to in-game state.  Configures
-        training settings (disable tutorials) on first call.
+        Navigates from main menu to in-game state by calling
+        ``onPlayButtonClicked()`` on the main menu state via JS.
+        Configures training settings (disable tutorials) on first call.
         """
         if self._driver is None:
             return
 
         try:
-            self._driver.execute_script(START_NEW_GAME_JS)
+            result = self._driver.execute_script(START_NEW_GAME_JS)
+            action = result.get("action", "none") if result else "none"
+            if action == "play_invoked":
+                self._menu_start_requested = True
+                logger.info("start_game: new game requested")
+            else:
+                logger.debug("start_game: %s", result)
         except Exception as exc:
             logger.debug("Start game failed: %s", exc)
 
@@ -545,6 +568,7 @@ class ShapezEnv(BaseGameEnv):
         self._prev_entity_count = game_state.get("entityCount", 0)
         self._prev_shapes_delivered = game_state.get("shapesDelivered", 0)
         self._idle_count = 0
+        self._menu_start_requested = False
 
     # ------------------------------------------------------------------
     # Platform overrides (skip YOLO for CNN-only game)

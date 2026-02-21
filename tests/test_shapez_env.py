@@ -102,8 +102,8 @@ def _mock_driver(
         if "offerHints" in js:
             return {"actions": ["tutorials_disabled"]}
         # START_NEW_GAME_JS
-        if "playButton" in js:
-            return {"action": "play_button_clicked"}
+        if "onPlayButtonClicked" in js:
+            return {"action": "play_invoked"}
         # DISMISS_UNLOCK_JS
         if "unlockNotification" in js and "mainButton" in js:
             return {"action": "unlock_dismissed"}
@@ -698,13 +698,32 @@ class TestHandleModals:
         assert state == "modal"
 
     def test_main_menu_starts_game(self):
-        """Main menu triggers START_NEW_GAME_JS."""
+        """Main menu triggers START_NEW_GAME_JS and sets guard flag."""
         driver = _mock_driver(ui_state="main_menu")
         env = _make_env(driver=driver)
         state = env.handle_modals()
         assert state == "main_menu"
-        # Should have called START_NEW_GAME_JS
+        # Should have called DETECT_STATE_JS + START_NEW_GAME_JS
         assert driver.execute_script.call_count >= 2
+        assert env._menu_start_requested is True
+
+    def test_main_menu_no_repeat_after_requested(self):
+        """Second handle_modals with main_menu skips START_NEW_GAME_JS."""
+        driver = _mock_driver(ui_state="main_menu")
+        env = _make_env(driver=driver)
+        env._menu_start_requested = True
+        state = env.handle_modals()
+        assert state == "main_menu"
+        # Only DETECT_STATE_JS should be called — no START_NEW_GAME_JS
+        assert driver.execute_script.call_count == 1
+
+    def test_menu_start_guard_cleared_on_gameplay(self):
+        """_menu_start_requested is cleared once state leaves main_menu."""
+        driver = _mock_driver(ui_state="gameplay")
+        env = _make_env(driver=driver)
+        env._menu_start_requested = True
+        env.handle_modals()
+        assert env._menu_start_requested is False
 
     def test_no_driver_returns_gameplay(self):
         """Without driver, returns 'gameplay'."""
@@ -747,11 +766,12 @@ class TestStartGame:
     """Tests for start_game()."""
 
     def test_start_game_calls_js(self):
-        """start_game executes START_NEW_GAME_JS."""
-        driver = mock.MagicMock()
+        """start_game executes START_NEW_GAME_JS and sets guard flag."""
+        driver = _mock_driver(ui_state="main_menu")
         env = _make_env(driver=driver)
         env.start_game()
         driver.execute_script.assert_called_once_with(START_NEW_GAME_JS)
+        assert env._menu_start_requested is True
 
     def test_start_game_no_driver(self):
         """start_game without driver is a no-op."""
@@ -893,6 +913,15 @@ class TestResetTerminationState:
         env._idle_count = 500
         env.reset_termination_state()
         assert env._idle_count == 0
+
+    def test_resets_menu_start_flag(self):
+        """_menu_start_requested is reset to False."""
+        env = _make_env()
+        env._menu_start_requested = True
+        driver = _mock_driver()
+        env._driver = driver
+        env.reset_termination_state()
+        assert env._menu_start_requested is False
 
     def test_resets_prev_tracking_state(self):
         """Previous tracking state is updated from JS bridge."""

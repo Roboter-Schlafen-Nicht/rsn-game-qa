@@ -172,33 +172,37 @@ return (function() {
 
 START_NEW_GAME_JS = """
 return (function() {
-    // Click the "Play" button on the main menu
-    var playBtn = document.querySelector("button.playButton");
-    if (playBtn) {
-        playBtn.click();
+    // shapez.io uses ClickDetector (mousedown/mouseup events), not native
+    // click events.  The most reliable way to start a new game from the
+    // main menu is to call onPlayButtonClicked() directly on the current
+    // state via the globalRoot dev-mode API.
+    //
+    // Flow in MainMenuState.onPlayButtonClicked():
+    //   1. Checks savegame slot limit (unlimited in dev build) — passes
+    //   2. Calls adProvider.showVideoAd() — resolves immediately (NoAdProvider)
+    //   3. Creates new savegame and moves to InGameState
 
-        // Wait briefly, then look for "New Game" in the dialog
-        // The main menu shows a save picker; we need "New Game"
-        setTimeout(function() {
-            var newGameBtn = document.querySelector(
-                ".dialogButton.newGameButton, button.newGame"
-            );
-            if (newGameBtn) newGameBtn.click();
-        }, 500);
-
-        return {action: "play_button_clicked"};
+    if (typeof globalRoot === 'undefined' || !globalRoot) {
+        return {action: "none", error: "globalRoot not available"};
     }
 
-    // Fallback: try to find any "New Game" button directly
-    var newGameBtn = document.querySelector(
-        ".dialogButton.newGameButton, button.newGame"
-    );
-    if (newGameBtn) {
-        newGameBtn.click();
-        return {action: "new_game_clicked"};
+    var app = globalRoot.app;
+    if (!app || !app.stateMgr || !app.stateMgr.currentState) {
+        return {action: "none", error: "State manager not available"};
     }
 
-    return {action: "none", error: "No play/new-game button found"};
+    var state = app.stateMgr.currentState;
+    if (state.key !== "MainMenuState") {
+        return {action: "none", error: "Not on main menu (state=" + state.key + ")"};
+    }
+
+    // Call the play button handler directly (bypasses ClickDetector)
+    if (typeof state.onPlayButtonClicked === 'function') {
+        state.onPlayButtonClicked();
+        return {action: "play_invoked"};
+    }
+
+    return {action: "none", error: "onPlayButtonClicked not found on state"};
 })();
 """
 
