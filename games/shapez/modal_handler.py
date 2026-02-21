@@ -24,9 +24,11 @@ These are gray-box signals used to make training feasible for a game
 with no natural game-over and complex progression (26 levels + freeplay).
 Pure pixel-based observation cannot provide reward signals for shape
 delivery or level progression.  The dev build (port 3005 + localhost)
-enables ``G_IS_DEV = true`` and exposes ``window.shapez`` for full
-state access.  This is an intentional exception to the pixel-only
-constraint, analogous to Breakout 71's ``READ_GAME_STATE_JS`` for
+enables ``G_IS_DEV = true`` and exposes ``window.shapez`` (for
+application-level state via ``GLOBAL_APP``) together with the usual
+``window.globalRoot`` gameplay state, giving us effective full state
+access.  This is an intentional exception to the pixel-only constraint,
+analogous in spirit to Breakout 71's use of ``READ_GAME_STATE_JS`` for
 score/level/lives.
 """
 
