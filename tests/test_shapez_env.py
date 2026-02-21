@@ -1019,8 +1019,55 @@ class TestStartGame:
         # But guard should be cleared after reaching gameplay
         assert env._menu_start_requested is False
 
+    @mock.patch("games.shapez.env.time")
+    def test_start_game_retries_js_when_loading_then_main_menu(self, mock_time):
+        """start_game retries START_NEW_GAME_JS after loading -> main_menu.
 
-# -- build_info ----------------------------------------------------------------
+        Simulates the post-refresh scenario: the initial JS call fails
+        because GLOBAL_APP is not available during PreloadState, then the
+        page transitions to MainMenuState where the retry succeeds,
+        followed by InGameState.
+        """
+        # 0.0 = deadline start, 0.5..2.0 = 4 poll iterations
+        mock_time.monotonic.side_effect = [0.0, 0.5, 1.0, 1.5, 2.0]
+        mock_time.sleep = mock.MagicMock()
+
+        call_count = {"detect": 0, "start_js": 0}
+        driver = _mock_driver(ui_state="loading")
+
+        def _script(js, *args):
+            # DETECT_STATE_JS
+            if "bodyId" in js and "unlockNotification" in js:
+                call_count["detect"] += 1
+                # Pre-check (1) = loading, poll 1 (2) = loading,
+                # poll 2 (3) = main_menu (retry happens here),
+                # poll 3 (4) = gameplay
+                if call_count["detect"] <= 2:
+                    return {"state": "loading", "details": {}}
+                if call_count["detect"] == 3:
+                    return {"state": "main_menu", "details": {}}
+                return {"state": "gameplay", "details": {}}
+            # START_NEW_GAME_JS
+            if "createNewSavegame" in js:
+                call_count["start_js"] += 1
+                if call_count["start_js"] == 1:
+                    # First call fails — GLOBAL_APP not available
+                    return {"action": "none", "error": "GLOBAL_APP not available"}
+                # Retry succeeds
+                return {"action": "play_invoked"}
+            return None
+
+        driver.execute_script.side_effect = _script
+        env = _make_env(driver=driver)
+        with mock.patch.object(env, "_ensure_canvas_ready"):
+            env.start_game()
+
+        # START_NEW_GAME_JS should have been called twice (initial + retry)
+        assert call_count["start_js"] == 2
+        # Guard cleared after reaching gameplay
+        assert env._menu_start_requested is False
+        # At least 4 detect calls (pre-check + 3 polls)
+        assert call_count["detect"] >= 4
 
 
 class TestBuildInfo:
