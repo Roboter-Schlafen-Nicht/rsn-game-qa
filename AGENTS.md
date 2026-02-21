@@ -90,3 +90,16 @@ Process: Write test names as specs (with `pytest.skip`) -> fill bodies
 Technical pitfalls, project structure, and training run templates are
 in the auto-injected private docs (see `agent_knowledge_base.md` and
 `progress.md`). Canonical specs live in `documentation/specs/`.
+
+## Runtime Environment
+
+This project runs inside **OpenCode on WSL2** (Ubuntu). The host OS is
+**Windows 11**. See the company-level `AGENTS.md` (inherited via
+`OPENCODE_CONFIG_DIR`) for the full runtime environment reference.
+
+Key points for this project:
+- **Selenium browsers** run on Windows host via WSLg
+- **Dev servers** (Parcel for Breakout, Vite for dashboard) run in WSL,
+  accessible from Windows browsers at `localhost`
+- **Open URLs for user verification** with `cmd.exe /c "start <url>"`
+- **Convert paths** with `wslpath -w` when passing files to Windows
