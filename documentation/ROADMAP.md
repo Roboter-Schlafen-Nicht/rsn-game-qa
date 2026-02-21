@@ -1,6 +1,6 @@
 # RSN Game QA — Roadmap
 
-Five-phase plan for delivering the platform's core value: autonomous
+Six-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
 **Current state (session 55):** Phases 1-4 complete. Phase 5 (shapez.io
@@ -366,7 +366,7 @@ model from the arcade/puzzle games in Phases 1-4.
 | Create `configs/games/shapez.yaml` | Game loader config (port, build command, orientation) |
 | Create `games/shapez/` plugin | `__init__.py`, `env.py`, `loader.py`, `modal_handler.py`, `perception.py` |
 | Design action space | Mouse click/drag + keyboard — likely `MultiDiscrete` or hybrid |
-| Implement game state detection | JS bridge for game phase, score/level, tutorial state |
+| Implement game state detection | Pixel/vision-based detection of game phase, score/level, tutorial state; JS only for modal dismissal / one-time settings |
 | Implement game-over / session end | Factory builder may not have traditional game-over — define session boundaries |
 | CNN-only observation | 84x84 grayscale, no YOLO required |
 | Plugin tests | Env, loader, plugin loading tests (target: 50+ tests) |
