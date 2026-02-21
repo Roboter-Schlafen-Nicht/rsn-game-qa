@@ -1028,7 +1028,7 @@ class TestStartGame:
         page transitions to MainMenuState where the retry succeeds,
         followed by InGameState.
         """
-        # 0.0 = deadline start, 0.5..2.0 = 4 poll iterations
+        # 0.0 = deadline start, 0.5..1.5 = 3 poll iterations (2.0 spare)
         mock_time.monotonic.side_effect = [0.0, 0.5, 1.0, 1.5, 2.0]
         mock_time.sleep = mock.MagicMock()
 

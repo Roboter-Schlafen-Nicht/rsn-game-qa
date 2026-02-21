@@ -595,6 +595,8 @@ class ShapezEnv(BaseGameEnv):
                     if action == "play_invoked":
                         self._menu_start_requested = True
                         logger.info("start_game: retried START_NEW_GAME_JS — success")
+                    else:
+                        logger.debug("start_game: retry returned: %s", result)
                 except Exception as exc:
                     logger.debug("start_game: retry failed: %s", exc)
             logger.debug("start_game: waiting for InGameState (current: %s)", state)
