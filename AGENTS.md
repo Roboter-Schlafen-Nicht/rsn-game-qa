@@ -15,8 +15,8 @@ next task, do it. Don't ask for permission on engineering decisions.
    `docs/...`).
 2. Implement -> commit -> push -> create PR -> verify CI and review ->
    merge with `--delete-branch` -> delete local branch.
-3. Post-merge admin: update `private/documentation/progress.md` and
-   `private/documentation/BigRocks/checklist.md`.
+3. Post-merge admin: update the progress tracker and task checklist
+   (available in the project's private documentation).
 4. Pre-commit hook runs CI via `act` (Docker). Takes 5+ minutes.
    Use `timeout` of 600000ms for commit commands; verify with
    `git log` afterward.
@@ -26,11 +26,8 @@ next task, do it. Don't ask for permission on engineering decisions.
 OpenCode auto-compacts when context is full. After compaction:
 
 1. Re-read this file (`AGENTS.md`).
-2. The following are auto-injected via `opencode.json` instructions:
-   - `documentation/ROADMAP.md` -- the 5-phase plan
-   - `private/documentation/progress.md` -- current status
-   - `private/documentation/BigRocks/checklist.md` -- task tracking
-   - `private/documentation/reference/agent_knowledge_base.md` -- pitfalls
+2. Review the available context files (roadmap, progress, checklist,
+   knowledge base).
 3. Run `git status`, `git log --oneline -5`, `gh pr list` to orient.
 4. Check for running training: `ps aux | grep train_rl`.
 5. Resume the next incomplete task.
@@ -88,15 +85,13 @@ Process: Write test names as specs (with `pytest.skip`) -> fill bodies
 ## Reference
 
 Technical pitfalls, project structure, and training run templates are
-in the auto-injected private docs (see `agent_knowledge_base.md` and
+in the private documentation files (see `agent_knowledge_base.md` and
 `progress.md`). Canonical specs live in `documentation/specs/`.
 
 ## Runtime Environment
 
 This project runs inside **OpenCode on WSL2** (Ubuntu). The host OS is
-**Windows 11**. The company-level `AGENTS.md` is auto-injected via
-`opencode.json` instructions and contains the full runtime environment
-reference, post-work documentation workflow, and shared conventions.
+**Windows 11**.
 
 Key points for this project:
 - **Selenium browsers** run on Windows host via WSLg
