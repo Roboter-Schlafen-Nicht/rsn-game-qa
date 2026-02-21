@@ -3,12 +3,10 @@
 Five-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 52):** Phases 1-3 complete. Phase 4 complete —
-Hextris plugin (PR #120), CNN training (200K steps, 323 episodes, 184K
-unique visual states), 10-episode evaluation (trained model mean 404
-steps, 3 critical findings vs random baseline mean 374 steps, 0 critical
-findings), cross-game QA comparison complete. Discrete action logging fix
-(PR #122). 1137 tests, 95.26% coverage.
+**Current state (session 55):** Phases 1-4 complete. Phase 5 (shapez.io
+onboarding) is the current focus — third game plugin to validate the
+platform handles complex factory-builder games with mouse+keyboard input,
+build toolchain, and rich state spaces. 1137 tests, 95.26% coverage.
 
 ---
 
@@ -336,7 +334,66 @@ for seamless multi-game support.
 
 ---
 
-## Phase 5: Advanced Reward Strategies (Research)
+## Phase 5: Third Game Onboarding — shapez.io
+
+**Goal:** Validate the platform handles complex factory-builder games with
+mouse+keyboard input, a build toolchain, and rich state spaces. This is
+the hardest onboarding yet — shapez.io is a commercial indie game with a
+real build pipeline, complex UI, and a fundamentally different interaction
+model from the arcade/puzzle games in Phases 1-4.
+
+**Why shapez.io:**
+- **Genre jump:** Factory builder vs arcade/puzzle — proves the platform
+  is truly game-agnostic, not just "works on simple canvas games"
+- **Input complexity:** Mouse click + drag + keyboard shortcuts (not just
+  position or rotation)
+- **Build toolchain:** Node.js 16, Yarn, Java, ffmpeg — tests that the
+  game loader handles real build steps
+- **Rich state space:** Factory layouts, conveyor belts, shape processing,
+  research tree — orders of magnitude more visual diversity than Breakout
+  or Hextris
+- **Commercial game:** 6.8K GitHub stars, available on Steam — finding
+  bugs here is a credible QA demo
+- **Open issues:** 112 open issues, 96 open PRs, not actively maintained
+  (team on shapez 2) — high chance of rediscovering known bugs
+
+| Task | Details |
+|---|---|
+| Clone shapez.io repo | Clone https://github.com/tobspr-games/shapez.io, set `$SHAPEZ_DIR` |
+| Build toolchain setup | Node.js 16, Yarn, Java, ffmpeg; `yarn` in root, `cd gulp && yarn && yarn gulp` |
+| Verify local build | Game loads and plays in browser from local build |
+| Study game source | Understand state machine, input model, game phases, tutorial flow |
+| Create `configs/games/shapez.yaml` | Game loader config (port, build command, orientation) |
+| Create `games/shapez/` plugin | `__init__.py`, `env.py`, `loader.py`, `modal_handler.py`, `perception.py` |
+| Design action space | Mouse click/drag + keyboard — likely `MultiDiscrete` or hybrid |
+| Implement game state detection | JS bridge for game phase, score/level, tutorial state |
+| Implement game-over / session end | Factory builder may not have traditional game-over — define session boundaries |
+| CNN-only observation | 84x84 grayscale, no YOLO required |
+| Plugin tests | Env, loader, plugin loading tests (target: 50+ tests) |
+| Live validation | `--game shapez --headless --episodes 3` with random policy |
+| CNN training | 200K steps, measure visual state diversity |
+| 10-episode evaluation | Compare trained vs random baseline |
+| QA report | Cross-game comparison (3 games) |
+
+**Key challenges:**
+- **No natural game-over:** Factory builders don't end — the agent needs
+  session boundaries (time limit, goal completion, or idle detection)
+- **Tutorial flow:** New games start with a tutorial that must be skipped
+  or completed before free play
+- **Complex input model:** Placing buildings requires click-drag sequences,
+  not single actions
+- **Build step:** Unlike Hextris (static HTML) or Breakout (Parcel dev
+  server), shapez.io needs a real build pipeline
+
+**Success criteria:**
+- shapez.io running with `--game shapez`, producing QA reports
+- Zero changes to `src/` or `src/platform/` (plugin-only)
+- Trained model explores more diverse states than random baseline
+- At least 1 finding that random baseline misses
+
+---
+
+## Phase 6: Advanced Reward Strategies (Research)
 
 **Goal:** Investigate whether domain knowledge improves exploration beyond
 pure novelty-seeking.
