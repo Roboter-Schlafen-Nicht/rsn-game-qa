@@ -94,8 +94,9 @@ in the auto-injected private docs (see `agent_knowledge_base.md` and
 ## Runtime Environment
 
 This project runs inside **OpenCode on WSL2** (Ubuntu). The host OS is
-**Windows 11**. See the company-level `AGENTS.md` (inherited via
-`OPENCODE_CONFIG_DIR`) for the full runtime environment reference.
+**Windows 11**. The company-level `AGENTS.md` is auto-injected via
+`opencode.json` instructions and contains the full runtime environment
+reference, post-work documentation workflow, and shared conventions.
 
 Key points for this project:
 - **Selenium browsers** run on Windows host via WSLg
