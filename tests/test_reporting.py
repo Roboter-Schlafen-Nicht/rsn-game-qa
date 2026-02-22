@@ -605,7 +605,7 @@ class TestFindingDescriptions:
 
         crit = get_severity_info("critical")
         assert crit["label"] == "Critical"
-        assert crit["color"] == "#dc3545"
+        assert crit["color"] == "#ef4444"
         assert "badge_class" in crit
 
         warn = get_severity_info("warning")

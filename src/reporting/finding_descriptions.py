@@ -25,8 +25,8 @@ SEVERITY_INFO: dict[str, dict[str, str]] = {
             "to continue, or have a severely degraded experience. It "
             "should be fixed before release."
         ),
-        "color": "#dc3545",
-        "bg_color": "#f8d7da",
+        "color": "#ef4444",
+        "bg_color": "#1c0a0a",
         "badge_class": "severity-critical",
     },
     "warning": {
@@ -36,8 +36,8 @@ SEVERITY_INFO: dict[str, dict[str, str]] = {
             "prevent gameplay. It should be addressed in the next "
             "update cycle."
         ),
-        "color": "#fd7e14",
-        "bg_color": "#fff3cd",
+        "color": "#f59e0b",
+        "bg_color": "#1c1507",
         "badge_class": "severity-warning",
     },
     "info": {
@@ -46,8 +46,8 @@ SEVERITY_INFO: dict[str, dict[str, str]] = {
             "A minor observation that may indicate a deeper issue. "
             "Worth investigating but not blocking."
         ),
-        "color": "#0d6efd",
-        "bg_color": "#cfe2ff",
+        "color": "#60a5fa",
+        "bg_color": "#0a1628",
         "badge_class": "severity-info",
     },
 }
@@ -498,8 +498,8 @@ def get_severity_info(severity: str) -> dict[str, str]:
         {
             "label": severity.title(),
             "impact": "Unknown severity level.",
-            "color": "#6c757d",
-            "bg_color": "#e9ecef",
+            "color": "#8e8e96",
+            "bg_color": "#1c1c21",
             "badge_class": "severity-unknown",
         },
     )
