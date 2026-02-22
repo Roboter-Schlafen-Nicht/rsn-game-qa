@@ -128,6 +128,16 @@ class ShapezEnv(BaseGameEnv):
     idle_threshold : int
         Steps without progress before idle termination.
         Default ``3000``.
+    score_region : tuple of int, optional
+        ``(left, top, width, height)`` region of the game canvas to run
+        OCR on when using ``--reward-mode score``.  If ``None``, score
+        OCR is disabled.
+    score_ocr_interval : int
+        Steps between OCR calls.  Higher values reduce overhead.
+        Default ``1``.
+    score_reward_coeff : float
+        Multiplier for OCR score delta in reward computation.
+        Default ``0.01``.
     """
 
     def __init__(

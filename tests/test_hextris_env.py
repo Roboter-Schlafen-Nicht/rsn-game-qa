@@ -784,7 +784,7 @@ class TestDetectObjects:
 # -- Score OCR parameter forwarding -------------------------------------------
 
 
-class TestScoreParamForwarding:
+class TestHextrisScoreParamForwarding:
     """Tests for score OCR parameter forwarding to BaseGameEnv."""
 
     def test_accepts_score_region(self):

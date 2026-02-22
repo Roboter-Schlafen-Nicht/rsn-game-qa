@@ -91,6 +91,16 @@ class HextrisEnv(BaseGameEnv):
         Per-step survival reward.  Default ``0.01``.
     browser_instance : object, optional
         Reference to ``BrowserInstance`` for crash recovery.
+    score_region : tuple of int, optional
+        ``(left, top, width, height)`` region of the game canvas to run
+        OCR on when using ``--reward-mode score``.  If ``None``, score
+        OCR is disabled.
+    score_ocr_interval : int
+        Steps between OCR calls.  Higher values reduce overhead.
+        Default ``1``.
+    score_reward_coeff : float
+        Multiplier for OCR score delta in reward computation.
+        Default ``0.01``.
     """
 
     # No ball-lost or level-clear — game over is detected via JS gameState
