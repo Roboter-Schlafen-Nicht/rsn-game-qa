@@ -1490,3 +1490,35 @@ class TestDetectObjects:
         result = env._detect_objects(frame)
         assert result == {}
         assert isinstance(result, dict)
+
+
+# -- Score OCR parameter forwarding -------------------------------------------
+
+
+class TestShapezScoreParamForwarding:
+    """Tests for score OCR parameter forwarding to BaseGameEnv."""
+
+    def test_accepts_score_region(self):
+        """ShapezEnv accepts score_region and forwards to BaseGameEnv."""
+        env = _make_env(
+            reward_mode="score",
+            score_region=(10, 20, 100, 30),
+        )
+        assert env._score_region == (10, 20, 100, 30)
+        assert env._score_ocr is not None
+
+    def test_accepts_score_ocr_interval(self):
+        """ShapezEnv accepts score_ocr_interval."""
+        env = _make_env(
+            reward_mode="score",
+            score_ocr_interval=10,
+        )
+        assert env._score_ocr_interval == 10
+
+    def test_accepts_score_reward_coeff(self):
+        """ShapezEnv accepts score_reward_coeff."""
+        env = _make_env(
+            reward_mode="score",
+            score_reward_coeff=0.5,
+        )
+        assert env._score_reward_coeff == 0.5
