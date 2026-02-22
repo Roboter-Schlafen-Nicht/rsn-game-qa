@@ -232,6 +232,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "visible).  No RL policy is applied."
         ),
     )
+    parser.add_argument(
+        "--record-demo",
+        action="store_true",
+        help=(
+            "Enable enriched per-step demo recording.  Saves frames, "
+            "human input events, game state, rewards, and oracle "
+            "findings as JSONL + PNG for post-processing.  Typically "
+            "used with --human mode."
+        ),
+    )
 
     return parser.parse_args(argv)
 
@@ -334,6 +344,7 @@ def main(argv: list[str] | None = None) -> int:
         score_ocr_interval=args.score_ocr_interval,
         score_reward_coeff=args.score_reward_coeff,
         human_mode=args.human,
+        record_demo=args.record_demo,
     )
 
     report = runner.run()
