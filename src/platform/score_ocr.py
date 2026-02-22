@@ -130,6 +130,9 @@ class ScoreOCR:
     def _run_ocr(self, gray: np.ndarray) -> str | None:
         """Run pytesseract OCR on a grayscale image.
 
+        Applies binary thresholding to improve OCR accuracy on game
+        frames where score text may have low contrast or anti-aliasing.
+
         Returns the raw OCR text, or None if pytesseract is not
         available or OCR fails.
         """
@@ -140,7 +143,15 @@ class ScoreOCR:
             return None
 
         try:
-            return pytesseract.image_to_string(gray)
+            import cv2
+
+            _, binary = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY)
+        except ImportError:
+            logger.debug("cv2 not available; skipping threshold preprocessing")
+            binary = gray
+
+        try:
+            return pytesseract.image_to_string(binary)
         except Exception:
             logger.debug("OCR failed", exc_info=True)
             return None
