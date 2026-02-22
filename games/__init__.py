@@ -8,6 +8,7 @@ Current plugins:
 
 - :mod:`games.breakout71` -- Breakout 71 browser game
 - :mod:`games.hextris` -- Hextris hexagonal puzzle game
+- :mod:`games.shapez` -- shapez.io factory builder game
 
 Plugin Convention
 -----------------

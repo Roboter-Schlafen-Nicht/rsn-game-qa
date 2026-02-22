@@ -3,6 +3,7 @@
 from .base_env import BaseGameEnv
 from .cnn_wrapper import CnnEvalWrapper, CnnObservationWrapper
 from .epsilon_greedy_wrapper import EpsilonGreedyWrapper
+from .event_recorder import EventRecorder
 from .game_over_detector import (
     EntropyCollapseStrategy,
     GameOverDetector,
@@ -27,6 +28,7 @@ __all__ = [
     "CnnObservationWrapper",
     "EntropyCollapseStrategy",
     "EpsilonGreedyWrapper",
+    "EventRecorder",
     "GameOverDetector",
     "GameOverStrategy",
     "MotionCessationStrategy",

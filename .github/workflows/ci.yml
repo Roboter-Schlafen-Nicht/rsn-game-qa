@@ -28,10 +28,10 @@ jobs:
         run: pip install ruff==0.11.12
 
       - name: Run ruff check
-        run: ruff check src/ tests/ --output-format=github
+        run: ruff check src/ tests/ games/ scripts/ --output-format=github
 
       - name: Run ruff format check
-        run: ruff format --check src/ tests/
+        run: ruff format --check src/ tests/ games/ scripts/
 
   test:
     name: Test
@@ -62,10 +62,12 @@ jobs:
             jinja2==3.1.6 \
             rich==14.3.2 \
             pygame==2.6.1 \
-            ultralytics==8.4.9 \
+            ultralytics==8.4.14 \
             stable-baselines3==2.7.1 \
             scipy==1.17.0 \
-            matplotlib==3.10.8
+            matplotlib==3.10.8 \
+            pyyaml==6.0.3 \
+            selenium==4.40.0
 
       - name: Run pytest
         run: python -m pytest tests/ -v --tb=short --junitxml=reports/junit.xml -m "not integration"
@@ -106,10 +108,12 @@ jobs:
             jinja2==3.1.6 \
             rich==14.3.2 \
             pygame==2.6.1 \
-            ultralytics==8.4.9 \
+            ultralytics==8.4.14 \
             stable-baselines3==2.7.1 \
             scipy==1.17.0 \
-            matplotlib==3.10.8
+            matplotlib==3.10.8 \
+            pyyaml==6.0.3 \
+            selenium==4.40.0
 
       - name: Verify imports
         run: |
@@ -117,6 +121,8 @@ jobs:
           python -c "from src.oracles import Oracle, CrashOracle, StuckOracle, ScoreAnomalyOracle, VisualGlitchOracle, PerformanceOracle; print('oracles: OK')"
           python -c "from src.env import Breakout71Env; print('env: OK')"
           python -c "from games.breakout71 import Breakout71Env; print('games.breakout71: OK')"
+          python -c "from games.hextris import HextrisEnv; print('games.hextris: OK')"
+          python -c "from games.shapez import ShapezEnv; print('games.shapez: OK')"
           python -c "from src.platform import BaseGameEnv, CnnObservationWrapper; print('platform: OK')"
           python -c "from src.perception import YoloDetector; print('perception: OK')"
           python -c "from src.reporting import EpisodeReport, ReportGenerator, DashboardRenderer; print('reporting: OK')"
@@ -153,10 +159,12 @@ jobs:
             jinja2==3.1.6 \
             rich==14.3.2 \
             pygame==2.6.1 \
-            ultralytics==8.4.9 \
+            ultralytics==8.4.14 \
             stable-baselines3==2.7.1 \
             scipy==1.17.0 \
-            matplotlib==3.10.8
+            matplotlib==3.10.8 \
+            pyyaml==6.0.3 \
+            selenium==4.40.0
 
       - name: Build Sphinx HTML docs
         run: python -m sphinx.cmd.build -b html docs docs/_build/html -W
