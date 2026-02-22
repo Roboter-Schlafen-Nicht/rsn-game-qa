@@ -4,9 +4,10 @@ Six-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
 **Current state (session 60):** Phases 1-5 complete. Phase 6 Tier 2
-(OCR score delta reward) complete (PR #139). Three games onboarded
-(Breakout 71, Hextris, shapez.io) across three genres with zero platform
-code changes. 1382 tests.
+(OCR score delta reward) implementation complete (PR #139), live
+validation pending. Three games onboarded (Breakout 71, Hextris,
+shapez.io) across three genres with no game-specific changes to
+`src/platform/` required after the plugin system. 1382 tests.
 
 ---
 
@@ -479,10 +480,10 @@ demonstration-guided exploration.
 **Goal:** Investigate whether domain knowledge improves exploration beyond
 pure novelty-seeking.
 
-### Tier 2: OCR Score Delta ✓
+### Tier 2: OCR Score Delta (Implementation Complete)
 
 **Status:** Implementation complete (PR #139, session 60). Live validation
-pending.
+pending — needs real training run with `--reward-mode score`.
 
 | Task | Details |
 |---|---|
