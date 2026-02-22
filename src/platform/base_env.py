@@ -188,7 +188,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
 
         # Human play mode (Phase 7b)
         self.human_mode: bool = human_mode
-        self._event_recorder: EventRecorder | None = None
+        self._event_recorder: Any | None = None
         if human_mode:
             from src.platform.event_recorder import EventRecorder
 
@@ -524,8 +524,10 @@ class BaseGameEnv(gym.Env, abc.ABC):
             return []
         try:
             return self._event_recorder.flush()
-        except RuntimeError:
-            # No driver set yet (e.g. before lazy init)
+        except Exception:
+            # No driver set yet, driver unavailable, or other driver
+            # failure (e.g. WebDriverException from a closed/unresponsive
+            # browser).  Fail gracefully and return an empty list.
             return []
 
     # ------------------------------------------------------------------

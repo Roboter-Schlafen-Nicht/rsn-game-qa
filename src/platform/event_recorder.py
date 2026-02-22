@@ -32,8 +32,8 @@ class EventRecorder:
     ``window.__rsn_events`` and retrieved via :meth:`flush`.
 
     Mousemove events are throttled to avoid flooding the buffer
-    (only recorded when the position changes beyond a small
-    threshold since the last recorded move).
+    (only recorded when the position changes since the last
+    recorded move).
 
     Parameters
     ----------

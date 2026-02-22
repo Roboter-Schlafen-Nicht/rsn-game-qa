@@ -247,14 +247,14 @@ class TestRunSessionHumanFlag:
         args = parse_args([])
         assert args.human is False
 
-    def test_human_flag_disables_headless(self):
-        """--human flag with --headless raises or overrides to non-headless."""
+    def test_human_flag_with_headless_still_sets_human_true(self):
+        """--human flag sets args.human=True even when combined with --headless."""
         from scripts.run_session import parse_args
 
-        # Even if --headless is given, --human should take precedence
+        # Even if --headless is given, --human should still be parsed
+        # as True.  This test only verifies argument parsing; handling
+        # of the conflicting headless/human combination (e.g.,
+        # overriding headless) is performed by the run_session
+        # entrypoint.
         args = parse_args(["--human", "--headless"])
-        # The human needs to see the browser, so headless should be
-        # overridden to False or the combination should be handled
-        # (implementation can choose either approach; we test the
-        # main() function handles it)
         assert args.human is True
