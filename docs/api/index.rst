@@ -10,6 +10,7 @@ Auto-generated documentation from source code docstrings and type hints.
    oracles
    platform
    env
+   orchestrator
    perception
    reporting
    game_loader

@@ -235,7 +235,7 @@ def analyze_paddle_movement(steps: list[dict]) -> dict:
     for p in positions:
         freq[p] = freq.get(p, 0) + 1
 
-    most_common_pos = max(freq, key=freq.get)  # type: ignore[arg-type]
+    most_common_pos = max(freq, key=lambda k: freq[k])
     most_common_pct = freq[most_common_pos] / len(positions) * 100
 
     # Degenerate = one position accounts for >80% of all samples

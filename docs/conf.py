@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath(".."))
 project = "RSN Game QA"
 copyright = "2026, Roboter Schlafen Nicht"
 author = "Roboter Schlafen Nicht"
-release = "0.1.0"
+release = "0.1.0a1"
 
 # -- General configuration ----------------------------------------------------
 extensions = [
@@ -62,6 +62,9 @@ autodoc_mock_imports = [
     "pandas",
     "polars",
     "yaml",
+    "pytesseract",
+    "jinja2",
+    "weasyprint",
 ]
 
 # Napoleon settings (for Google-style docstrings)

@@ -14,3 +14,21 @@ Breakout71Env
    :undoc-members:
    :show-inheritance:
    :no-index:
+
+HextrisEnv
+----------
+
+.. autoclass:: games.hextris.env.HextrisEnv
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:
+
+ShapezEnv
+---------
+
+.. autoclass:: games.shapez.env.ShapezEnv
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:

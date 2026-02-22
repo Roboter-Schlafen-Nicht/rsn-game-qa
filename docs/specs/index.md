@@ -8,6 +8,13 @@ Design specifications extracted from the project planning sessions.
 breakout71_game
 breakout71_behavior
 breakout71_env
+hextris_game
+hextris_env
+shapez_game
+shapez_env
+platform_architecture
+reward_strategy
+training_pipeline
 oracle_system
 capture_and_input
 reporting_system
