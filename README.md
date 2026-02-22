@@ -27,7 +27,7 @@ The project demonstrates what this workflow produces:
   workflow from day one
 - **Thousands of lines of documentation** generated as a natural byproduct
   of working, not a separate effort
-- **8 subsystems, 3 game plugins, full CI/CD** -- built across 61 sessions
+- **8 subsystems, 3 game plugins, full CI/CD** -- built across 62 sessions
 
 The codebase is real, the tests pass, the CI is green. The methodology
 behind it is the point.

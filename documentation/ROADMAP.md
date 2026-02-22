@@ -575,7 +575,7 @@ Post-process recorded demos to extract actionable knowledge (macro-actions,
 spatial priors, reward candidates, build-order curricula) that transforms
 RL training for complex games where pure pixel-based exploration fails.
 
-**Why this matters:** Phases 1-5 proved that survival reward works for
+**Why this matters:** Phases 1-6 proved that survival reward works for
 arcade/puzzle games but fails completely for factory builders (shapez.io
 trained=random). The fundamental problem is that complex games require
 multi-step action sequences that random exploration never discovers.
