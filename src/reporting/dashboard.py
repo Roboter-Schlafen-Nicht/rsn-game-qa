@@ -32,11 +32,26 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Allowed image extensions and their MIME types for screenshot embedding.
+_ALLOWED_IMAGE_EXTENSIONS: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
+
+# Maximum screenshot file size (10 MB).  Files larger than this are
+# skipped to prevent memory exhaustion when base64-encoding.
+_MAX_SCREENSHOT_BYTES: int = 10 * 1024 * 1024
+
+
 def _embed_screenshots(report_data: dict[str, Any]) -> dict[str, Any]:
     """Convert screenshot file paths to base64 data URIs for inline embedding.
 
-    Modifies the report data in-place. Screenshots that cannot be read
-    are silently skipped (path set to ``None``).
+    Modifies the report data in-place. Screenshots that cannot be read,
+    have disallowed extensions, or exceed the 10 MB size limit are
+    silently skipped (data URI set to ``None``).
 
     Parameters
     ----------
@@ -58,19 +73,34 @@ def _embed_screenshots(report_data: dict[str, Any]) -> dict[str, Any]:
                 continue
 
             path = Path(path_str)
+
+            # Validate extension against allowlist.
+            suffix = path.suffix.lower()
+            if suffix not in _ALLOWED_IMAGE_EXTENSIONS:
+                logger.warning(
+                    "Screenshot skipped (disallowed extension %s): %s",
+                    suffix,
+                    path,
+                )
+                finding["screenshot_data_uri"] = None
+                continue
+
             if path.is_file():
                 try:
+                    file_size = path.stat().st_size
+                    if file_size > _MAX_SCREENSHOT_BYTES:
+                        logger.warning(
+                            "Screenshot skipped (%.1f MB exceeds %d MB limit): %s",
+                            file_size / (1024 * 1024),
+                            _MAX_SCREENSHOT_BYTES // (1024 * 1024),
+                            path,
+                        )
+                        finding["screenshot_data_uri"] = None
+                        continue
+
                     img_bytes = path.read_bytes()
                     b64 = base64.b64encode(img_bytes).decode("ascii")
-                    # Determine MIME type from extension
-                    suffix = path.suffix.lower()
-                    mime = {
-                        ".png": "image/png",
-                        ".jpg": "image/jpeg",
-                        ".jpeg": "image/jpeg",
-                        ".gif": "image/gif",
-                        ".webp": "image/webp",
-                    }.get(suffix, "image/png")
+                    mime = _ALLOWED_IMAGE_EXTENSIONS[suffix]
                     finding["screenshot_data_uri"] = f"data:{mime};base64,{b64}"
                 except OSError:
                     logger.warning("Could not read screenshot: %s", path)

@@ -840,6 +840,75 @@ class TestScreenshotEmbedding:
         finding = result["episodes"][0]["findings"][0]
         assert finding["screenshot_data_uri"].startswith("data:image/jpeg;base64,")
 
+    def test_embed_screenshot_rejects_disallowed_extension(self, tmp_path):
+        """Files with non-image extensions are rejected."""
+        from src.reporting.dashboard import _embed_screenshots
+
+        # Create a file with a disallowed extension
+        txt_path = tmp_path / "secret.txt"
+        txt_path.write_text("not an image")
+
+        report = {
+            "episodes": [
+                {
+                    "findings": [
+                        {
+                            "screenshot_path": str(txt_path),
+                        }
+                    ]
+                }
+            ]
+        }
+        result = _embed_screenshots(report)
+        finding = result["episodes"][0]["findings"][0]
+        assert finding["screenshot_data_uri"] is None
+
+    def test_embed_screenshot_rejects_oversized_file(self, tmp_path):
+        """Files exceeding the 10 MB limit are rejected."""
+        from src.reporting.dashboard import _MAX_SCREENSHOT_BYTES, _embed_screenshots
+
+        # Create a file just over the limit
+        img_path = tmp_path / "huge.png"
+        img_path.write_bytes(b"\x89PNG" + b"\x00" * (_MAX_SCREENSHOT_BYTES + 1))
+
+        report = {
+            "episodes": [
+                {
+                    "findings": [
+                        {
+                            "screenshot_path": str(img_path),
+                        }
+                    ]
+                }
+            ]
+        }
+        result = _embed_screenshots(report)
+        finding = result["episodes"][0]["findings"][0]
+        assert finding["screenshot_data_uri"] is None
+
+    def test_embed_screenshot_accepts_file_at_size_limit(self, tmp_path):
+        """Files exactly at the 10 MB limit are accepted."""
+        from src.reporting.dashboard import _MAX_SCREENSHOT_BYTES, _embed_screenshots
+
+        img_path = tmp_path / "borderline.png"
+        img_path.write_bytes(b"\x89PNG" + b"\x00" * (_MAX_SCREENSHOT_BYTES - 4))
+
+        report = {
+            "episodes": [
+                {
+                    "findings": [
+                        {
+                            "screenshot_path": str(img_path),
+                        }
+                    ]
+                }
+            ]
+        }
+        result = _embed_screenshots(report)
+        finding = result["episodes"][0]["findings"][0]
+        assert finding["screenshot_data_uri"] is not None
+        assert finding["screenshot_data_uri"].startswith("data:image/png;base64,")
+
 
 # ── Comparison ───────────────────────────────────────────────────────
 
