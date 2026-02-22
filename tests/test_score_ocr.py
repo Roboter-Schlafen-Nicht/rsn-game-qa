@@ -408,3 +408,38 @@ class TestThresholdPreprocessing:
         processed = call_args[0][0]
         assert processed.shape == (30, 100)
         assert score == 99
+
+    def test_cv2_threshold_error_falls_back_to_raw(self):
+        """If cv2.threshold raises, fall back to raw grayscale."""
+        ocr = ScoreOCR()
+        gray = np.full((10, 10), 180, dtype=np.uint8)
+        mock_pytesseract = mock.MagicMock()
+        mock_pytesseract.image_to_string.return_value = "42"
+        mock_cv2 = mock.MagicMock()
+        mock_cv2.threshold.side_effect = RuntimeError("unexpected cv2 error")
+
+        with mock.patch.dict("sys.modules", {"pytesseract": mock_pytesseract, "cv2": mock_cv2}):
+            result = ocr._run_ocr(gray)
+
+        assert result == "42"
+        call_args = mock_pytesseract.image_to_string.call_args
+        processed = call_args[0][0]
+        assert np.all(processed == 180)
+
+    def test_non_uint8_input_normalized_before_threshold(self):
+        """Non-uint8 grayscale input is normalized to uint8 before threshold."""
+        ocr = ScoreOCR()
+        gray = np.array([[0.0, 0.5, 1.0]], dtype=np.float64)
+        mock_pytesseract = mock.MagicMock()
+        mock_pytesseract.image_to_string.return_value = "7"
+        mock_cv2 = self._make_mock_cv2()
+
+        with mock.patch.dict("sys.modules", {"pytesseract": mock_pytesseract, "cv2": mock_cv2}):
+            result = ocr._run_ocr(gray)
+
+        assert result == "7"
+        call_args = mock_pytesseract.image_to_string.call_args
+        processed = call_args[0][0]
+        assert processed.dtype == np.uint8
+        unique_vals = set(np.unique(processed))
+        assert unique_vals <= {0, 255}

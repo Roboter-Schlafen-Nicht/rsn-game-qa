@@ -145,9 +145,26 @@ class ScoreOCR:
         try:
             import cv2
 
-            _, binary = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY)
+            # Normalize to uint8 for 2D grayscale inputs to avoid cv2 dtype issues.
+            gray_for_cv = gray
+            if gray_for_cv.ndim == 2 and gray_for_cv.dtype != np.uint8:
+                g_min = float(np.min(gray_for_cv))
+                g_max = float(np.max(gray_for_cv))
+                if g_max > g_min:
+                    scale = 255.0 / (g_max - g_min)
+                    gray_for_cv = ((gray_for_cv - g_min) * scale).astype(np.uint8)
+                else:
+                    gray_for_cv = np.zeros_like(gray_for_cv, dtype=np.uint8)
+
+            _, binary = cv2.threshold(gray_for_cv, 128, 255, cv2.THRESH_BINARY)
         except ImportError:
             logger.debug("cv2 not available; skipping threshold preprocessing")
+            binary = gray
+        except Exception:
+            logger.debug(
+                "cv2 threshold preprocessing failed; falling back to raw grayscale",
+                exc_info=True,
+            )
             binary = gray
 
         try:
