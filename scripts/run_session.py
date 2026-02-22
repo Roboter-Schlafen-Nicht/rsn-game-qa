@@ -222,6 +222,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Enable verbose logging",
     )
+    parser.add_argument(
+        "--human",
+        action="store_true",
+        help=(
+            "Human play mode: the human controls the game through the "
+            "browser while the platform records input events, frames, "
+            "and game state.  Implies non-headless (browser must be "
+            "visible).  No RL policy is applied."
+        ),
+    )
 
     return parser.parse_args(argv)
 
@@ -260,9 +270,16 @@ def main(argv: list[str] | None = None) -> int:
 
     from src.orchestrator.session_runner import SessionRunner
 
+    # Human mode overrides: force headless off, disable model
+    headless = args.headless
+    if args.human:
+        headless = False
+        if args.model:
+            logger.warning("--human mode: ignoring --model (human controls the game)")
+
     # Build policy_fn from trained model if provided
     policy_fn = None
-    if args.model:
+    if args.model and not args.human:
         from stable_baselines3 import PPO
 
         logger.info("Loading trained model from %s", args.model)
@@ -308,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
         frame_capture_interval=args.frame_interval,
         enable_data_collection=not args.no_data_collection,
         policy_fn=policy_fn,
-        headless=args.headless,
+        headless=headless,
         policy=args.policy,
         frame_stack=args.frame_stack,
         reward_mode=args.reward_mode,
@@ -316,6 +333,7 @@ def main(argv: list[str] | None = None) -> int:
         score_region=score_region,
         score_ocr_interval=args.score_ocr_interval,
         score_reward_coeff=args.score_reward_coeff,
+        human_mode=args.human,
     )
 
     report = runner.run()
