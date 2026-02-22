@@ -250,13 +250,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--reward-mode",
         type=str,
         default="survival",
-        choices=["yolo", "survival", "rnd"],
+        choices=["yolo", "survival", "rnd", "score"],
         help=(
             "Reward signal strategy.  'yolo' uses YOLO-based brick/score "
             "deltas (noisy).  'survival' uses per-step bonus (see "
             "--survival-bonus), terminal penalties.  'rnd' uses survival "
             "reward + RND intrinsic novelty bonus for exploration-driven QA.  "
-            "Default: survival."
+            "'score' uses OCR-based score reading for game-agnostic reward "
+            "without per-game JS bridges.  Default: survival."
         ),
     )
     parser.add_argument(
@@ -295,6 +296,40 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=2.0,
         help="Weight for extrinsic reward in RND mode (default: 2.0)",
+    )
+
+    # -- Score OCR parameters (for --reward-mode score) --------------------
+    parser.add_argument(
+        "--score-region",
+        type=str,
+        default=None,
+        metavar="X,Y,W,H",
+        help=(
+            "Bounding box for OCR score reading as 'X,Y,W,H' (pixels).  "
+            "Only used when --reward-mode=score.  If omitted, the full "
+            "frame is scanned."
+        ),
+    )
+    parser.add_argument(
+        "--score-ocr-interval",
+        type=int,
+        default=1,
+        metavar="N",
+        help=(
+            "Run OCR every N steps in score mode.  Reduces overhead when "
+            "score changes infrequently.  Default: 1 (every step)."
+        ),
+    )
+    parser.add_argument(
+        "--score-reward-coeff",
+        type=float,
+        default=0.01,
+        metavar="FLOAT",
+        help=(
+            "Multiplier for OCR score delta reward.  The reward each step "
+            "is survival_bonus + max(0, score_delta) * coeff.  "
+            "Default: 0.01."
+        ),
     )
 
     # -- Game-over detector ------------------------------------------------
@@ -1065,6 +1100,9 @@ def main(argv: list[str] | None = None) -> int:
                 "max_episodes": args.max_episodes,
                 "game_over_detector": args.game_over_detector,
                 "detector_threshold": args.detector_threshold,
+                "score_region": args.score_region,
+                "score_ocr_interval": args.score_ocr_interval,
+                "score_reward_coeff": args.score_reward_coeff,
             },
             "browser": browser_instance.name,
             "python_version": platform.python_version(),
@@ -1087,6 +1125,17 @@ def main(argv: list[str] | None = None) -> int:
             args.reward_mode,
             survival_bonus,
         )
+
+        # -- Parse score OCR region (if provided) --------------------------
+        score_region = None
+        if args.score_region is not None:
+            try:
+                parts = [int(p.strip()) for p in args.score_region.split(",")]
+                if len(parts) != 4:
+                    raise ValueError("expected 4 values")
+                score_region = tuple(parts)
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"--score-region must be X,Y,W,H (4 integers): {exc}") from exc
 
         # -- Pixel-based game-over detector (optional) ---------------------
         detector = None
@@ -1113,6 +1162,9 @@ def main(argv: list[str] | None = None) -> int:
             game_over_detector=detector,
             survival_bonus=survival_bonus,
             browser_instance=browser_instance,
+            score_region=score_region,
+            score_ocr_interval=args.score_ocr_interval,
+            score_reward_coeff=args.score_reward_coeff,
         )
 
         # -- Wrap for CNN policy (if requested) ----------------------------

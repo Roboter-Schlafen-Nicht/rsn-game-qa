@@ -211,6 +211,16 @@ class SessionRunner:
         the environment constructor so that ``update(frame)`` is called
         every step.  If it signals game-over, the episode terminates
         without requiring DOM/JS modal checks.
+    score_region : tuple[int, int, int, int] or None
+        Bounding box ``(x, y, w, h)`` for OCR score reading.  Only
+        used when ``reward_mode="score"``.  If None, OCR scans the
+        full frame.
+    score_ocr_interval : int
+        Run OCR every N steps to reduce overhead.  Default is 5.
+        Only used when ``reward_mode="score"``.
+    score_reward_coeff : float
+        Coefficient for score delta reward.  Default is 0.01.
+        Only used when ``reward_mode="score"``.
     """
 
     def __init__(
@@ -230,6 +240,9 @@ class SessionRunner:
         frame_stack: int = 4,
         reward_mode: str = "yolo",
         game_over_detector: Any | None = None,
+        score_region: tuple[int, int, int, int] | None = None,
+        score_ocr_interval: int = 5,
+        score_reward_coeff: float = 0.01,
     ) -> None:
         valid_policies = ("mlp", "cnn")
         if policy not in valid_policies:
@@ -249,6 +262,9 @@ class SessionRunner:
         self.frame_stack = frame_stack
         self.reward_mode = reward_mode
         self.game_over_detector = game_over_detector
+        self.score_region = score_region
+        self.score_ocr_interval = score_ocr_interval
+        self.score_reward_coeff = score_reward_coeff
 
         # Load plugin to resolve defaults
         from games import load_game_plugin
@@ -404,6 +420,9 @@ class SessionRunner:
             reward_mode=self.reward_mode,
             game_over_detector=self.game_over_detector,
             browser_instance=self._browser_instance,
+            score_region=self.score_region,
+            score_ocr_interval=self.score_ocr_interval,
+            score_reward_coeff=self.score_reward_coeff,
         )
 
         # Create frame collector

@@ -78,27 +78,38 @@ class BaseGameEnv(gym.Env, abc.ABC):
         game-specific ``compute_reward()`` (YOLO-based brick/score
         deltas).  ``"survival"`` overrides with a game-agnostic signal:
         ``+0.01`` per step survived, ``-5.0`` on game over, ``+5.0``
-        on level clear.  Survival mode eliminates YOLO detection noise
-        from the reward and gives a clean gradient for learning to
-        keep the ball alive.
+        on level clear.  ``"score"`` uses OCR-based score reading to
+        compute reward from score deltas — game-agnostic without
+        requiring per-game JS bridges.  Survival mode eliminates YOLO
+        detection noise from the reward and gives a clean gradient for
+        learning to keep the ball alive.
     game_over_detector : GameOverDetector, optional
         Pixel-based game-over detector.  When provided, the detector's
         ``update(frame)`` is called every step.  If it signals
         game-over, the episode terminates without requiring DOM/JS
         modal checks.  See ``src.platform.game_over_detector``.
     survival_bonus : float
-        Per-step survival reward in ``"survival"`` mode.  Default
-        ``0.01``.  Set to ``0.0`` when using RND intrinsic reward to
-        eliminate the degenerate "park and collect" local optimum.
+        Per-step survival reward in ``"survival"`` and ``"score"``
+        modes.  Default ``0.01``.  Set to ``0.0`` when using RND
+        intrinsic reward to eliminate the degenerate "park and collect"
+        local optimum.
     browser_instance : BrowserInstance, optional
         Reference to the ``BrowserInstance`` managing the browser
         process.  When provided, the environment can automatically
         restart the browser after a crash (e.g. Chrome tab crash)
         instead of raising an exception.  The caller retains ownership
         and is responsible for calling ``close()`` at shutdown.
+    score_region : tuple[int, int, int, int] or None
+        ``(x, y, width, height)`` bounding box for OCR score reading.
+        Only used when ``reward_mode="score"``.  If None, the full
+        frame is scanned.
+    score_ocr_interval : int
+        Run OCR every N steps in ``"score"`` mode.  Default ``1``.
+    score_reward_coeff : float
+        Multiplier for OCR score delta.  Default ``0.01``.
     """
 
-    _VALID_REWARD_MODES = ("yolo", "survival")
+    _VALID_REWARD_MODES = ("yolo", "survival", "score")
 
     metadata = {"render_modes": ["human", "rgb_array"]}
 
@@ -116,6 +127,9 @@ class BaseGameEnv(gym.Env, abc.ABC):
         game_over_detector: Any | None = None,
         survival_bonus: float = 0.01,
         browser_instance: Any | None = None,
+        score_region: tuple[int, int, int, int] | None = None,
+        score_ocr_interval: int = 1,
+        score_reward_coeff: float = 0.01,
     ) -> None:
         super().__init__()
 
@@ -134,6 +148,20 @@ class BaseGameEnv(gym.Env, abc.ABC):
         self._survival_bonus = survival_bonus
         self._game_over_detector = game_over_detector
         self._browser_instance = browser_instance
+
+        # Score OCR state (only active when reward_mode="score")
+        self._score_ocr: Any | None = None
+        self._score_region = score_region
+        self._score_ocr_interval = score_ocr_interval
+        self._score_reward_coeff = score_reward_coeff
+        self._prev_ocr_score: int | None = None
+        if reward_mode == "score":
+            from src.platform.score_ocr import ScoreOCR
+
+            self._score_ocr = ScoreOCR(
+                region=score_region,
+                ocr_interval=score_ocr_interval,
+            )
 
         # Internal state
         self._step_count: int = 0
@@ -403,9 +431,9 @@ class BaseGameEnv(gym.Env, abc.ABC):
 
     @property
     def _SURVIVAL_TERMINAL_REWARD(self) -> float:
-        """Terminal penalty for survival mode when a forced termination is
-        detected (modal-based game-over, pixel-based detector, or late
-        game-over via ball disappearance).
+        """Terminal penalty for survival/score mode when a forced
+        termination is detected (modal-based game-over, pixel-based
+        detector, or late game-over via ball disappearance).
 
         Returns ``-5.0 - self._survival_bonus``.  This is used by
         ``_make_terminal_transition()`` which sets the reward directly
@@ -419,6 +447,40 @@ class BaseGameEnv(gym.Env, abc.ABC):
         ``-5.01``.
         """
         return -5.0 - self._survival_bonus
+
+    def _compute_score_reward(self, terminated: bool, level_cleared: bool) -> float:
+        """Compute a game-agnostic OCR-based score reward.
+
+        Combines survival reward with a score-delta bonus read via OCR
+        from the game frame.  The score delta is multiplied by
+        ``_score_reward_coeff`` (default ``0.01``).
+
+        Parameters
+        ----------
+        terminated : bool
+            Whether the episode ended this step.
+        level_cleared : bool
+            Whether the level/stage was cleared.
+
+        Returns
+        -------
+        float
+            Score-based reward signal.
+        """
+        # Start with survival reward as baseline
+        reward = self._compute_survival_reward(terminated, level_cleared)
+
+        # Read current score via OCR
+        if self._score_ocr is not None and self._last_frame is not None:
+            current_score = self._score_ocr.read_score(self._last_frame)
+            if current_score is not None and self._prev_ocr_score is not None:
+                delta = current_score - self._prev_ocr_score
+                if delta > 0:
+                    reward += delta * self._score_reward_coeff
+            if current_score is not None:
+                self._prev_ocr_score = current_score
+
+        return reward
 
     # ------------------------------------------------------------------
     # Gymnasium lifecycle — generic implementation
@@ -482,14 +544,15 @@ class BaseGameEnv(gym.Env, abc.ABC):
             logger.info("reset() attempt %d: invalid detections", attempt + 1)
 
         if not self.on_reset_detections(detections):
-            if self.reward_mode == "survival":
-                # In survival mode, YOLO detections are not needed for
-                # reward or CNN observations.  Headless Selenium capture
-                # often fails to produce detectable objects, so accept
-                # any frame rather than aborting the session.
+            if self.reward_mode in ("survival", "score"):
+                # In survival/score mode, YOLO detections are not needed
+                # for reward or CNN observations.  Headless Selenium
+                # capture often fails to produce detectable objects, so
+                # accept any frame rather than aborting the session.
                 logger.warning(
                     "reset(): accepting frame without valid detections "
-                    "(survival mode — YOLO not required)"
+                    "(%s mode — YOLO not required)",
+                    self.reward_mode,
                 )
             else:
                 raise RuntimeError(
@@ -508,6 +571,11 @@ class BaseGameEnv(gym.Env, abc.ABC):
         # Reset pixel-based game-over detector for the new episode
         if self._game_over_detector is not None:
             self._game_over_detector.reset()
+
+        # Reset OCR score reader for the new episode
+        if self._score_ocr is not None:
+            self._score_ocr.reset()
+            self._prev_ocr_score = None
 
         # Build info dict
         info = self._make_info(detections)
@@ -550,7 +618,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         """
         self._step_count += 1
         truncated = self._step_count >= self.max_steps
-        if self.reward_mode == "survival":
+        if self.reward_mode in ("survival", "score"):
             reward = self._SURVIVAL_TERMINAL_REWARD
         else:
             reward = self.terminal_reward()
@@ -673,19 +741,20 @@ class BaseGameEnv(gym.Env, abc.ABC):
         # Determine termination (game-specific)
         terminated, level_cleared = self.check_termination(detections)
 
-        # In survival mode, suppress YOLO-based level_cleared detection.
-        # YOLO brick detection is unreliable in headless mode (returns
-        # 0 bricks → false level_cleared). Only modal-based detection
-        # (perk_picker state from handle_modals, merged below via
-        # modal_level_cleared) triggers level transitions in this mode.
-        if self.reward_mode == "survival" and level_cleared:
+        # In survival/score mode, suppress YOLO-based level_cleared
+        # detection.  YOLO brick detection is unreliable in headless mode
+        # (returns 0 bricks → false level_cleared). Only modal-based
+        # detection (perk_picker state from handle_modals, merged below
+        # via modal_level_cleared) triggers level transitions in these
+        # modes.
+        if self.reward_mode in ("survival", "score") and level_cleared:
             terminated = False
             level_cleared = False
 
         # Merge modal-based level clear into the level_cleared signal.
-        # In survival/RND mode, YOLO-based level_cleared is suppressed
-        # above, but modal detection still catches perk_picker modals
-        # which indicate a real level transition.
+        # In survival/score/RND mode, YOLO-based level_cleared is
+        # suppressed above, but modal detection still catches perk_picker
+        # modals which indicate a real level transition.
         if modal_level_cleared:
             level_cleared = True
 
@@ -701,9 +770,11 @@ class BaseGameEnv(gym.Env, abc.ABC):
 
         truncated = self._step_count >= self.max_steps
 
-        # Compute reward (game-specific or survival mode)
+        # Compute reward (game-specific, survival, or score mode)
         if self.reward_mode == "survival":
             reward = self._compute_survival_reward(terminated, level_cleared)
+        elif self.reward_mode == "score":
+            reward = self._compute_score_reward(terminated, level_cleared)
         else:
             reward = self.compute_reward(detections, terminated, level_cleared)
 
@@ -826,7 +897,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         """
         self._step_count += 1
         truncated = self._step_count >= self.max_steps
-        if self.reward_mode == "survival":
+        if self.reward_mode in ("survival", "score"):
             reward = self._SURVIVAL_TERMINAL_REWARD
         else:
             reward = self.terminal_reward()
