@@ -669,10 +669,10 @@ files via game-specific JS bridge calls. Each game plugin provides a
 | `src/platform/savegame_injector.py` | Platform-level `SavegamePool` + `SavegameInjector` classes — **DONE** (PR #148) |
 | Plugin hook: `load_save_js` | Optional attribute in game plugin `__init__.py` — **DONE** (PR #148) |
 | `games/shapez/saves/` | Directory of curated save files from GitHub issues (large factories, edge-case configs) |
-| shapez.io `LOAD_SAVE_JS` | JS that imports save JSON via `savegameMgr`, transitions to InGameState — **DONE** (PR #148) |
+| shapez.io `LOAD_SAVE_JS` | JS that creates a new savegame via `savegameMgr.createNewSavegame()`, migrates save data, and transitions to InGameState — **DONE** (PR #148) |
 | `--savegame-dir` CLI flag | In both `run_session.py` and `train_rl.py` — **DONE** (PR #148) |
 | `SavegamePool` | Manages multiple save files, random or sequential selection per episode — **DONE** (PR #148) |
-| Tests | 36 tests (20 SavegameInjector + 12 BaseGameEnv + 4 plugin), TDD — **DONE** (PR #148) |
+| Tests | 36 tests (26 `test_savegame_injector.py` + 8 `test_base_env.py` + 2 `test_game_plugins.py`), TDD — **DONE** (PR #148) |
 
 **Implementation details (PR #148):**
 - `SavegamePool`: scans directory for save files with configurable
@@ -686,8 +686,9 @@ files via game-specific JS bridge calls. Each game plugin provides a
   first step, failure logged as warning (non-fatal)
 - `SessionRunner` reads `load_save_js` from plugin metadata and forwards
   to env constructor
-- shapez.io `LOAD_SAVE_JS` uses `savegameMgr.importSave()` to load save
-  JSON, then transitions to `InGameState`
+- shapez.io `LOAD_SAVE_JS` creates a new savegame via
+  `savegameMgr.createNewSavegame()`, calls `savegame.migrate(data)` with
+  the loaded JSON, then transitions to `InGameState`
 - Copilot review: 7 comments addressed (IIFE arguments shadowing, docstring
   mismatch, probabilistic test, IIFE test tightening, exception detail in
   warning, `.bin` removal, non-dict JS result handling)
