@@ -3,11 +3,11 @@
 Six-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 60):** Phases 1-5 complete. Phase 6 Tier 2
-(OCR score delta reward) implementation complete (PR #139), live
-validation pending. Three games onboarded (Breakout 71, Hextris,
-shapez.io) across three genres with no game-specific changes to
-`src/platform/` required after the plugin system. 1382 tests.
+**Current state (session 61):** Phases 1-5 complete. Phase 6 Tier 2
+(OCR score delta reward) complete (PRs #139, #141, #142), live
+validation passed on Hextris. Three games onboarded (Breakout 71,
+Hextris, shapez.io) across three genres with no game-specific changes
+to `src/platform/` required after the plugin system. 1398 tests.
 
 ---
 
@@ -480,10 +480,10 @@ demonstration-guided exploration.
 **Goal:** Investigate whether domain knowledge improves exploration beyond
 pure novelty-seeking.
 
-### Tier 2: OCR Score Delta (Implementation Complete)
+### Tier 2: OCR Score Delta ✓
 
-**Status:** Implementation complete (PR #139, session 60). Live validation
-pending — needs real training run with `--reward-mode score`.
+**Status:** Complete (PRs #139, #141, #142, sessions 60-61). Live
+validation passed on Hextris with `--reward-mode score`.
 
 | Task | Details |
 |---|---|
@@ -492,9 +492,36 @@ pending — needs real training run with `--reward-mode score`.
 | CLI args | `--score-region X,Y,W,H`, `--score-ocr-interval N`, `--score-reward-coeff F` — **DONE** (PR #139) |
 | Score extraction | Largest number from OCR text, handles comma/period thousands — **DONE** (PR #139) |
 | Per-game config for score location | Via `--score-region` CLI arg (per-game, not auto-detect) — **DONE** (PR #139) |
-| Tests | 42 new tests (21 ScoreOCR + 21 base_env integration), 1382 total — **DONE** (PR #139) |
+| Tests | 58 new tests (28 ScoreOCR + 21 base_env + 9 plugin forwarding), 1398 total — **DONE** (PRs #139, #141, #142) |
+| OCR preprocessing fix | Binary threshold preprocessing for improved accuracy — **DONE** (PR #141) |
+| Score params forwarding | All 3 game plugins accept and forward score params — **DONE** (PR #142) |
 | Score region auto-detection | Not implemented — per-game config is sufficient for now |
-| Live validation on real game frames | Pending — needs real training run with `--reward-mode score` |
+| Live validation on Hextris | 3-episode session, OCR confirmed working, +0.79 reward contribution — **DONE** (session 61) |
+
+**Live validation results (session 61, Hextris):**
+- `--reward-mode score --score-region "540,402,200,80" --score-ocr-interval 5 --score-reward-coeff 0.1`
+- 3 episodes with random policy, headless mode, max_steps=500
+- Mean episode length: 217 steps, mean reward: -2.58
+- Episode 2 showed +0.79 OCR reward contribution (~7.9 total score delta)
+- Episodes 1 & 3 had negligible OCR contribution (random policy scored
+  little before dying)
+- Reward decomposition: `total = steps × 0.01 (survival) - 5.01
+  (game-over penalty) + Σ(score_delta × 0.1)`
+- **OCR confirmed working:** Score changes detected and rewarded in real
+  gameplay
+
+**Known limitation — canvas vs DOM score rendering:**
+- **Hextris:** Score rendered on canvas via `ctx.fillText()` — OCR works
+  with `toDataURL` canvas captures ✓
+- **Breakout 71:** Score rendered as DOM HTML (`<span id="score">`) — NOT
+  on canvas. `toDataURL` captures never contain the score. OCR-based
+  score reading is impossible with canvas capture for this game.
+- **Implication:** For games with DOM-rendered scores, either use
+  full-page Selenium screenshots (slower) instead of `toDataURL`, or use
+  the JS score bridge (`READ_GAME_STATE_JS`) instead of OCR. The
+  `--reward-mode score` is designed for games that render scores on
+  canvas. Games with JS-accessible score variables can use the existing
+  JS bridge approach from Phase 2b.
 
 **Implementation details:**
 - `ScoreOCR` reads frames at configurable intervals (default every 10
@@ -503,6 +530,9 @@ pending — needs real training run with `--reward-mode score`.
   comma/period thousand separators ("1,234,567" → 1234567)
 - `_compute_score_reward()` returns survival base reward + `delta × coeff`
   when OCR detects a positive score change
+- `_run_ocr()` applies `cv2.threshold()` binary preprocessing for
+  improved accuracy (PR #141); graceful fallback to raw grayscale when
+  cv2 is unavailable
 - pytesseract import is lazy (inside `_run_ocr()`) — graceful degradation
   in environments without Tesseract installed
 - Score mode suppresses YOLO-based `level_cleared` detection (same as
@@ -516,6 +546,11 @@ pending — needs real training run with `--reward-mode score`.
   `RNDRewardWrapper`
 - Score mode can be combined with RND: `--reward-mode rnd` with future
   `--base-reward-mode score` flag (not yet implemented)
+
+**Success criteria:** MET. OCR-based score reading validated on Hextris
+with 0 false readings and measurable reward contribution from score
+deltas. The approach is game-agnostic for any game that renders scores
+on canvas.
 
 ### Tier 3: Oracle-Guided Exploration (Not Started)
 
