@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -80,8 +81,10 @@ def load_demo(demo_dir: str | Path) -> dict:
             try:
                 steps.append(json.loads(line))
             except json.JSONDecodeError:
-                # Skip malformed lines gracefully
-                pass
+                print(
+                    f"WARNING: skipping malformed JSONL line in {jsonl_path}",
+                    file=sys.stderr,
+                )
 
     # Parse manifest
     with open(manifest_path, encoding="utf-8") as f:
@@ -258,12 +261,29 @@ def cluster_macro_actions(
     macros.extend(_flush_hovers(standalone_moves))
 
     # Flush any pending keys that never got a keyup
+    # Use end of event stream as release time for consistent duration_ms
+    end_time = events[-1].get("t", 0) if events else 0
     for key, down_event in pending_keys.items():
+        start_time = down_event.get("t", 0)
+        duration_ms = max(0, end_time - start_time)
         macros.append(
             {
                 "action": "keypress",
                 "key": key,
-                "t": down_event.get("t", 0),
+                "t": start_time,
+                "duration_ms": duration_ms,
+            }
+        )
+
+    # Flush any pending mouse interactions that never got a mouseup
+    if mouse_down is not None:
+        macros.append(
+            {
+                "action": "click",
+                "x": mouse_down.get("x", 0),
+                "y": mouse_down.get("y", 0),
+                "button": mouse_down.get("button", 0),
+                "t": mouse_down.get("t", 0),
             }
         )
 
@@ -601,13 +621,24 @@ def identify_reward_candidates(steps: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def analyze_demo(demo: dict) -> dict:
+def analyze_demo(
+    demo: dict,
+    grid_size: int = 10,
+    screen_width: int = 1280,
+    screen_height: int = 1024,
+) -> dict:
     """Run all analyses on a loaded demo and return structured results.
 
     Parameters
     ----------
     demo : dict
         Output from ``load_demo()``.
+    grid_size : int
+        Grid size for spatial heatmap (default 10).
+    screen_width : int
+        Screen width in pixels for heatmap (default 1280).
+    screen_height : int
+        Screen height in pixels for heatmap (default 1024).
 
     Returns
     -------
@@ -622,7 +653,12 @@ def analyze_demo(demo: dict) -> dict:
     macros = cluster_macro_actions_from_demo(steps)
     action_freq = analyze_action_frequency(macros)
     key_freq = analyze_key_frequency(macros)
-    heatmap = generate_spatial_heatmap(macros)
+    heatmap = generate_spatial_heatmap(
+        macros,
+        grid_size=grid_size,
+        width=screen_width,
+        height=screen_height,
+    )
     reward_cands = identify_reward_candidates(steps)
     build_order = extract_build_order(macros)
 
@@ -642,20 +678,36 @@ def analyze_demo(demo: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def format_report(demo: dict) -> str:
+def format_report(
+    demo: dict,
+    grid_size: int = 10,
+    screen_width: int = 1280,
+    screen_height: int = 1024,
+) -> str:
     """Format analysis results as a human-readable console report.
 
     Parameters
     ----------
     demo : dict
         Output from ``load_demo()``.
+    grid_size : int
+        Grid size for spatial heatmap (default 10).
+    screen_width : int
+        Screen width in pixels for heatmap (default 1280).
+    screen_height : int
+        Screen height in pixels for heatmap (default 1024).
 
     Returns
     -------
     str
         Formatted text report.
     """
-    analysis = analyze_demo(demo)
+    analysis = analyze_demo(
+        demo,
+        grid_size=grid_size,
+        screen_width=screen_width,
+        screen_height=screen_height,
+    )
     manifest = analysis["manifest"]
 
     lines: list[str] = []
@@ -800,18 +852,22 @@ def main(argv: list[str] | None = None) -> None:
     demo = load_demo(args.demo_dir)
 
     if args.json:
-        analysis = analyze_demo(demo)
-        # Override heatmap with custom grid/screen size
-        macros = analysis["macro_actions"]
-        analysis["spatial_heatmap"] = generate_spatial_heatmap(
-            macros,
+        analysis = analyze_demo(
+            demo,
             grid_size=args.grid_size,
-            width=args.screen_width,
-            height=args.screen_height,
+            screen_width=args.screen_width,
+            screen_height=args.screen_height,
         )
         print(json.dumps(analysis, indent=2, default=str))
     else:
-        print(format_report(demo))
+        print(
+            format_report(
+                demo,
+                grid_size=args.grid_size,
+                screen_width=args.screen_width,
+                screen_height=args.screen_height,
+            )
+        )
 
 
 if __name__ == "__main__":

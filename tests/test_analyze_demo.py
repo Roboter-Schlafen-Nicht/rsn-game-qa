@@ -149,8 +149,8 @@ class TestDemoParsing:
         with pytest.raises(FileNotFoundError, match="manifest.json"):
             load_demo(demo_dir)
 
-    def test_load_demo_skips_malformed_lines(self, tmp_path):
-        """load_demo() skips malformed JSONL lines gracefully."""
+    def test_load_demo_skips_malformed_lines(self, tmp_path, capsys):
+        """load_demo() skips malformed JSONL lines with a warning to stderr."""
         from scripts.analyze_demo import load_demo
 
         demo_dir = tmp_path / "demo_bad"
@@ -167,6 +167,9 @@ class TestDemoParsing:
         manifest_path.write_text(json.dumps(_make_manifest(total_steps=2)))
         result = load_demo(demo_dir)
         assert len(result["steps"]) == 2
+        captured = capsys.readouterr()
+        assert "WARNING" in captured.err
+        assert "malformed" in captured.err
 
     def test_load_demo_groups_by_episode(self, tmp_path):
         """load_demo() groups steps by episode_id."""
@@ -297,6 +300,41 @@ class TestMacroActionClustering:
         macros = cluster_macro_actions(events)
         assert len(macros) == 1
         assert macros[0]["action"] == "scroll"
+
+    def test_cluster_pending_key_has_duration_ms(self):
+        """Pending keydown (no keyup) is flushed with duration_ms using stream end time."""
+        from scripts.analyze_demo import cluster_macro_actions
+
+        events = [
+            {"type": "keydown", "key": "a", "t": 1000},
+            {"type": "keydown", "key": "b", "t": 2000},
+            # No keyup for either key; last event timestamp is 2000
+        ]
+        macros = cluster_macro_actions(events)
+        assert len(macros) == 2
+        for m in macros:
+            assert "duration_ms" in m
+            assert m["action"] == "keypress"
+        # Key "a" pressed at 1000, stream ends at 2000 → duration_ms=1000
+        key_a = next(m for m in macros if m["key"] == "a")
+        assert key_a["duration_ms"] == 1000
+        # Key "b" pressed at 2000, stream ends at 2000 → duration_ms=0
+        key_b = next(m for m in macros if m["key"] == "b")
+        assert key_b["duration_ms"] == 0
+
+    def test_cluster_pending_mousedown_flushed(self):
+        """Pending mousedown (no mouseup) is flushed as a click action."""
+        from scripts.analyze_demo import cluster_macro_actions
+
+        events = [
+            {"type": "mousedown", "x": 300, "y": 400, "t": 1000, "button": 0},
+            # No mouseup event
+        ]
+        macros = cluster_macro_actions(events)
+        assert len(macros) == 1
+        assert macros[0]["action"] == "click"
+        assert macros[0]["x"] == 300
+        assert macros[0]["y"] == 400
 
     def test_cluster_across_steps(self):
         """cluster_macro_actions_from_demo groups events across all steps."""
@@ -680,6 +718,26 @@ class TestReportFormatting:
         assert "Macro-Action" in report or "macro" in report.lower()
         assert "Frequency" in report or "frequency" in report.lower()
         assert "Reward" in report or "reward" in report.lower()
+
+    def test_format_report_uses_custom_grid_params(self, tmp_path):
+        """format_report() forwards custom grid/screen params to analysis."""
+        from scripts.analyze_demo import format_report, load_demo
+
+        steps = [
+            _make_step(
+                step=0,
+                human_events=[
+                    {"type": "mousedown", "x": 100, "y": 100, "t": 1000, "button": 0},
+                    {"type": "mouseup", "x": 100, "y": 100, "t": 1050, "button": 0},
+                ],
+            ),
+        ]
+        demo_dir = _write_demo(tmp_path, steps, _make_manifest(total_steps=1))
+        demo = load_demo(demo_dir)
+        # With grid_size=5 and width=500, click at (100,100) is cell (1,1)
+        # The report should use the custom grid size
+        report = format_report(demo, grid_size=5, screen_width=500, screen_height=500)
+        assert "Spatial Heatmap" in report
 
 
 # ===========================================================================
