@@ -57,3 +57,12 @@ DashboardRenderer
    :members:
    :undoc-members:
    :show-inheritance:
+
+Finding Descriptions
+--------------------
+
+.. autofunction:: src.reporting.enrich_report_data
+
+.. autofunction:: src.reporting.get_finding_description
+
+.. autofunction:: src.reporting.get_severity_info

@@ -46,6 +46,24 @@ Breakout71Loader
    :show-inheritance:
    :no-index:
 
+HextrisLoader
+-------------
+
+.. autoclass:: games.hextris.loader.HextrisLoader
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:
+
+ShapezLoader
+------------
+
+.. autoclass:: games.shapez.loader.ShapezLoader
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:
+
 Factory
 -------
 

@@ -21,13 +21,13 @@ provides strategic direction and domain expertise.
 The project demonstrates what this workflow produces:
 
 - **6-8x calendar compression** vs a traditional engineering team
-- **142+ PRs merged** with automated Copilot code review, zero review
+- **150+ PRs merged** with automated Copilot code review, zero review
   bottleneck
 - **95%+ test coverage** not from a coverage sprint, but built into the
   workflow from day one
 - **Thousands of lines of documentation** generated as a natural byproduct
   of working, not a separate effort
-- **8 subsystems, 3 game plugins, full CI/CD** -- built across 62 sessions
+- **8 subsystems, 3 game plugins, full CI/CD** -- built across 68 sessions
 
 The codebase is real, the tests pass, the CI is green. The methodology
 behind it is the point.
@@ -153,10 +153,10 @@ Platform-specific dependencies (`pywin32`, `pydirectinput`) are guarded with
 
 ```bash
 # Train a PPO agent on Breakout 71 (headless, CNN policy)
-python scripts/train_rl.py --game breakout71 --total-timesteps 200000 --headless
+python scripts/train_rl.py --game breakout71 --timesteps 200000 --headless
 
 # Train with MLP policy (requires YOLO model)
-python scripts/train_rl.py --game breakout71 --total-timesteps 200000 --headless --policy mlp
+python scripts/train_rl.py --game breakout71 --timesteps 200000 --headless --policy mlp
 ```
 
 ### Evaluation
