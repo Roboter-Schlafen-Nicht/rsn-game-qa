@@ -221,6 +221,11 @@ class SessionRunner:
     score_reward_coeff : float
         Coefficient for score delta reward.  Default is 0.01.
         Only used when ``reward_mode="score"``.
+    human_mode : bool
+        When True, the human controls the game through the browser.
+        ``apply_action()`` becomes a no-op, ``policy_fn`` is forced
+        to None, and the ``EventRecorder`` captures human input
+        events each step.  Default is False.
     """
 
     def __init__(
@@ -243,6 +248,7 @@ class SessionRunner:
         score_region: tuple[int, int, int, int] | None = None,
         score_ocr_interval: int = 5,
         score_reward_coeff: float = 0.01,
+        human_mode: bool = False,
     ) -> None:
         valid_policies = ("mlp", "cnn")
         if policy not in valid_policies:
@@ -258,6 +264,11 @@ class SessionRunner:
         self.enable_data_collection = enable_data_collection
         self.policy_fn = policy_fn
         self.headless = headless
+        self.human_mode = human_mode
+
+        # In human mode, the human controls the game — no policy needed
+        if human_mode:
+            self.policy_fn = None
         self.policy = policy
         self.frame_stack = frame_stack
         self.reward_mode = reward_mode
@@ -423,6 +434,7 @@ class SessionRunner:
             score_region=self.score_region,
             score_ocr_interval=self.score_ocr_interval,
             score_reward_coeff=self.score_reward_coeff,
+            human_mode=self.human_mode,
         )
 
         # Create frame collector

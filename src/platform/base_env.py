@@ -107,6 +107,13 @@ class BaseGameEnv(gym.Env, abc.ABC):
         Run OCR every N steps in ``"score"`` mode.  Default ``1``.
     score_reward_coeff : float
         Multiplier for OCR score delta.  Default ``0.01``.
+    human_mode : bool
+        When ``True``, ``apply_action()`` becomes a no-op (the human
+        controls the game through the browser), and an
+        :class:`~src.platform.event_recorder.EventRecorder` is created
+        to capture the human's input events each step.  The events are
+        included in the ``info`` dict under ``"human_events"``.
+        Default ``False``.
     """
 
     _VALID_REWARD_MODES = ("yolo", "survival", "score")
@@ -130,6 +137,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         score_region: tuple[int, int, int, int] | None = None,
         score_ocr_interval: int = 1,
         score_reward_coeff: float = 0.01,
+        human_mode: bool = False,
     ) -> None:
         super().__init__()
 
@@ -177,6 +185,14 @@ class BaseGameEnv(gym.Env, abc.ABC):
         # Selenium canvas element for ActionChains input
         self._game_canvas: Any | None = None
         self._canvas_size: tuple[int, int] | None = None
+
+        # Human play mode (Phase 7b)
+        self.human_mode: bool = human_mode
+        self._event_recorder: EventRecorder | None = None
+        if human_mode:
+            from src.platform.event_recorder import EventRecorder
+
+            self._event_recorder = EventRecorder(driver=driver)
 
     # ------------------------------------------------------------------
     # Abstract methods — subclasses MUST implement
@@ -483,6 +499,36 @@ class BaseGameEnv(gym.Env, abc.ABC):
         return reward
 
     # ------------------------------------------------------------------
+    # Human play mode (Phase 7b)
+    # ------------------------------------------------------------------
+
+    @property
+    def event_recorder(self) -> Any | None:
+        """Return the :class:`EventRecorder` instance (human mode only).
+
+        Returns ``None`` when ``human_mode=False``.
+        """
+        return self._event_recorder
+
+    def flush_events(self) -> list[dict[str, Any]]:
+        """Flush captured human input events from the EventRecorder.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            List of event dicts captured since last flush.
+            Empty list when not in human mode, no driver available,
+            or no events captured.
+        """
+        if self._event_recorder is None:
+            return []
+        try:
+            return self._event_recorder.flush()
+        except RuntimeError:
+            # No driver set yet (e.g. before lazy init)
+            return []
+
+    # ------------------------------------------------------------------
     # Gymnasium lifecycle — generic implementation
     # ------------------------------------------------------------------
 
@@ -651,13 +697,15 @@ class BaseGameEnv(gym.Env, abc.ABC):
             Auxiliary information.
         """
         # -- Apply action (may fail if browser is dead) ----------------
-        try:
-            self.apply_action(action)
-        except Exception:
-            if self._browser_instance is not None:
-                self._restart_browser()
-                return self._make_crash_transition()
-            raise
+        # In human mode the human controls the game; skip apply_action.
+        if not self.human_mode:
+            try:
+                self.apply_action(action)
+            except Exception:
+                if self._browser_instance is not None:
+                    self._restart_browser()
+                    return self._make_crash_transition()
+                raise
 
         # Modal check throttling: only check when subclass signals
         # a missing key object (e.g. ball not detected for N frames).
@@ -1168,6 +1216,8 @@ class BaseGameEnv(gym.Env, abc.ABC):
         info = self.build_info(detections)
         info["frame"] = self._last_frame
         info["step"] = self._step_count
+        if self.human_mode:
+            info["human_events"] = self.flush_events()
         return info
 
     def _run_oracles(
