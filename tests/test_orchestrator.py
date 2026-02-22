@@ -2257,3 +2257,257 @@ class TestExplorationFixCLI:
             f"{plugin.env_class.__name__}.__init__ must accept "
             f"survival_bonus; params: {list(sig.parameters)}"
         )
+
+
+# ===========================================================================
+# DemoRecorder Integration Tests (SessionRunner + DemoRecorder)
+# ===========================================================================
+
+
+class TestSessionRunnerRecordDemo:
+    """Integration tests for SessionRunner with record_demo=True."""
+
+    def _make_runner_with_demo(
+        self,
+        tmp_path,
+        n_episodes=2,
+        steps_per_episode=3,
+        enable_data_collection=False,
+    ):
+        """Create a SessionRunner with record_demo=True and mocked _setup."""
+        runner = SessionRunner(
+            n_episodes=n_episodes,
+            output_dir=tmp_path,
+            enable_data_collection=enable_data_collection,
+            record_demo=True,
+        )
+
+        mock_env = mock.MagicMock()
+        mock_env.action_space = mock.MagicMock()
+        mock_env.action_space.sample.return_value = np.array([0.0], dtype=np.float32)
+        mock_env._oracles = []
+
+        frame = _fake_frame()
+        obs = np.zeros(8, dtype=np.float32)
+        info = {
+            "frame": frame,
+            "detections": {},
+            "step": 0,
+            "human_events": [{"type": "click", "x": 100, "y": 200}],
+            "game_state": {"score": 42, "level": 1},
+            "oracle_findings": [],
+        }
+
+        mock_env.reset.return_value = (obs, info)
+
+        call_counter = {"count": 0}
+
+        def step_fn(action):
+            call_counter["count"] += 1
+            step = call_counter["count"]
+            mock_env.step_count = step
+            done = step % steps_per_episode == 0
+            return obs, 1.0, done, False, info
+
+        mock_env.step.side_effect = step_fn
+
+        def mock_setup():
+            runner._env = mock_env
+            runner._browser_instance = mock.MagicMock()
+            # Create demo recorder as _setup() would
+            from src.orchestrator.demo_recorder import DemoRecorder
+
+            runner._demo_recorder = DemoRecorder(
+                output_dir=tmp_path,
+                game_name="test_game",
+            )
+
+        runner._setup = mock_setup
+        return runner
+
+    def test_record_demo_defaults_to_false(self):
+        """SessionRunner defaults record_demo to False."""
+        runner = SessionRunner()
+        assert runner.record_demo is False
+
+    def test_record_demo_can_be_set_true(self):
+        """SessionRunner accepts record_demo=True."""
+        runner = SessionRunner(record_demo=True)
+        assert runner.record_demo is True
+
+    def test_run_creates_demo_recorder(self, tmp_path):
+        """run() with record_demo=True creates a DemoRecorder."""
+        runner = self._make_runner_with_demo(tmp_path, n_episodes=1)
+        runner.run()
+        assert runner._demo_recorder is not None
+
+    def test_run_records_steps(self, tmp_path):
+        """run() records steps via DemoRecorder."""
+        runner = self._make_runner_with_demo(
+            tmp_path,
+            n_episodes=1,
+            steps_per_episode=3,
+        )
+        runner.run()
+        assert runner._demo_recorder.step_count == 3
+
+    def test_run_records_multiple_episodes(self, tmp_path):
+        """run() records steps across multiple episodes."""
+        runner = self._make_runner_with_demo(
+            tmp_path,
+            n_episodes=2,
+            steps_per_episode=3,
+        )
+        runner.run()
+        assert runner._demo_recorder.step_count == 6
+        assert runner._demo_recorder.episode_count == 2
+
+    def test_run_finalizes_demo_recorder(self, tmp_path):
+        """run() calls finalize() on the DemoRecorder after all episodes."""
+        runner = self._make_runner_with_demo(tmp_path, n_episodes=1)
+        runner.run()
+
+        # Manifest should exist after finalize
+        manifest_path = runner._demo_recorder.output_dir / "manifest.json"
+        assert manifest_path.exists()
+
+    def test_run_produces_jsonl(self, tmp_path):
+        """run() produces a demo.jsonl file with per-step records."""
+        runner = self._make_runner_with_demo(
+            tmp_path,
+            n_episodes=1,
+            steps_per_episode=2,
+        )
+        runner.run()
+
+        jsonl_path = runner._demo_recorder.output_dir / "demo.jsonl"
+        assert jsonl_path.exists()
+
+        with open(jsonl_path) as f:
+            lines = f.readlines()
+        assert len(lines) == 2
+
+        # Verify record structure
+        record = json.loads(lines[0])
+        assert "step" in record
+        assert "episode_id" in record
+        assert "action" in record
+        assert "reward" in record
+        assert "human_events" in record
+        assert "game_state" in record
+
+    def test_run_produces_frame_pngs(self, tmp_path):
+        """run() saves frame PNGs to the frames/ directory."""
+        runner = self._make_runner_with_demo(
+            tmp_path,
+            n_episodes=1,
+            steps_per_episode=3,
+        )
+        runner.run()
+
+        frames_dir = runner._demo_recorder.output_dir / "frames"
+        png_files = list(frames_dir.glob("*.png"))
+        assert len(png_files) == 3  # 3 steps, interval=1
+
+    def test_manifest_has_episode_metadata(self, tmp_path):
+        """Manifest includes episode metadata after finalize."""
+        runner = self._make_runner_with_demo(
+            tmp_path,
+            n_episodes=2,
+            steps_per_episode=2,
+        )
+        runner.run()
+
+        manifest_path = runner._demo_recorder.output_dir / "manifest.json"
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+
+        assert manifest["game_name"] == "test_game"
+        assert manifest["total_steps"] == 4
+        assert manifest["total_episodes"] == 2
+        assert len(manifest["episodes"]) == 2
+        # Each episode has 2 steps with reward 1.0 each
+        assert manifest["episodes"][0]["steps"] == 2
+        assert manifest["episodes"][0]["total_reward"] == pytest.approx(2.0)
+
+    def test_demo_recording_with_data_collection(self, tmp_path):
+        """record_demo=True works alongside enable_data_collection=True."""
+        runner = self._make_runner_with_demo(
+            tmp_path,
+            n_episodes=1,
+            steps_per_episode=2,
+            enable_data_collection=True,
+        )
+
+        # Override _setup to also attach a mock collector
+        original_setup = runner._setup
+
+        def setup_with_collector():
+            original_setup()
+            runner._collector = FrameCollector(
+                output_dir=tmp_path,
+                capture_interval=1,
+            )
+
+        runner._setup = setup_with_collector
+
+        report = runner.run()
+        assert len(report.episodes) == 1
+        # Both demo recorder and frame collector should have recorded
+        assert runner._demo_recorder.step_count == 2
+        assert runner._collector.frame_count > 0
+
+    def test_demo_not_created_when_record_demo_false(self, tmp_path):
+        """DemoRecorder is not created when record_demo=False (default)."""
+        runner = SessionRunner(
+            n_episodes=1,
+            output_dir=tmp_path,
+            enable_data_collection=False,
+            record_demo=False,
+        )
+
+        mock_env = mock.MagicMock()
+        mock_env.action_space = mock.MagicMock()
+        mock_env.action_space.sample.return_value = np.array([0.0], dtype=np.float32)
+        mock_env._oracles = []
+
+        obs = np.zeros(8, dtype=np.float32)
+        info = {"frame": _fake_frame(), "detections": {}, "step": 0}
+        mock_env.reset.return_value = (obs, info)
+        mock_env.step.return_value = (obs, 1.0, True, False, info)
+        mock_env.step_count = 1
+
+        def mock_setup():
+            runner._env = mock_env
+            runner._browser_instance = mock.MagicMock()
+
+        runner._setup = mock_setup
+
+        runner.run()
+        assert runner._demo_recorder is None
+
+
+class TestRecordDemoCLI:
+    """Test the --record-demo CLI flag in run_session.py."""
+
+    def test_record_demo_flag_parsed(self):
+        """--record-demo flag is parsed correctly."""
+        from scripts.run_session import parse_args
+
+        args = parse_args(["--record-demo"])
+        assert args.record_demo is True
+
+    def test_record_demo_flag_default_false(self):
+        """--record-demo flag defaults to False."""
+        from scripts.run_session import parse_args
+
+        args = parse_args([])
+        assert args.record_demo is False
+
+    def test_record_demo_combined_with_human(self):
+        """--record-demo can be combined with --human."""
+        from scripts.run_session import parse_args
+
+        args = parse_args(["--record-demo", "--human"])
+        assert args.record_demo is True
+        assert args.human is True

@@ -226,6 +226,11 @@ class SessionRunner:
         ``apply_action()`` becomes a no-op, ``policy_fn`` is forced
         to None, and the ``EventRecorder`` captures human input
         events each step.  Default is False.
+    record_demo : bool
+        When True, enables enriched per-step recording via
+        :class:`~src.orchestrator.demo_recorder.DemoRecorder`.
+        Captures frames, human events, game state, reward, oracle
+        findings, and observation hashes.  Default is False.
     """
 
     def __init__(
@@ -249,6 +254,7 @@ class SessionRunner:
         score_ocr_interval: int = 5,
         score_reward_coeff: float = 0.01,
         human_mode: bool = False,
+        record_demo: bool = False,
     ) -> None:
         valid_policies = ("mlp", "cnn")
         if policy not in valid_policies:
@@ -265,6 +271,7 @@ class SessionRunner:
         self.policy_fn = policy_fn
         self.headless = headless
         self.human_mode = human_mode
+        self.record_demo = record_demo
 
         # In human mode, the human controls the game — no policy needed
         if human_mode:
@@ -292,6 +299,7 @@ class SessionRunner:
         self._env = None
         self._raw_env = None  # Unwrapped env for oracle/step_count access
         self._collector: FrameCollector | None = None
+        self._demo_recorder = None
         self._loader = None
 
     def run(self) -> SessionReport:
@@ -331,6 +339,15 @@ class SessionRunner:
                 "Collected %d frames in %s",
                 self._collector.frame_count,
                 frames_dir,
+            )
+
+        # Finalize demo recording
+        if self._demo_recorder is not None:
+            demo_dir = self._demo_recorder.finalize()
+            logger.info(
+                "Demo recording finalized: %d steps in %s",
+                self._demo_recorder.step_count,
+                demo_dir,
             )
 
         # Save JSON report
@@ -444,6 +461,15 @@ class SessionRunner:
                 capture_interval=self.frame_capture_interval,
             )
 
+        # Create demo recorder
+        if self.record_demo:
+            from .demo_recorder import DemoRecorder
+
+            self._demo_recorder = DemoRecorder(
+                output_dir=self.output_dir,
+                game_name=self._plugin.game_name,
+            )
+
         logger.info(
             "Session setup complete: browser=%s, window=%s, episodes=%d",
             self.browser,
@@ -494,6 +520,10 @@ class SessionRunner:
         raw_env = self._raw_env if self._raw_env is not None else env
         screenshots_dir = self.output_dir / "screenshots" / f"episode_{episode_id}"
 
+        # Start demo recording for this episode
+        if self._demo_recorder is not None:
+            self._demo_recorder.start_episode(episode_id=episode_id)
+
         obs, info = env.reset()
         episode_start = time.perf_counter()
 
@@ -502,6 +532,7 @@ class SessionRunner:
         rewards: list[float] = []
         terminated = False
         truncated = False
+        step_idx = 0
 
         while not terminated and not truncated:
             step_start = time.perf_counter()
@@ -525,6 +556,30 @@ class SessionRunner:
                     step=raw_env.step_count,
                     episode_id=episode_id,
                 )
+
+            # Record enriched demo step
+            if self._demo_recorder is not None:
+                self._demo_recorder.record_step(
+                    step=step_idx,
+                    frame=info.get("frame"),
+                    action=action,
+                    reward=reward,
+                    terminated=terminated,
+                    truncated=truncated,
+                    human_events=info.get("human_events"),
+                    game_state=info.get("game_state"),
+                    observation=obs,
+                    oracle_findings=info.get("oracle_findings"),
+                )
+
+            step_idx += 1
+
+        # End demo recording for this episode
+        if self._demo_recorder is not None:
+            self._demo_recorder.end_episode(
+                terminated=terminated,
+                truncated=truncated,
+            )
 
         # Gather oracle findings from raw env (oracles live on base env)
         findings: list[FindingReport] = []
