@@ -146,7 +146,9 @@ def compute_step_stats(steps: list[dict]) -> dict:
     rnd_raw = [s["rnd_intrinsic_raw"] for s in steps if "rnd_intrinsic_raw" in s]
     rnd_norm = [s["rnd_intrinsic_norm"] for s in steps if "rnd_intrinsic_norm" in s]
 
-    paddle_positions = [s["paddle_x"] for s in steps if "paddle_x" in s]
+    paddle_positions = [
+        s["paddle_x"] for s in steps if "paddle_x" in s and s["paddle_x"] is not None
+    ]
 
     return {
         "count": len(steps),
@@ -222,7 +224,7 @@ def analyze_paddle_movement(steps: list[dict]) -> dict:
     if not steps:
         return {"unique_positions": 0, "degenerate": False}
 
-    positions = [s["paddle_x"] for s in steps if "paddle_x" in s]
+    positions = [s["paddle_x"] for s in steps if "paddle_x" in s and s["paddle_x"] is not None]
     if not positions:
         return {"unique_positions": 0, "degenerate": False}
 

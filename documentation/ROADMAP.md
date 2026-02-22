@@ -334,7 +334,7 @@ for seamless multi-game support.
 
 ---
 
-## Phase 5: Third Game Onboarding — shapez.io
+## Phase 5: Third Game Onboarding — shapez.io ✓
 
 **Goal:** Validate the platform handles complex factory-builder games with
 mouse+keyboard input, a build toolchain, and rich state spaces. This is
@@ -359,37 +359,118 @@ model from the arcade/puzzle games in Phases 1-4.
 
 | Task | Details |
 |---|---|
-| Clone shapez.io repo | Clone https://github.com/tobspr-games/shapez.io, set `$SHAPEZ_DIR` |
-| Build toolchain setup | Node.js 16, Yarn, Java, ffmpeg; `yarn` in root, `cd gulp && yarn && yarn gulp` |
-| Verify local build | Game loads and plays in browser from local build |
-| Study game source | Understand state machine, input model, game phases, tutorial flow |
-| Create `configs/games/shapez.yaml` | Game loader config (port, build command, orientation) |
-| Create `games/shapez/` plugin | `__init__.py`, `env.py`, `loader.py`, `modal_handler.py`, `perception.py` |
-| Design action space | Mouse click/drag + keyboard — likely `MultiDiscrete` or hybrid |
-| Implement game state detection | Pixel/vision-based detection of game phase, score/level, tutorial state; JS only for modal dismissal / one-time settings |
-| Implement game-over / session end | Factory builder may not have traditional game-over — define session boundaries |
-| CNN-only observation | 84x84 grayscale, no YOLO required |
-| Plugin tests | Env, loader, plugin loading tests (target: 50+ tests) |
-| Live validation | `--game shapez --headless --episodes 3` with random policy |
-| CNN training | 200K steps, measure visual state diversity |
-| 10-episode evaluation | Compare trained vs random baseline |
-| QA report | Cross-game comparison (3 games) |
+| Clone shapez.io repo | Clone to `/home/human/games/shapez.io`, set `$SHAPEZ_DIR` — **DONE** |
+| Build toolchain setup | nvm Node.js 16, Yarn 1.22.22, Java 21, ffmpeg 6.1.1 — **DONE** |
+| Verify local build | Dev server on port 3005 via `yarn gulp` — **DONE** |
+| Study game source | 12 game states, `window.shapez.GLOBAL_APP` API, 26 levels + freeplay — **DONE** |
+| Create `configs/games/shapez.yaml` | Port 3005, landscape, window 1280×1024 — **DONE** (PR #128) |
+| Create `games/shapez/` plugin | 755-line env, 464-line modal handler (15 JS snippets), 230-line loader — **DONE** (PR #128) |
+| Design action space | `MultiDiscrete([7,10,16,16,4])`: noop, select_building, place, delete, rotate, pan, center_hub — **DONE** (PR #128) |
+| Implement game state detection | `window.shapez.GLOBAL_APP` JS bridge for level, shapes, entities — **DONE** (PRs #128, #133) |
+| Implement session boundaries | `max_steps` truncation + idle detection (3000 steps) — **DONE** (PR #128) |
+| CNN-only observation | 84×84 grayscale, `_lazy_init`/`_detect_objects` overrides — **DONE** (PR #128) |
+| Plugin tests | 160 tests (143 env + 9 loader + 8 plugin), 1289 total, 94.88% coverage — **DONE** (PR #128) |
+| Bug fixes | 6 PRs (#131-#136): JS API migration, canvas re-init, InGameState polling, port cleanup — **DONE** |
+| MultiDiscrete action logging | `_serialize_action()` with `isinstance` type detection — **DONE** (PR #137) |
+| Live validation | 3 episodes × 500 steps, full lifecycle validated — **DONE** (session 58) |
+| CNN training | 200,704 steps, 67 episodes, 12 unique visual states, ~13 FPS — **DONE** (session 59) |
+| 10-episode evaluation | Trained vs random comparison — **DONE** (session 59) |
+| QA report | Reports + HTML dashboards generated for both trained and random — **DONE** (session 59) |
 
-**Key challenges:**
-- **No natural game-over:** Factory builders don't end — the agent needs
-  session boundaries (time limit, goal completion, or idle detection)
-- **Tutorial flow:** New games start with a tutorial that must be skipped
-  or completed before free play
-- **Complex input model:** Placing buildings requires click-drag sequences,
-  not single actions
-- **Build step:** Unlike Hextris (static HTML) or Breakout (Parcel dev
-  server), shapez.io needs a real build pipeline
+**Key challenges (all resolved):**
+- **No natural game-over:** Solved with idle detection (3000-step threshold)
+  and `max_steps` truncation. All episodes terminate via idle detection.
+- **Tutorial flow:** Disabled via `offerHints = false` in `SETUP_TRAINING_JS`.
+- **Complex input model:** `MultiDiscrete([7,10,16,16,4])` maps 7 action
+  types to JS function calls. SB3 PPO natively supports `MultiDiscrete`.
+- **Build step:** `ShapezLoader` uses nvm Node 16 preamble with yarn/gulp.
+  `_kill_port_processes()` prevents orphan process accumulation.
+- **JS API migration:** shapez.io uses `window.shapez.GLOBAL_APP` (not
+  `window.globalRoot`), available from main menu onward.
+
+**shapez.io plugin architecture (PR #128):**
+- `MultiDiscrete([7,10,16,16,4])` action space: noop, select_building(10),
+  place(16×16), delete, rotate, pan(4), center_hub — mapped to JS calls
+- CNN-only pixel observation (no YOLO model required)
+- Game state detection via `window.shapez.GLOBAL_APP` JS bridge (gray-box)
+- Idle detection termination (3000 steps without meaningful state change)
+- nvm Node 16 build toolchain with yarn/gulp dev server (port 3005)
+- 0 changes to `src/` or `src/platform/` — plugin architecture validated
+
+**CNN training results (200K steps, session 59):**
+- 200,704 timesteps in 4h 41m (~13 FPS)
+- 67 episodes, ALL terminated via idle detection at max_steps=3000
+- Episode length: mean=2979, min=1817, max=3000
+- Reward: mean=24.79, std=1.46, best=25.00, worst=13.15
+- **12 unique visual states** (8×8 fingerprint — very low diversity, random
+  actions in a factory builder rarely produce meaningful layout changes)
+- Explained variance: ~0.0 (survival reward is constant, no learning signal)
+- Entropy: -11.1 (unchanged — `MultiDiscrete([7,10,16,16,4])` = 71,680
+  possible action combinations, policy remains near-uniform)
+- 4 checkpoints saved (50K, 100K, 150K, 200K)
+- Zero browser crashes
+
+**shapez.io evaluation results (200K model, session 59):**
+
+| Metric | Random | Trained (200K) |
+|---|---|---|
+| Mean episode length | 3000 | 3000 |
+| Mean reward | 25.00 | 25.00 |
+| Critical findings | 10 | 10 |
+| Warning findings | 496 | 510 |
+| Total findings | 506 | 520 |
+| Game over rate | 10/10 | 10/10 |
+
+**Cross-game QA comparison (Breakout 71 vs Hextris vs shapez.io, trained models):**
+
+| Metric | Breakout 71 | Hextris | shapez.io |
+|---|---|---|---|
+| Training steps | 200K | 200K | 200K |
+| Training episodes | 259 | 323 | 67 |
+| Unique visual states | 15,521 | 184,314 | 12 |
+| Eval mean length | 204 | 404 | 3000 |
+| Eval mean reward | -2.48 | -0.98 | 25.00 |
+| Eval critical findings | 1 | 3 | 10 |
+| Eval total findings | 2,055 | 4,741 | 520 |
+| vs random (length) | 0.34x (worse) | 1.08x (better) | 1.00x (same) |
+| vs random (critical) | 1 vs 0 | 3 vs 0 | 10 vs 10 |
+| Plugin code changes to `src/` | N/A (reference) | 0 files | 0 files |
+| Action space | `Box(-1,1)` | `Discrete(3)` | `MultiDiscrete([7,10,16,16,4])` |
 
 **Success criteria:**
-- shapez.io running with `--game shapez`, producing QA reports
-- Zero changes to `src/` or `src/platform/` (plugin-only)
-- Trained model explores more diverse states than random baseline
-- At least 1 finding that random baseline misses
+- ✅ shapez.io running with `--game shapez`, producing QA reports
+- ✅ Zero changes to `src/` or `src/platform/` (plugin-only, PRs #128, #131-#137)
+- ❌ Trained model explores more diverse states than random baseline —
+  NOT MET (both produce 12 unique states; survival reward provides no
+  exploration incentive in a factory builder where staying alive is trivial)
+- ❌ At least 1 finding that random baseline misses — NOT MET (both
+  produce identical finding patterns: 1 critical frozen-frame per episode
+  + performance warnings)
+
+**Root cause analysis:** The survival-only reward mode (+0.01/step) is
+appropriate for arcade games where survival requires skill (Breakout,
+Hextris) but provides zero learning signal for factory builders where
+the agent cannot die. The `MultiDiscrete([7,10,16,16,4])` action space
+(71,680 combinations) is too large for the policy to learn meaningful
+building sequences from 200K steps of constant reward. RND exploration
+reward (not used here) might help by rewarding novel screen states, but
+the fundamental challenge is that meaningful factory-building actions
+require multi-step sequences (select tool → click location → confirm
+placement) that random sampling almost never produces. Future work should
+investigate curriculum-based reward (e.g., reward for placing any building,
+then for connecting conveyors, then for delivering shapes) or
+demonstration-guided exploration.
+
+**Phase 5 takeaways:**
+1. **Plugin architecture validated at scale:** Three games across three
+   genres (arcade → puzzle → factory builder) with zero platform code
+   changes. `MultiDiscrete`, `Discrete`, and `Box` action spaces all work.
+2. **Build toolchain handling works:** nvm Node 16, yarn, gulp, Java —
+   the loader infrastructure handles real build pipelines.
+3. **Survival reward is genre-limited:** Works for games where survival
+   is hard (arcade/puzzle), fails for games where survival is trivial
+   (strategy/builder/sim). Game-specific or OCR-based reward signals
+   are needed for these genres (Phase 6 research).
 
 ---
 
