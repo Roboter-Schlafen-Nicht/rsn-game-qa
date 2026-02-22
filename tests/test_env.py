@@ -2239,3 +2239,35 @@ class TestBuildInfoMultiLevel:
         assert info["current_level"] == 2
         assert "levels_cleared" in info
         assert info["levels_cleared"] == 1
+
+
+# -- Score OCR parameter forwarding -------------------------------------------
+
+
+class TestBreakout71ScoreParamForwarding:
+    """Tests for score OCR parameter forwarding to BaseGameEnv."""
+
+    def test_accepts_score_region(self):
+        """Breakout71Env accepts score_region and forwards to BaseGameEnv."""
+        env = Breakout71Env(
+            reward_mode="score",
+            score_region=(10, 20, 100, 30),
+        )
+        assert env._score_region == (10, 20, 100, 30)
+        assert env._score_ocr is not None
+
+    def test_accepts_score_ocr_interval(self):
+        """Breakout71Env accepts score_ocr_interval."""
+        env = Breakout71Env(
+            reward_mode="score",
+            score_ocr_interval=10,
+        )
+        assert env._score_ocr_interval == 10
+
+    def test_accepts_score_reward_coeff(self):
+        """Breakout71Env accepts score_reward_coeff."""
+        env = Breakout71Env(
+            reward_mode="score",
+            score_reward_coeff=0.5,
+        )
+        assert env._score_reward_coeff == 0.5

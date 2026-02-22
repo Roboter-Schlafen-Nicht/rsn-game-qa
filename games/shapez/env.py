@@ -128,6 +128,16 @@ class ShapezEnv(BaseGameEnv):
     idle_threshold : int
         Steps without progress before idle termination.
         Default ``3000``.
+    score_region : tuple of int, optional
+        ``(left, top, width, height)`` region of the game canvas to run
+        OCR on when using ``--reward-mode score``.  If ``None``, score
+        OCR is disabled.
+    score_ocr_interval : int
+        Steps between OCR calls.  Higher values reduce overhead.
+        Default ``1``.
+    score_reward_coeff : float
+        Multiplier for OCR score delta in reward computation.
+        Default ``0.01``.
     """
 
     def __init__(
@@ -145,6 +155,9 @@ class ShapezEnv(BaseGameEnv):
         survival_bonus: float = 0.01,
         browser_instance: Any | None = None,
         idle_threshold: int = _IDLE_THRESHOLD,
+        score_region: tuple[int, int, int, int] | None = None,
+        score_ocr_interval: int = 1,
+        score_reward_coeff: float = 0.01,
     ) -> None:
         super().__init__(
             window_title=window_title,
@@ -159,6 +172,9 @@ class ShapezEnv(BaseGameEnv):
             game_over_detector=game_over_detector,
             survival_bonus=survival_bonus,
             browser_instance=browser_instance,
+            score_region=score_region,
+            score_ocr_interval=score_ocr_interval,
+            score_reward_coeff=score_reward_coeff,
         )
 
         # Observation: 8-element vector (minimal MLP placeholder)

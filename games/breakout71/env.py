@@ -110,6 +110,16 @@ class Breakout71Env(BaseGameEnv):
         Input always uses Selenium in both modes.
         Requires ``driver`` to be set.  Much slower (~2-3 FPS) but does
         not capture the host mouse.  Default is ``False``.
+    score_region : tuple of int, optional
+        ``(left, top, width, height)`` region of the game canvas to run
+        OCR on when using ``--reward-mode score``.  If ``None``, score
+        OCR is disabled.
+    score_ocr_interval : int
+        Steps between OCR calls.  Higher values reduce overhead.
+        Default ``1``.
+    score_reward_coeff : float
+        Multiplier for OCR score delta in reward computation.
+        Default ``0.01``.
 
     Attributes
     ----------
@@ -145,6 +155,9 @@ class Breakout71Env(BaseGameEnv):
         game_over_detector: Any | None = None,
         survival_bonus: float = 0.01,
         browser_instance: Any | None = None,
+        score_region: tuple[int, int, int, int] | None = None,
+        score_ocr_interval: int = 1,
+        score_reward_coeff: float = 0.01,
     ) -> None:
         super().__init__(
             window_title=window_title,
@@ -159,6 +172,9 @@ class Breakout71Env(BaseGameEnv):
             game_over_detector=game_over_detector,
             survival_bonus=survival_bonus,
             browser_instance=browser_instance,
+            score_region=score_region,
+            score_ocr_interval=score_ocr_interval,
+            score_reward_coeff=score_reward_coeff,
         )
 
         # Observation: 8-element vector
