@@ -3,13 +3,12 @@
 Multi-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 66):** Phases 1-6 complete. Phase 7 (Human
-Demo Recording & Knowledge Extraction) sub-phases 7a-7d complete
-(PRs #145, #146, #147). Phase 8 (Savegame Injection) complete
-(PR #148). Phase 7e (Live Validation) is next. Three games onboarded
-(Breakout 71, Hextris, shapez.io) across three genres with no
+**Current state (session 68):** Phases 1-8 complete. Gate 4
+(Client-Readable Report) complete (PR #150). Game Spec Extraction
+complete (PR #151). Phase 7e (Live Validation) is next. Three games
+onboarded (Breakout 71, Hextris, shapez.io) across three genres with no
 game-specific changes to `src/platform/` required after the plugin
-system. 1568 tests.
+system. 1602 tests.
 
 ---
 
@@ -701,10 +700,10 @@ files via game-specific JS bridge calls. Each game plugin provides a
 
 ---
 
-## Cross-Cutting: Game Spec Extraction
+## Cross-Cutting: Game Spec Extraction ✓
 
-**Status:** Specs exist only for Breakout 71 (`documentation/specs/
-breakout71_*.md`). Hextris and shapez.io are missing game specs.
+**Status:** Complete (PR #151). All three onboarded games now have full
+game and environment specs.
 
 Each onboarded game should have:
 
@@ -715,10 +714,10 @@ Each onboarded game should have:
 
 | Task | Details |
 |---|---|
-| `documentation/specs/hextris_game_spec.md` | Study Hextris source, document mechanics |
-| `documentation/specs/hextris_env_spec.md` | Document plugin design decisions |
-| `documentation/specs/shapez_game_spec.md` | Study shapez.io source, document mechanics, building types, upgrade system, shape grammar |
-| `documentation/specs/shapez_env_spec.md` | Document plugin design decisions, action space rationale, idle detection |
+| `documentation/specs/hextris_game_spec.md` | Study Hextris source, document mechanics — **DONE** (PR #151) |
+| `documentation/specs/hextris_env_spec.md` | Document plugin design decisions — **DONE** (PR #151) |
+| `documentation/specs/shapez_game_spec.md` | Study shapez.io source, document mechanics, building types, upgrade system, shape grammar — **DONE** (PR #151) |
+| `documentation/specs/shapez_env_spec.md` | Document plugin design decisions, action space rationale, idle detection — **DONE** (PR #151) |
 
 ---
 
