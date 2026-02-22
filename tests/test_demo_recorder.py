@@ -250,7 +250,7 @@ class TestDemoRecorderRecordStep:
             )
         frames_dir = recorder.output_dir / "frames"
         png_files = list(frames_dir.glob("*.png"))
-        assert len(png_files) == 2  # step 2 (3rd call) and step 5 (6th call)
+        assert len(png_files) == 2  # step 0 (1st call) and step 3 (4th call)
 
     def test_record_step_none_frame_no_png(self, tmp_path):
         """record_step() with frame=None does not save a PNG."""
