@@ -3,10 +3,10 @@
 Six-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 55):** Phases 1-4 complete. Phase 5 (shapez.io
-onboarding) is the current focus — third game plugin to validate the
-platform handles complex factory-builder games with mouse+keyboard input,
-build toolchain, and rich state spaces. 1137 tests, 95.26% coverage.
+**Current state (session 60):** Phases 1-5 complete. Phase 6 Tier 2
+(OCR score delta reward) complete (PR #139). Three games onboarded
+(Breakout 71, Hextris, shapez.io) across three genres with zero platform
+code changes. 1382 tests.
 
 ---
 
@@ -479,11 +479,48 @@ demonstration-guided exploration.
 **Goal:** Investigate whether domain knowledge improves exploration beyond
 pure novelty-seeking.
 
+### Tier 2: OCR Score Delta ✓
+
+**Status:** Implementation complete (PR #139, session 60). Live validation
+pending.
+
 | Task | Details |
 |---|---|
-| **Tier 2: OCR score delta** | Game-agnostic score reading via Tesseract/EasyOCR |
-| Score region auto-detection | Or per-game config for score location |
-| **Tier 3: Oracle-guided exploration** | Oracle findings -> state fingerprint -> exploration bonus |
+| `src/platform/score_ocr.py` | `ScoreOCR` class — pytesseract OCR on configurable screen region — **DONE** (PR #139) |
+| `--reward-mode score` | New reward mode: survival base + score delta × coeff — **DONE** (PR #139) |
+| CLI args | `--score-region X,Y,W,H`, `--score-ocr-interval N`, `--score-reward-coeff F` — **DONE** (PR #139) |
+| Score extraction | Largest number from OCR text, handles comma/period thousands — **DONE** (PR #139) |
+| Per-game config for score location | Via `--score-region` CLI arg (per-game, not auto-detect) — **DONE** (PR #139) |
+| Tests | 42 new tests (21 ScoreOCR + 21 base_env integration), 1382 total — **DONE** (PR #139) |
+| Score region auto-detection | Not implemented — per-game config is sufficient for now |
+| Live validation on real game frames | Pending — needs real training run with `--reward-mode score` |
+
+**Implementation details:**
+- `ScoreOCR` reads frames at configurable intervals (default every 10
+  steps) to amortize OCR cost (~50-100ms per call)
+- `_extract_score()` finds the largest number in OCR output, handling
+  comma/period thousand separators ("1,234,567" → 1234567)
+- `_compute_score_reward()` returns survival base reward + `delta × coeff`
+  when OCR detects a positive score change
+- pytesseract import is lazy (inside `_run_ocr()`) — graceful degradation
+  in environments without Tesseract installed
+- Score mode suppresses YOLO-based `level_cleared` detection (same as
+  survival mode — unreliable in headless)
+
+**Architecture:**
+- `"score"` is a platform-level reward mode alongside `"yolo"` and
+  `"survival"` in `BaseGameEnv._VALID_REWARD_MODES`
+- `"rnd"` remains a `train_rl.py`-level concept that sets the base env to
+  `"survival"` and adds RND intrinsic reward externally via
+  `RNDRewardWrapper`
+- Score mode can be combined with RND: `--reward-mode rnd` with future
+  `--base-reward-mode score` flag (not yet implemented)
+
+### Tier 3: Oracle-Guided Exploration (Not Started)
+
+| Task | Details |
+|---|---|
+| Oracle-guided exploration | Oracle findings → state fingerprint → exploration bonus |
 | State proximity metric | Pixel space, latent space, or RND embedding space |
 | Proximity bonus with decay | Avoid getting stuck near one anomaly |
 | Directed vs undirected comparison | Measure coverage improvement over RND alone |
