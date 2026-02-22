@@ -349,7 +349,8 @@ class TestDashboardRenderer:
         html = renderer.render(self._sample_report())
         assert "FAIL" in html  # episode 1 has critical finding
         assert "PASS" in html  # episode 2 is clean
-        assert "Game crashed" in html
+        # Enrichment replaces raw descriptions with human-readable text
+        assert "Process Crash" in html  # human_title for oracle_name="crash"
         assert "test-game" in html
 
     def test_render_to_file(self, tmp_path):
@@ -412,3 +413,523 @@ class TestDashboardRenderer:
         gen = ReportGenerator()
         html = renderer.render(gen.to_dict())
         assert "<!DOCTYPE html>" in html
+
+    def test_render_with_baseline(self):
+        """render() includes comparison section when baseline_data is given."""
+        renderer = DashboardRenderer()
+        trained = self._sample_report()
+        baseline = ReportGenerator(game_name="test-game")
+        baseline.add_episode(_make_episode(episode_id=1, steps=50, reward=5.0))
+        baseline_data = baseline.to_dict()
+
+        html = renderer.render(trained, baseline_data=baseline_data)
+        assert "Trained Agent vs Random Baseline" in html
+        assert "Random Baseline" in html
+
+    def test_render_without_baseline(self):
+        """render() omits comparison section when no baseline_data."""
+        renderer = DashboardRenderer()
+        html = renderer.render(self._sample_report())
+        assert "Trained Agent vs Random Baseline" not in html
+
+    def test_render_executive_summary_present(self):
+        """render() includes executive summary section."""
+        renderer = DashboardRenderer()
+        html = renderer.render(self._sample_report())
+        assert "Executive Summary" in html
+        assert "ISSUES FOUND" in html  # has critical findings
+
+    def test_render_severity_guide_present(self):
+        """render() includes severity guide section."""
+        renderer = DashboardRenderer()
+        html = renderer.render(self._sample_report())
+        assert "Severity Guide" in html
+        assert "Critical" in html
+
+    def test_render_recommendations_section(self):
+        """render() includes recommendations section when findings exist."""
+        renderer = DashboardRenderer()
+        html = renderer.render(self._sample_report())
+        assert "Recommendations" in html
+
+    def test_render_to_pdf_raises_without_weasyprint(self, tmp_path):
+        """render_to_pdf() raises RuntimeError when weasyprint is not installed."""
+        import unittest.mock as mock
+
+        renderer = DashboardRenderer()
+        report = self._sample_report()
+
+        with mock.patch.dict("sys.modules", {"weasyprint": None}):
+            import pytest
+
+            with pytest.raises(RuntimeError, match="weasyprint"):
+                renderer.render_to_pdf(report, tmp_path / "report.pdf")
+
+    def test_generate_dashboard_with_baseline(self, tmp_path):
+        """generate_dashboard() renders comparison when baseline JSON given."""
+        gen = ReportGenerator(output_dir=tmp_path, game_name="test-game")
+        gen.add_episode(
+            _make_episode(
+                episode_id=1,
+                steps=200,
+                reward=30.0,
+                findings=[_make_finding(severity="critical")],
+            )
+        )
+        json_path = gen.save("trained.json")
+
+        baseline_gen = ReportGenerator(output_dir=tmp_path, game_name="test-game")
+        baseline_gen.add_episode(_make_episode(episode_id=1, steps=50, reward=5.0))
+        baseline_path = baseline_gen.save("baseline.json")
+
+        renderer = DashboardRenderer()
+        html_path = renderer.generate_dashboard(json_path, baseline_json_path=baseline_path)
+        assert html_path.exists()
+        content = html_path.read_text(encoding="utf-8")
+        assert "Trained Agent vs Random Baseline" in content
+
+    def test_generate_dashboard_missing_baseline(self, tmp_path):
+        """generate_dashboard() raises FileNotFoundError for missing baseline."""
+        gen = ReportGenerator(output_dir=tmp_path)
+        gen.add_episode(_make_episode())
+        json_path = gen.save("data.json")
+
+        renderer = DashboardRenderer()
+        import pytest
+
+        with pytest.raises(FileNotFoundError, match="Baseline"):
+            renderer.generate_dashboard(
+                json_path, baseline_json_path=tmp_path / "nonexistent.json"
+            )
+
+    def test_render_rsn_branding(self):
+        """render() includes RSN branding in header and footer."""
+        renderer = DashboardRenderer()
+        html = renderer.render(self._sample_report())
+        assert "RSN" in html
+        assert "Roboter Schlafen Nicht" in html
+
+    def test_render_finding_cards_have_severity_border(self):
+        """render() produces finding cards with severity-colored borders."""
+        renderer = DashboardRenderer()
+        html = renderer.render(self._sample_report())
+        assert "finding-card-critical" in html
+
+
+# ── FindingDescriptions ──────────────────────────────────────────────
+
+
+class TestFindingDescriptions:
+    """Tests for finding_descriptions.py functions."""
+
+    def test_get_finding_description_specific_type(self):
+        """get_finding_description() looks up oracle_name:type first."""
+        from src.reporting.finding_descriptions import get_finding_description
+
+        finding = {
+            "oracle_name": "crash",
+            "severity": "critical",
+            "step": 10,
+            "description": "Frame stuck",
+            "data": {"type": "frozen_frame"},
+        }
+        result = get_finding_description(finding)
+        assert result["title"] == "Game Freeze"
+        assert "stopped updating" in result["description"]
+
+    def test_get_finding_description_oracle_fallback(self):
+        """get_finding_description() falls back to oracle_name without type."""
+        from src.reporting.finding_descriptions import get_finding_description
+
+        finding = {
+            "oracle_name": "stuck",
+            "severity": "warning",
+            "step": 50,
+            "description": "Reward stagnant",
+            "data": {},
+        }
+        result = get_finding_description(finding)
+        assert result["title"] == "Agent Stuck"
+
+    def test_get_finding_description_unknown_oracle(self):
+        """get_finding_description() uses raw data for unknown oracles."""
+        from src.reporting.finding_descriptions import get_finding_description
+
+        finding = {
+            "oracle_name": "mystery_oracle",
+            "severity": "info",
+            "step": 1,
+            "description": "Something odd happened",
+            "data": {},
+        }
+        result = get_finding_description(finding)
+        assert result["title"] == "Mystery Oracle"
+        assert result["description"] == "Something odd happened"
+        assert result["recommendation"] == "Investigate this finding manually."
+
+    def test_get_finding_description_no_data_dict(self):
+        """get_finding_description() handles missing or non-dict data."""
+        from src.reporting.finding_descriptions import get_finding_description
+
+        finding = {
+            "oracle_name": "crash",
+            "severity": "critical",
+            "step": 5,
+            "description": "Process died",
+        }
+        result = get_finding_description(finding)
+        assert result["title"] == "Process Crash"
+
+    def test_get_finding_description_all_performance_types(self):
+        """get_finding_description() maps all PerformanceOracle types."""
+        from src.reporting.finding_descriptions import get_finding_description
+
+        for ftype, expected_title in [
+            ("low_fps", "Low Frame Rate"),
+            ("high_cpu", "High CPU Usage"),
+            ("high_ram", "High Memory Usage"),
+        ]:
+            finding = {
+                "oracle_name": "performance",
+                "severity": "warning",
+                "step": 10,
+                "description": "perf issue",
+                "data": {"type": ftype},
+            }
+            result = get_finding_description(finding)
+            assert result["title"] == expected_title, f"Failed for type={ftype}"
+
+    def test_get_severity_info_known(self):
+        """get_severity_info() returns correct metadata for known levels."""
+        from src.reporting.finding_descriptions import get_severity_info
+
+        crit = get_severity_info("critical")
+        assert crit["label"] == "Critical"
+        assert crit["color"] == "#dc3545"
+        assert "badge_class" in crit
+
+        warn = get_severity_info("warning")
+        assert warn["label"] == "Warning"
+
+        info = get_severity_info("info")
+        assert info["label"] == "Info"
+
+    def test_get_severity_info_unknown(self):
+        """get_severity_info() returns fallback for unknown severity."""
+        from src.reporting.finding_descriptions import get_severity_info
+
+        result = get_severity_info("catastrophic")
+        assert result["label"] == "Catastrophic"
+        assert result["badge_class"] == "severity-unknown"
+
+    def test_enrich_report_data_adds_fields(self):
+        """enrich_report_data() adds human-readable fields to findings."""
+        from src.reporting.finding_descriptions import enrich_report_data
+
+        report = ReportGenerator(game_name="test-game")
+        report.add_episode(
+            _make_episode(
+                findings=[
+                    _make_finding(severity="critical", oracle="crash", desc="Died"),
+                    _make_finding(severity="warning", oracle="performance", desc="Slow"),
+                ]
+            )
+        )
+        data = report.to_dict()
+        enriched = enrich_report_data(data)
+
+        # Check findings are enriched
+        f0 = enriched["episodes"][0]["findings"][0]
+        assert "human_title" in f0
+        assert "human_description" in f0
+        assert "human_recommendation" in f0
+        assert "severity_info" in f0
+        assert f0["severity_info"]["label"] == "Critical"
+
+        # Check top-level enrichments
+        assert "executive_summary" in enriched
+        assert "severity_definitions" in enriched
+        assert "recommendations" in enriched
+
+    def test_enrich_executive_summary_pass(self):
+        """enrich_report_data() generates PASS verdict for clean reports."""
+        from src.reporting.finding_descriptions import enrich_report_data
+
+        gen = ReportGenerator(game_name="clean-game")
+        gen.add_episode(_make_episode(steps=100, reward=10.0))
+        data = gen.to_dict()
+        enriched = enrich_report_data(data)
+
+        summary = enriched["executive_summary"]
+        assert summary["verdict"] == "PASS"
+        assert summary["verdict_class"] == "verdict-pass"
+        assert "No issues" in summary["narrative"]
+
+    def test_enrich_executive_summary_warnings(self):
+        """enrich_report_data() generates WARNINGS verdict for warning-only."""
+        from src.reporting.finding_descriptions import enrich_report_data
+
+        gen = ReportGenerator(game_name="warn-game")
+        gen.add_episode(
+            _make_episode(findings=[_make_finding(severity="warning", oracle="performance")])
+        )
+        data = gen.to_dict()
+        enriched = enrich_report_data(data)
+
+        summary = enriched["executive_summary"]
+        assert summary["verdict"] == "WARNINGS"
+        assert summary["verdict_class"] == "verdict-warn"
+
+    def test_enrich_executive_summary_critical(self):
+        """enrich_report_data() generates ISSUES FOUND for critical findings."""
+        from src.reporting.finding_descriptions import enrich_report_data
+
+        gen = ReportGenerator(game_name="crash-game")
+        gen.add_episode(
+            _make_episode(findings=[_make_finding(severity="critical", oracle="crash")])
+        )
+        data = gen.to_dict()
+        enriched = enrich_report_data(data)
+
+        summary = enriched["executive_summary"]
+        assert summary["verdict"] == "ISSUES FOUND"
+        assert summary["verdict_class"] == "verdict-fail"
+        assert "1 critical issue" in summary["narrative"]
+
+    def test_enrich_recommendations_deduplicated(self):
+        """enrich_report_data() deduplicates recommendations by type."""
+        from src.reporting.finding_descriptions import enrich_report_data
+
+        gen = ReportGenerator()
+        gen.add_episode(
+            _make_episode(
+                episode_id=1,
+                findings=[
+                    _make_finding(severity="critical", oracle="crash"),
+                    _make_finding(severity="critical", oracle="crash"),
+                ],
+            )
+        )
+        gen.add_episode(
+            _make_episode(
+                episode_id=2,
+                findings=[
+                    _make_finding(severity="critical", oracle="crash"),
+                ],
+            )
+        )
+        data = gen.to_dict()
+        enriched = enrich_report_data(data)
+
+        recs = enriched["recommendations"]
+        crash_recs = [r for r in recs if r["title"] == "Process Crash"]
+        assert len(crash_recs) == 1
+        assert crash_recs[0]["count"] == 3
+
+    def test_enrich_recommendations_sorted_by_severity(self):
+        """enrich_report_data() sorts recommendations critical first."""
+        from src.reporting.finding_descriptions import enrich_report_data
+
+        gen = ReportGenerator()
+        gen.add_episode(
+            _make_episode(
+                findings=[
+                    _make_finding(severity="info", oracle="stuck"),
+                    _make_finding(severity="critical", oracle="crash"),
+                    _make_finding(severity="warning", oracle="performance"),
+                ]
+            )
+        )
+        data = gen.to_dict()
+        enriched = enrich_report_data(data)
+
+        recs = enriched["recommendations"]
+        assert len(recs) == 3
+        assert recs[0]["severity"] == "critical"
+        assert recs[1]["severity"] == "warning"
+        assert recs[2]["severity"] == "info"
+
+
+# ── Screenshot Embedding ─────────────────────────────────────────────
+
+
+class TestScreenshotEmbedding:
+    """Tests for screenshot embedding in DashboardRenderer."""
+
+    def test_embed_screenshot_from_file(self, tmp_path):
+        """Screenshots with valid paths are embedded as base64 data URIs."""
+        from src.reporting.dashboard import _embed_screenshots
+
+        # Create a small PNG-like file
+        img_path = tmp_path / "screenshot.png"
+        img_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+
+        report = {
+            "episodes": [
+                {
+                    "findings": [
+                        {
+                            "screenshot_path": str(img_path),
+                        }
+                    ]
+                }
+            ]
+        }
+        result = _embed_screenshots(report)
+        finding = result["episodes"][0]["findings"][0]
+        assert finding["screenshot_data_uri"] is not None
+        assert finding["screenshot_data_uri"].startswith("data:image/png;base64,")
+
+    def test_embed_screenshot_missing_file(self):
+        """Missing screenshot paths result in None data URI."""
+        from src.reporting.dashboard import _embed_screenshots
+
+        report = {
+            "episodes": [
+                {
+                    "findings": [
+                        {
+                            "screenshot_path": "/nonexistent/path.png",
+                        }
+                    ]
+                }
+            ]
+        }
+        result = _embed_screenshots(report)
+        finding = result["episodes"][0]["findings"][0]
+        assert finding["screenshot_data_uri"] is None
+
+    def test_embed_screenshot_no_path(self):
+        """Findings without screenshot_path get None data URI."""
+        from src.reporting.dashboard import _embed_screenshots
+
+        report = {
+            "episodes": [
+                {
+                    "findings": [
+                        {
+                            "screenshot_path": None,
+                        }
+                    ]
+                }
+            ]
+        }
+        result = _embed_screenshots(report)
+        finding = result["episodes"][0]["findings"][0]
+        assert finding["screenshot_data_uri"] is None
+
+    def test_embed_screenshot_jpeg_mime(self, tmp_path):
+        """JPEG screenshots use correct MIME type."""
+        from src.reporting.dashboard import _embed_screenshots
+
+        img_path = tmp_path / "screenshot.jpg"
+        img_path.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 16)
+
+        report = {
+            "episodes": [
+                {
+                    "findings": [
+                        {
+                            "screenshot_path": str(img_path),
+                        }
+                    ]
+                }
+            ]
+        }
+        result = _embed_screenshots(report)
+        finding = result["episodes"][0]["findings"][0]
+        assert finding["screenshot_data_uri"].startswith("data:image/jpeg;base64,")
+
+
+# ── Comparison ───────────────────────────────────────────────────────
+
+
+class TestComparison:
+    """Tests for trained-vs-random comparison logic."""
+
+    def test_prepare_comparison_with_baseline(self):
+        """_prepare_comparison() adds comparison data when baseline given."""
+        from src.reporting.dashboard import _prepare_comparison
+
+        trained = {
+            "summary": {
+                "mean_episode_length": 400,
+                "mean_episode_reward": 10.0,
+                "critical_findings": 3,
+                "total_findings": 50,
+            }
+        }
+        baseline = {
+            "summary": {
+                "mean_episode_length": 100,
+                "mean_episode_reward": 2.0,
+                "critical_findings": 0,
+                "total_findings": 10,
+            }
+        }
+        result = _prepare_comparison(trained, baseline)
+        comp = result["comparison"]
+
+        assert comp is not None
+        assert comp["length_ratio"] == 4.0
+        assert comp["finding_ratio"] == 5.0
+        assert comp["trained_critical"] == 3
+        assert comp["baseline_critical"] == 0
+        assert "4.0x longer" in comp["narrative"]
+        assert "3 critical issues" in comp["narrative"]
+
+    def test_prepare_comparison_baseline_longer(self):
+        """_prepare_comparison() handles baseline surviving longer."""
+        from src.reporting.dashboard import _prepare_comparison
+
+        trained = {
+            "summary": {
+                "mean_episode_length": 50,
+                "mean_episode_reward": 1.0,
+                "critical_findings": 0,
+                "total_findings": 5,
+            }
+        }
+        baseline = {
+            "summary": {
+                "mean_episode_length": 200,
+                "mean_episode_reward": 5.0,
+                "critical_findings": 0,
+                "total_findings": 10,
+            }
+        }
+        result = _prepare_comparison(trained, baseline)
+        comp = result["comparison"]
+        assert "random baseline survived longer" in comp["narrative"].lower()
+
+    def test_prepare_comparison_no_baseline(self):
+        """_prepare_comparison() sets comparison to None without baseline."""
+        from src.reporting.dashboard import _prepare_comparison
+
+        trained = {"summary": {}}
+        result = _prepare_comparison(trained, None)
+        assert result["comparison"] is None
+
+    def test_prepare_comparison_zero_baseline_length(self):
+        """_prepare_comparison() handles zero baseline episode length safely."""
+        from src.reporting.dashboard import _prepare_comparison
+
+        trained = {
+            "summary": {
+                "mean_episode_length": 100,
+                "mean_episode_reward": 5.0,
+                "critical_findings": 0,
+                "total_findings": 5,
+            }
+        }
+        baseline = {
+            "summary": {
+                "mean_episode_length": 0,
+                "mean_episode_reward": 0,
+                "critical_findings": 0,
+                "total_findings": 0,
+            }
+        }
+        result = _prepare_comparison(trained, baseline)
+        comp = result["comparison"]
+        assert comp["length_ratio"] == 0  # avoid division by zero

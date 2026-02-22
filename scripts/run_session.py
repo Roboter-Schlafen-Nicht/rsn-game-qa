@@ -253,6 +253,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "provide a load_save_js snippet."
         ),
     )
+    parser.add_argument(
+        "--baseline-report",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Path to a baseline (random agent) session report JSON "
+            "file.  When provided, the HTML dashboard includes a "
+            "trained-vs-random comparison section."
+        ),
+    )
+    parser.add_argument(
+        "--pdf",
+        action="store_true",
+        help=(
+            "Also export the QA report as a PDF file alongside the "
+            "HTML dashboard.  Requires weasyprint to be installed."
+        ),
+    )
 
     return parser.parse_args(argv)
 
@@ -372,6 +391,52 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Episodes failed: {summary.get('episodes_failed', 0)}")
     print(f"Mean reward:     {summary.get('mean_episode_reward', 0.0):.2f}")
     print(f"Mean length:     {summary.get('mean_episode_length', 0.0):.0f}")
+
+    # Re-generate dashboard with baseline comparison and/or PDF export
+    # if requested (the SessionRunner already generates a basic dashboard;
+    # this overwrites it with the enriched version).
+    if args.baseline_report or args.pdf:
+        import json
+        from dataclasses import asdict
+        from pathlib import Path
+
+        from src.reporting.dashboard import DashboardRenderer
+
+        # Reconstruct report_data from the returned SessionReport
+        report_data = asdict(report)
+
+        # Load baseline if provided
+        baseline_data = None
+        if args.baseline_report:
+            bl_path = Path(args.baseline_report)
+            if not bl_path.is_file():
+                logger.error("Baseline report not found: %s", bl_path)
+            else:
+                with open(bl_path, encoding="utf-8") as fh:
+                    baseline_data = json.load(fh)
+                logger.info("Loaded baseline report: %s", bl_path)
+
+        dashboard = DashboardRenderer()
+
+        # Overwrite HTML dashboard with enriched version
+        reports_dir = Path(args.output_dir) / "reports"
+        html_path = reports_dir / "dashboard.html"
+        try:
+            dashboard.render_to_file(report_data, html_path, baseline_data=baseline_data)
+            logger.info("Enriched dashboard saved to %s", html_path)
+        except Exception:
+            logger.warning("Enriched dashboard generation failed", exc_info=True)
+
+        # PDF export
+        if args.pdf:
+            pdf_path = reports_dir / "report.pdf"
+            try:
+                dashboard.render_to_pdf(report_data, pdf_path, baseline_data=baseline_data)
+                logger.info("PDF report saved to %s", pdf_path)
+            except RuntimeError as exc:
+                logger.error("PDF export failed: %s", exc)
+            except Exception:
+                logger.warning("PDF export failed", exc_info=True)
 
     return 0
 
