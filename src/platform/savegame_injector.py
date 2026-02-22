@@ -41,8 +41,8 @@ class SavegamePool:
     selection : str
         ``"random"`` (default) or ``"sequential"``.
     extensions : tuple[str, ...]
-        File extensions to include.  Default ``(".json", ".bin",
-        ".sav", ".save")``.
+        File extensions to include.  Default ``(".json", ".sav",
+        ".save")``.
     seed : int or None
         Random seed for ``"random"`` selection.  ``None`` for
         unseeded.
@@ -54,7 +54,7 @@ class SavegamePool:
         self,
         save_dir: str | Path,
         selection: str = "random",
-        extensions: tuple[str, ...] = (".json", ".bin", ".sav", ".save"),
+        extensions: tuple[str, ...] = (".json", ".sav", ".save"),
         seed: int | None = None,
     ) -> None:
         if selection not in self._VALID_SELECTIONS:
@@ -150,8 +150,9 @@ class SavegameInjector:
         Pool of save files to draw from.
     load_save_js : str
         JS snippet that accepts save data as ``arguments[0]`` and
-        loads it into the game.  Must return a dict with at least
-        an ``"action"`` key.
+        loads it into the game.  Should return a dict with an
+        ``"action"`` key on success; may return ``null`` if the
+        snippet has no meaningful result.
     """
 
     def __init__(
@@ -186,8 +187,9 @@ class SavegameInjector:
         Returns
         -------
         dict
-            Result from the JS snippet execution.  Contains at least
-            ``"action"`` and ``"save_file"`` keys.
+            Result from the JS snippet execution.  Always contains a
+            ``"save_file"`` key.  May also contain ``"action"`` and
+            other keys depending on the JS snippet.
 
         Raises
         ------
@@ -217,6 +219,8 @@ class SavegameInjector:
 
         if result is None:
             result = {}
+        elif not isinstance(result, dict):
+            result = {"js_result": result}
 
         result["save_file"] = str(save_path)
         return result

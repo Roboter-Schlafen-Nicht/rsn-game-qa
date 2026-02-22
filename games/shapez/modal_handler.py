@@ -488,11 +488,8 @@ MUTE_JS = """
 # ---------------------------------------------------------------------------
 
 LOAD_SAVE_JS = """
-return (function() {
-    // arguments[0] = save data as JSON string (pre-deserialized,
-    // NOT the LZ-compressed .bin format).
-    var _sel_args = arguments;
-    var saveDataStr = _sel_args[0];
+var _sel_args = arguments;
+return (function(saveDataStr) {
 
     if (!saveDataStr || typeof saveDataStr !== "string") {
         return {action: "error", error: "No save data provided"};
@@ -532,5 +529,5 @@ return (function() {
     // This mirrors the "continue game" flow in MainMenuState.
     app.stateMgr.moveToState("InGameState", {savegame: savegame});
     return {action: "savegame_loaded"};
-})();
+})(_sel_args[0]);
 """

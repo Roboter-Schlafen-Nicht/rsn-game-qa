@@ -602,8 +602,8 @@ class BaseGameEnv(gym.Env, abc.ABC):
                     "Savegame injected: %s",
                     savegame_result.get("save_file", "unknown"),
                 )
-            except RuntimeError:
-                logger.warning("Savegame injection failed — continuing without")
+            except RuntimeError as exc:
+                logger.warning("Savegame injection failed — continuing without: %s", exc)
 
         # Dismiss any modals and start the game
         detections: dict[str, Any] = {}

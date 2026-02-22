@@ -228,9 +228,17 @@ class TestLoadGamePlugin:
         """shapez.io load_save_js captures arguments before IIFE."""
         plugin = load_game_plugin("shapez")
 
+        js = plugin.load_save_js
         # Must use _sel_args pattern to avoid IIFE arguments shadowing
         # (see PR #107 knowledge base entry)
-        assert "_sel_args" in plugin.load_save_js
+        assert "_sel_args" in js
+
+        # Verify _sel_args is captured BEFORE the IIFE, not inside it
+        sel_args_pos = js.index("_sel_args = arguments")
+        iife_pos = js.index("return (function")
+        assert sel_args_pos < iife_pos, "_sel_args = arguments must appear before the IIFE"
+        # Verify _sel_args[0] is used to pass the save data
+        assert "_sel_args[0]" in js
 
 
 class TestGetEnvClass:

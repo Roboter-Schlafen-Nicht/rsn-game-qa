@@ -42,9 +42,9 @@ class TestSavegamePoolConstruction:
 
     def test_construction_with_save_files(self, tmp_path: Path):
         """SavegamePool discovers files matching default extensions."""
-        _populate_save_dir(tmp_path, ["a.json", "b.sav", "c.save", "d.bin"])
+        _populate_save_dir(tmp_path, ["a.json", "b.sav", "c.save"])
         pool = SavegamePool(save_dir=tmp_path)
-        assert len(pool) == 4
+        assert len(pool) == 3
 
     def test_ignores_non_matching_extensions(self, tmp_path: Path):
         """Files with non-matching extensions are excluded."""
@@ -146,7 +146,7 @@ class TestSavegamePoolSelection:
         assert seq1 == seq2
 
     def test_random_different_seeds_differ(self, tmp_path: Path):
-        """Different seeds produce different sequences (with high probability)."""
+        """Different seeds produce different sequences (deterministic check)."""
         _populate_save_dir(tmp_path, ["a.json", "b.json", "c.json", "d.json", "e.json"])
 
         pool1 = SavegamePool(save_dir=tmp_path, selection="random", seed=1)
@@ -154,8 +154,10 @@ class TestSavegamePoolSelection:
 
         seq1 = [pool1.next().name for _ in range(20)]
         seq2 = [pool2.next().name for _ in range(20)]
-        # With 5 files and 20 picks, identical sequences are astronomically unlikely
-        assert seq1 != seq2
+        # Verify at least one position differs (seeds 1 vs 999 are known
+        # to diverge for random.Random.choice with 5 elements)
+        differences = sum(a != b for a, b in zip(seq1, seq2, strict=True))
+        assert differences > 0, "Seeds 1 and 999 produced identical sequences"
 
     def test_sequential_single_file(self, tmp_path: Path):
         """Sequential mode with 1 file always returns that file."""
@@ -256,6 +258,19 @@ class TestSavegameInjectorInject:
 
         result = injector.inject(mock_driver)
         assert result == {"save_file": str(tmp_path / "save.json")}
+
+    def test_inject_handles_non_dict_js_result(self, tmp_path: Path):
+        """inject() wraps non-dict JS results (string, bool, list)."""
+        _populate_save_dir(tmp_path, ["save.json"])
+        pool = SavegamePool(save_dir=tmp_path, selection="sequential")
+        injector = SavegameInjector(pool=pool, load_save_js="return 'ok';")
+
+        mock_driver = mock.MagicMock()
+        mock_driver.execute_script.return_value = "ok"
+
+        result = injector.inject(mock_driver)
+        assert result["js_result"] == "ok"
+        assert "save_file" in result
 
     def test_inject_sequential_cycles_saves(self, tmp_path: Path):
         """Multiple inject() calls cycle through saves sequentially."""
