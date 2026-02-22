@@ -231,6 +231,11 @@ class SessionRunner:
         :class:`~src.orchestrator.demo_recorder.DemoRecorder`.
         Captures frames, human events, game state, reward, oracle
         findings, and observation hashes.  Default is False.
+    savegame_dir : str or Path or None
+        Directory containing save files for savegame injection.
+        When provided, each episode loads a save file before
+        starting.  The game plugin must provide a ``load_save_js``
+        attribute.  Default is None.
     """
 
     def __init__(
@@ -255,6 +260,7 @@ class SessionRunner:
         score_reward_coeff: float = 0.01,
         human_mode: bool = False,
         record_demo: bool = False,
+        savegame_dir: str | Path | None = None,
     ) -> None:
         valid_policies = ("mlp", "cnn")
         if policy not in valid_policies:
@@ -283,6 +289,7 @@ class SessionRunner:
         self.score_region = score_region
         self.score_ocr_interval = score_ocr_interval
         self.score_reward_coeff = score_reward_coeff
+        self.savegame_dir = savegame_dir
 
         # Load plugin to resolve defaults
         from games import load_game_plugin
@@ -438,6 +445,7 @@ class SessionRunner:
         # Create environment using the plugin's env class
         EnvClass = self._plugin.env_class
         window_title = config.window_title or "Breakout"
+        load_save_js = getattr(self._plugin, "load_save_js", None)
         self._env = EnvClass(
             window_title=window_title,
             yolo_weights=self.yolo_weights,
@@ -452,6 +460,8 @@ class SessionRunner:
             score_ocr_interval=self.score_ocr_interval,
             score_reward_coeff=self.score_reward_coeff,
             human_mode=self.human_mode,
+            savegame_dir=self.savegame_dir,
+            load_save_js=load_save_js,
         )
 
         # Create frame collector

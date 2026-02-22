@@ -242,6 +242,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "used with --human mode."
         ),
     )
+    parser.add_argument(
+        "--savegame-dir",
+        type=str,
+        default=None,
+        help=(
+            "Directory containing save files for savegame injection.  "
+            "Each episode loads a save file before starting, allowing "
+            "RL training from mid-game states.  The game plugin must "
+            "provide a load_save_js snippet."
+        ),
+    )
 
     return parser.parse_args(argv)
 
@@ -345,6 +356,7 @@ def main(argv: list[str] | None = None) -> int:
         score_reward_coeff=args.score_reward_coeff,
         human_mode=args.human,
         record_demo=args.record_demo,
+        savegame_dir=args.savegame_dir,
     )
 
     report = runner.run()

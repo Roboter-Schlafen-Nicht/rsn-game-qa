@@ -24,7 +24,7 @@ Plugin metadata (used by ``games.load_game_plugin()``)::
 
 from games.shapez.env import ShapezEnv
 from games.shapez.loader import ShapezLoader
-from games.shapez.modal_handler import MUTE_JS, SETUP_TRAINING_JS
+from games.shapez.modal_handler import LOAD_SAVE_JS, MUTE_JS, SETUP_TRAINING_JS
 
 __all__ = ["ShapezEnv", "ShapezLoader"]
 
@@ -41,3 +41,7 @@ mute_js = MUTE_JS
 
 # JS snippet to configure training settings (disable tutorials, etc.).
 setup_js = SETUP_TRAINING_JS
+
+# JS snippet to load a savegame from JSON data (arguments[0]).
+# Used by SavegameInjector for starting episodes from mid-game states.
+load_save_js = LOAD_SAVE_JS

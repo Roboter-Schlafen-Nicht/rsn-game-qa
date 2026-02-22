@@ -216,6 +216,22 @@ class TestLoadGamePlugin:
 
         assert not hasattr(plugin, "reinit_js")
 
+    def test_shapez_has_load_save_js(self):
+        """shapez.io plugin defines load_save_js for savegame injection."""
+        plugin = load_game_plugin("shapez")
+
+        assert hasattr(plugin, "load_save_js")
+        assert "savegame_loaded" in plugin.load_save_js
+        assert "GLOBAL_APP" in plugin.load_save_js
+
+    def test_shapez_load_save_js_uses_arguments_safely(self):
+        """shapez.io load_save_js captures arguments before IIFE."""
+        plugin = load_game_plugin("shapez")
+
+        # Must use _sel_args pattern to avoid IIFE arguments shadowing
+        # (see PR #107 knowledge base entry)
+        assert "_sel_args" in plugin.load_save_js
+
 
 class TestGetEnvClass:
     """Tests for get_env_class()."""

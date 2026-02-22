@@ -1499,3 +1499,107 @@ class TestGameOverDetectorResetIntegration:
         detector.reset.assert_called_once()
         # update calls from the 5 steps should be 5
         assert detector.update.call_count == 5
+
+
+# ===========================================================================
+# Savegame Injection Integration
+# ===========================================================================
+
+
+class TestSavegameInjectorConstruction:
+    """Savegame injector is created from savegame_dir + load_save_js."""
+
+    def test_savegame_dir_without_js_raises(self, tmp_path):
+        """savegame_dir without load_save_js raises ValueError."""
+        with pytest.raises(ValueError, match="load_save_js"):
+            StubEnv(savegame_dir=str(tmp_path))
+
+    def test_savegame_dir_with_js_creates_injector(self, tmp_path):
+        """savegame_dir + load_save_js creates _savegame_injector."""
+        env = StubEnv(
+            savegame_dir=str(tmp_path),
+            load_save_js="return {};",
+        )
+        assert env._savegame_injector is not None
+
+    def test_no_savegame_dir_leaves_injector_none(self):
+        """Without savegame_dir, _savegame_injector is None."""
+        env = StubEnv()
+        assert env._savegame_injector is None
+
+    def test_injector_has_correct_js(self, tmp_path):
+        """The injector stores the provided JS snippet."""
+        js = "var data = arguments[0]; return {};"
+        env = StubEnv(savegame_dir=str(tmp_path), load_save_js=js)
+        assert env._savegame_injector.load_save_js == js
+
+
+class TestSavegameInjectorResetIntegration:
+    """Savegame injection happens during reset()."""
+
+    @mock.patch("src.platform.base_env.time")
+    def test_reset_injects_savegame(self, mock_time, tmp_path):
+        """reset() calls inject() when savegame injector is configured."""
+        (tmp_path / "save1.json").write_text('{"level": 5}', encoding="utf-8")
+
+        env = _make_ready_env(
+            savegame_dir=str(tmp_path),
+            load_save_js="return {};",
+        )
+        env._driver = mock.MagicMock()
+        env._driver.execute_script.side_effect = lambda *a: {}
+
+        obs, info = env.reset()
+
+        assert "savegame" in info
+        assert info["savegame"]["save_file"].endswith("save1.json")
+        env._driver.execute_script.assert_called()
+
+    @mock.patch("src.platform.base_env.time")
+    def test_reset_without_injector_has_no_savegame_info(self, mock_time):
+        """reset() without savegame injector does not add savegame to info."""
+        env = _make_ready_env()
+
+        obs, info = env.reset()
+
+        assert "savegame" not in info
+
+    @mock.patch("src.platform.base_env.time")
+    def test_reset_survives_injection_failure(self, mock_time, tmp_path):
+        """reset() continues when injection raises RuntimeError."""
+        # Empty dir -> inject() will raise RuntimeError (pool empty)
+        env = StubEnv(
+            savegame_dir=str(tmp_path),
+            load_save_js="return {};",
+        )
+        env._initialized = True
+        env._capture = mock.MagicMock()
+        env._detector = mock.MagicMock()
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        env._capture.capture_frame.return_value = frame
+        env._detector.detect_to_game_state.return_value = _make_detections()
+        env._last_frame = frame
+        env._driver = mock.MagicMock()
+
+        obs, info = env.reset()
+
+        # No savegame key because injection failed gracefully
+        assert "savegame" not in info
+        # But reset still succeeded
+        assert obs is not None
+
+    @mock.patch("src.platform.base_env.time")
+    def test_reset_without_driver_skips_injection(self, mock_time, tmp_path):
+        """reset() skips injection when driver is None."""
+        (tmp_path / "save.json").write_text("{}", encoding="utf-8")
+
+        env = _make_ready_env(
+            savegame_dir=str(tmp_path),
+            load_save_js="return {};",
+        )
+        env._driver = None
+
+        obs, info = env.reset()
+
+        assert "savegame" not in info
+        assert obs is not None

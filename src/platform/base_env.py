@@ -114,6 +114,15 @@ class BaseGameEnv(gym.Env, abc.ABC):
         to capture the human's input events each step.  The events are
         included in the ``info`` dict under ``"human_events"``.
         Default ``False``.
+    savegame_dir : str or Path or None
+        Directory containing save files for savegame injection.  When
+        provided, a :class:`~src.platform.savegame_injector.SavegameInjector`
+        is created and ``reset()`` loads a save file before each episode.
+        Requires ``load_save_js`` to also be set.
+    load_save_js : str or None
+        Plugin-provided JS snippet that loads save data into the game.
+        The save file content is passed as ``arguments[0]``.  Required
+        when ``savegame_dir`` is set.
     """
 
     _VALID_REWARD_MODES = ("yolo", "survival", "score")
@@ -138,6 +147,8 @@ class BaseGameEnv(gym.Env, abc.ABC):
         score_ocr_interval: int = 1,
         score_reward_coeff: float = 0.01,
         human_mode: bool = False,
+        savegame_dir: str | Path | None = None,
+        load_save_js: str | None = None,
     ) -> None:
         super().__init__()
 
@@ -193,6 +204,25 @@ class BaseGameEnv(gym.Env, abc.ABC):
             from src.platform.event_recorder import EventRecorder
 
             self._event_recorder = EventRecorder(driver=driver)
+
+        # Savegame injection (Phase 8)
+        self._savegame_injector: Any | None = None
+        if savegame_dir is not None:
+            if load_save_js is None:
+                raise ValueError(
+                    "savegame_dir requires load_save_js to be set "
+                    "(plugin must provide a LOAD_SAVE_JS snippet)"
+                )
+            from src.platform.savegame_injector import (
+                SavegameInjector,
+                SavegamePool,
+            )
+
+            pool = SavegamePool(save_dir=savegame_dir)
+            self._savegame_injector = SavegameInjector(
+                pool=pool,
+                load_save_js=load_save_js,
+            )
 
     # ------------------------------------------------------------------
     # Abstract methods — subclasses MUST implement
@@ -563,6 +593,18 @@ class BaseGameEnv(gym.Env, abc.ABC):
         if not self._initialized:
             self._lazy_init()
 
+        # Inject savegame if configured (Phase 8)
+        savegame_result: dict[str, Any] | None = None
+        if self._savegame_injector is not None and self._driver is not None:
+            try:
+                savegame_result = self._savegame_injector.inject(self._driver)
+                logger.info(
+                    "Savegame injected: %s",
+                    savegame_result.get("save_file", "unknown"),
+                )
+            except RuntimeError:
+                logger.warning("Savegame injection failed — continuing without")
+
         # Dismiss any modals and start the game
         detections: dict[str, Any] = {}
         for attempt in range(5):
@@ -627,6 +669,10 @@ class BaseGameEnv(gym.Env, abc.ABC):
 
         # Build info dict
         info = self._make_info(detections)
+
+        # Include savegame injection result in info (Phase 8)
+        if savegame_result is not None:
+            info["savegame"] = savegame_result
 
         # Clear and notify oracles
         for oracle in self._oracles:

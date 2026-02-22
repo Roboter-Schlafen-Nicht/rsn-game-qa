@@ -11,6 +11,7 @@ from .game_over_detector import (
     ScreenFreezeStrategy,
     TextDetectionStrategy,
 )
+from .savegame_injector import SavegameInjector, SavegamePool
 from .score_ocr import ScoreOCR
 
 # RNDRewardWrapper requires torch; lazy-import to avoid pulling in torch
@@ -30,6 +31,8 @@ __all__ = [
     "GameOverStrategy",
     "MotionCessationStrategy",
     "RNDRewardWrapper",
+    "SavegameInjector",
+    "SavegamePool",
     "ScoreOCR",
     "ScreenFreezeStrategy",
     "TextDetectionStrategy",
