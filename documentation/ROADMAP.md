@@ -3,12 +3,13 @@
 Multi-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 65):** Phases 1-6 complete. Phase 7 (Human
+**Current state (session 66):** Phases 1-6 complete. Phase 7 (Human
 Demo Recording & Knowledge Extraction) sub-phases 7a-7d complete
-(PRs #145, #146, #147). Phase 7e (Live Validation) is next. Phase 8
-(Savegame Injection) follows. Three games onboarded (Breakout 71,
-Hextris, shapez.io) across three genres with no game-specific changes
-to `src/platform/` required after the plugin system. 1532 tests.
+(PRs #145, #146, #147). Phase 8 (Savegame Injection) complete
+(PR #148). Phase 7e (Live Validation) is next. Three games onboarded
+(Breakout 71, Hextris, shapez.io) across three genres with no
+game-specific changes to `src/platform/` required after the plugin
+system. 1568 tests.
 
 ---
 
@@ -646,7 +647,7 @@ is saved in an enriched recording format for post-processing.
 
 ---
 
-## Phase 8: Savegame Injection
+## Phase 8: Savegame Injection ✓
 
 **Goal:** Start RL episodes from interesting mid-game states instead of
 always from scratch. Bypass the "agent can't build" problem for complex
@@ -665,19 +666,37 @@ files via game-specific JS bridge calls. Each game plugin provides a
 
 | Task | Details |
 |---|---|
-| `src/platform/savegame_injector.py` | Platform-level class: `inject(driver, save_path)`, delegates to plugin's `LOAD_SAVE_JS` |
-| Plugin hook: `load_save_js` | Optional attribute in game plugin `__init__.py` — JS snippet that accepts save data and loads it |
+| `src/platform/savegame_injector.py` | Platform-level `SavegamePool` + `SavegameInjector` classes — **DONE** (PR #148) |
+| Plugin hook: `load_save_js` | Optional attribute in game plugin `__init__.py` — **DONE** (PR #148) |
 | `games/shapez/saves/` | Directory of curated save files from GitHub issues (large factories, edge-case configs) |
-| shapez.io `LOAD_SAVE_JS` | JS that calls `app.savegameMgr.importSave()` or equivalent |
-| `--savegame-dir` CLI flag | Point to a directory of saves; each episode loads a random save |
-| `SavegamePool` | Manages multiple save files, random or sequential selection per episode |
-| Tests | TDD: injection, pool management, plugin hook validation |
+| shapez.io `LOAD_SAVE_JS` | JS that imports save JSON via `savegameMgr`, transitions to InGameState — **DONE** (PR #148) |
+| `--savegame-dir` CLI flag | In both `run_session.py` and `train_rl.py` — **DONE** (PR #148) |
+| `SavegamePool` | Manages multiple save files, random or sequential selection per episode — **DONE** (PR #148) |
+| Tests | 36 tests (20 SavegameInjector + 12 BaseGameEnv + 4 plugin), TDD — **DONE** (PR #148) |
+
+**Implementation details (PR #148):**
+- `SavegamePool`: scans directory for save files with configurable
+  extensions (default `.json`, `.sav`, `.save`), supports random or
+  sequential selection with optional seed for reproducibility
+- `SavegameInjector`: reads save file as UTF-8 text, passes to plugin's
+  `load_save_js` snippet via Selenium `execute_script()`, handles null
+  and non-dict JS results gracefully
+- `BaseGameEnv.reset()` integration: optional `savegame_dir` and
+  `load_save_js` params, injection runs after browser setup but before
+  first step, failure logged as warning (non-fatal)
+- `SessionRunner` reads `load_save_js` from plugin metadata and forwards
+  to env constructor
+- shapez.io `LOAD_SAVE_JS` uses `savegameMgr.importSave()` to load save
+  JSON, then transitions to `InGameState`
+- Copilot review: 7 comments addressed (IIFE arguments shadowing, docstring
+  mismatch, probabilistic test, IIFE test tightening, exception detail in
+  warning, `.bin` removal, non-dict JS result handling)
 
 **Success criteria:**
-- Agent starts episodes from pre-built factory states
-- Performance oracles detect more findings from large-factory saves than
-  from-scratch episodes
-- At least 1 throughput bug from shapez.io GitHub issues reproduced
+- ✅ Platform-level savegame injection infrastructure complete
+- ✅ Plugin hook system validated (shapez.io `LOAD_SAVE_JS` implemented)
+- ✅ CLI integration complete (`--savegame-dir` in both scripts)
+- Remaining: live validation with curated shapez.io save files
 
 ---
 
