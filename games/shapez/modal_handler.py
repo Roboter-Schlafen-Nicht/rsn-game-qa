@@ -482,3 +482,52 @@ MUTE_JS = """
     }
 })();
 """
+
+# ---------------------------------------------------------------------------
+# Savegame injection -- load a save file and transition to InGameState
+# ---------------------------------------------------------------------------
+
+LOAD_SAVE_JS = """
+var _sel_args = arguments;
+return (function(saveDataStr) {
+
+    if (!saveDataStr || typeof saveDataStr !== "string") {
+        return {action: "error", error: "No save data provided"};
+    }
+
+    var app = (typeof window.shapez !== 'undefined' && window.shapez)
+        ? window.shapez.GLOBAL_APP : null;
+    if (!app) {
+        return {action: "error", error: "GLOBAL_APP not available"};
+    }
+
+    if (!app.savegameMgr) {
+        return {action: "error", error: "savegameMgr not available"};
+    }
+
+    var data;
+    try {
+        data = JSON.parse(saveDataStr);
+    } catch (e) {
+        return {action: "error", error: "Failed to parse save data: " + e.message};
+    }
+
+    // Create a new savegame slot and import the data.
+    // importSavegame() handles migration, verification, and persistence.
+    // It returns a Promise, so we store the result on window for the
+    // platform to poll if needed, and return immediately.
+    var savegame = app.savegameMgr.createNewSavegame();
+
+    var migrationResult = savegame.migrate(data);
+    if (migrationResult.isBad && migrationResult.isBad()) {
+        return {action: "error", error: "Migration failed: " + migrationResult.reason};
+    }
+
+    savegame.currentData = data;
+
+    // Transition directly to InGameState with the loaded save.
+    // This mirrors the "continue game" flow in MainMenuState.
+    app.stateMgr.moveToState("InGameState", {savegame: savegame});
+    return {action: "savegame_loaded"};
+})(_sel_args[0]);
+"""

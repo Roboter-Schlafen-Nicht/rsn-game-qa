@@ -3,13 +3,12 @@
 Multi-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 62):** Phases 1-6 complete. Phase 7 (Human
-Demo Recording & Knowledge Extraction) is highest priority — the key
-to unlocking training on complex games where pure RL from pixels
-struggles. Phase 8 (Savegame Injection) follows. Three games onboarded
-(Breakout 71, Hextris, shapez.io) across three genres with no
-game-specific changes to `src/platform/` required after the plugin
-system. 1398 tests.
+**Current state (session 65):** Phases 1-6 complete. Phase 7 (Human
+Demo Recording & Knowledge Extraction) sub-phases 7a-7d complete
+(PRs #145, #146, #147). Phase 7e (Live Validation) is next. Phase 8
+(Savegame Injection) follows. Three games onboarded (Breakout 71,
+Hextris, shapez.io) across three genres with no game-specific changes
+to `src/platform/` required after the plugin system. 1532 tests.
 
 ---
 

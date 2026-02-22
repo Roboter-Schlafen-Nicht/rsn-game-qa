@@ -365,6 +365,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
 
+    # -- Savegame injection ------------------------------------------------
+    parser.add_argument(
+        "--savegame-dir",
+        type=str,
+        default=None,
+        help=(
+            "Directory containing save files for savegame injection.  "
+            "Each episode loads a save file before starting, allowing "
+            "training from mid-game states.  The game plugin must "
+            "provide a load_save_js snippet."
+        ),
+    )
+
     # -- Resume from checkpoint --------------------------------------------
     parser.add_argument(
         "--resume",
@@ -1151,6 +1164,9 @@ def main(argv: list[str] | None = None) -> int:
                 args.detector_threshold,
             )
 
+        # -- Savegame injection (optional) ------------------------------------
+        load_save_js = getattr(plugin, "load_save_js", None)
+
         env = EnvClass(
             window_title=window_title,
             yolo_weights=yolo_weights,
@@ -1165,6 +1181,8 @@ def main(argv: list[str] | None = None) -> int:
             score_region=score_region,
             score_ocr_interval=args.score_ocr_interval,
             score_reward_coeff=args.score_reward_coeff,
+            savegame_dir=args.savegame_dir,
+            load_save_js=load_save_js,
         )
 
         # -- Wrap for CNN policy (if requested) ----------------------------
