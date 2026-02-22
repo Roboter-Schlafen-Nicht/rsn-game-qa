@@ -1121,6 +1121,216 @@ class TestSurvivalBonus:
 
 
 # ===========================================================================
+# Score reward mode
+# ===========================================================================
+
+
+class TestScoreRewardMode:
+    """Tests for reward_mode='score' — OCR-based score delta reward."""
+
+    def test_score_mode_accepted(self):
+        """reward_mode='score' is a valid mode."""
+        env = StubEnv(reward_mode="score")
+        assert env.reward_mode == "score"
+
+    def test_score_mode_creates_score_ocr_instance(self):
+        """When reward_mode='score', a ScoreOCR is created."""
+        env = StubEnv(reward_mode="score")
+        assert env._score_ocr is not None
+
+    def test_non_score_mode_has_no_score_ocr(self):
+        """When reward_mode != 'score', _score_ocr is None."""
+        env = StubEnv(reward_mode="survival")
+        assert env._score_ocr is None
+        env2 = StubEnv(reward_mode="yolo")
+        assert env2._score_ocr is None
+
+    def test_score_region_passed_to_ocr(self):
+        """score_region parameter is forwarded to ScoreOCR."""
+        env = StubEnv(reward_mode="score", score_region=(10, 20, 100, 30))
+        assert env._score_ocr._region == (10, 20, 100, 30)
+
+    def test_score_ocr_interval_passed_to_ocr(self):
+        """score_ocr_interval parameter is forwarded to ScoreOCR."""
+        env = StubEnv(reward_mode="score", score_ocr_interval=5)
+        assert env._score_ocr._interval == 5
+
+    def test_score_reward_coeff_stored(self):
+        """score_reward_coeff parameter is stored on the env."""
+        env = StubEnv(reward_mode="score", score_reward_coeff=0.05)
+        assert env._score_reward_coeff == 0.05
+
+    def test_default_score_reward_coeff_is_001(self):
+        """Default score_reward_coeff is 0.01."""
+        env = StubEnv(reward_mode="score")
+        assert env._score_reward_coeff == 0.01
+
+
+class TestComputeScoreReward:
+    """Tests for _compute_score_reward method."""
+
+    def test_score_reward_baseline_is_survival(self):
+        """Score reward includes survival reward as baseline."""
+        env = StubEnv(reward_mode="score")
+        # No frame → OCR can't run → reward = survival only
+        env._last_frame = None
+        reward = env._compute_score_reward(terminated=False, level_cleared=False)
+        # Should equal survival reward: 0.01
+        assert abs(reward - 0.01) < 1e-6
+
+    def test_score_reward_game_over_is_survival_terminal(self):
+        """Score reward on game over uses survival terminal reward."""
+        env = StubEnv(reward_mode="score")
+        env._last_frame = None
+        reward = env._compute_score_reward(terminated=True, level_cleared=False)
+        # Should equal survival game-over: -5.0 + 0.01 = -4.99
+        assert abs(reward - (-4.99)) < 1e-6
+
+    def test_score_reward_adds_positive_delta(self):
+        """Positive score delta is added to survival baseline."""
+        env = StubEnv(reward_mode="score", score_reward_coeff=0.01)
+        env._last_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        env._prev_ocr_score = 100
+        # Mock the ScoreOCR to return 200 (delta = 100)
+        env._score_ocr = mock.MagicMock()
+        env._score_ocr.read_score.return_value = 200
+        reward = env._compute_score_reward(terminated=False, level_cleared=False)
+        # Expected: 0.01 (survival) + 100 * 0.01 (delta) = 1.01
+        assert abs(reward - 1.01) < 1e-6
+
+    def test_score_reward_ignores_negative_delta(self):
+        """Negative score delta is ignored (no penalty for score decreasing)."""
+        env = StubEnv(reward_mode="score", score_reward_coeff=0.01)
+        env._last_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        env._prev_ocr_score = 200
+        env._score_ocr = mock.MagicMock()
+        env._score_ocr.read_score.return_value = 100  # delta = -100
+        reward = env._compute_score_reward(terminated=False, level_cleared=False)
+        # Expected: 0.01 (survival only, no negative delta applied)
+        assert abs(reward - 0.01) < 1e-6
+
+    def test_score_reward_no_previous_score_no_delta(self):
+        """When prev_ocr_score is None, no delta is added."""
+        env = StubEnv(reward_mode="score", score_reward_coeff=0.01)
+        env._last_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        env._prev_ocr_score = None  # no previous score yet
+        env._score_ocr = mock.MagicMock()
+        env._score_ocr.read_score.return_value = 500
+        reward = env._compute_score_reward(terminated=False, level_cleared=False)
+        # Expected: 0.01 (survival only, no delta because prev was None)
+        assert abs(reward - 0.01) < 1e-6
+        # But prev_ocr_score should now be updated
+        assert env._prev_ocr_score == 500
+
+    def test_score_reward_ocr_returns_none_uses_cached(self):
+        """When OCR returns None, prev_ocr_score is not updated."""
+        env = StubEnv(reward_mode="score", score_reward_coeff=0.01)
+        env._last_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        env._prev_ocr_score = 100
+        env._score_ocr = mock.MagicMock()
+        env._score_ocr.read_score.return_value = None
+        reward = env._compute_score_reward(terminated=False, level_cleared=False)
+        # No delta applied (current is None)
+        assert abs(reward - 0.01) < 1e-6
+        # prev_ocr_score should remain 100 (not overwritten with None)
+        assert env._prev_ocr_score == 100
+
+    def test_score_reward_coeff_scales_delta(self):
+        """Score reward delta is multiplied by score_reward_coeff."""
+        env = StubEnv(reward_mode="score", score_reward_coeff=0.1)
+        env._last_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        env._prev_ocr_score = 0
+        env._score_ocr = mock.MagicMock()
+        env._score_ocr.read_score.return_value = 50
+        reward = env._compute_score_reward(terminated=False, level_cleared=False)
+        # Expected: 0.01 (survival) + 50 * 0.1 (delta) = 5.01
+        assert abs(reward - 5.01) < 1e-6
+
+    def test_score_reward_level_clear_bonus(self):
+        """Score reward includes level clear bonus (from survival baseline)."""
+        env = StubEnv(reward_mode="score")
+        env._last_frame = None
+        reward = env._compute_score_reward(terminated=False, level_cleared=True)
+        # Should equal survival non-terminal level clear: +1.0 + 0.01 = 1.01
+        assert abs(reward - 1.01) < 1e-6
+
+
+class TestScoreRewardStepIntegration:
+    """Tests for score reward mode in the full step() lifecycle."""
+
+    def test_step_uses_score_reward_when_mode_set(self):
+        """step() uses score reward (not game-specific) in score mode."""
+        env = _make_ready_env(reward_mode="score")
+        env.compute_reward = lambda *a, **kw: 999.0  # would be used in yolo
+        # No OCR score change → reward = survival baseline (0.01)
+        obs, reward, terminated, truncated, info = env.step(_action())
+        assert abs(reward - 0.01) < 1e-6  # score mode, not 999.0
+
+    def test_step_score_mode_mid_step_game_over_uses_terminal(self):
+        """Mid-step game-over in score mode uses _SURVIVAL_TERMINAL_REWARD."""
+        env = _make_ready_env(reward_mode="score")
+        env.handle_modals = lambda **kw: "game_over"
+        env._no_ball_count = 1  # triggers _should_check_modals -> True
+        obs, reward, terminated, truncated, info = env.step(_action())
+        assert terminated is True
+        assert abs(reward - (-5.01)) < 1e-6
+
+    def test_step_score_mode_ignores_yolo_level_cleared(self):
+        """In score mode, level_cleared from check_termination is ignored.
+
+        Same YOLO suppression as survival mode — brick detection is
+        unreliable in headless mode.
+        """
+        env = _make_ready_env(reward_mode="score")
+        env.check_termination = lambda detections: (True, True)
+        obs, reward, terminated, truncated, info = env.step(_action())
+        # Should NOT terminate — level_cleared is suppressed
+        assert terminated is False
+        assert abs(reward - 0.01) < 1e-6
+
+    def test_step_score_mode_crash_transition_uses_terminal(self):
+        """Crash transition in score mode uses _SURVIVAL_TERMINAL_REWARD."""
+        browser = mock.MagicMock()
+        browser.driver = mock.MagicMock()
+        env = _make_ready_env(reward_mode="score", browser_instance=browser)
+        # Simulate crash by making apply_action raise
+        env.apply_action = mock.MagicMock(side_effect=RuntimeError("Chrome crashed"))
+        obs, reward, terminated, truncated, info = env.step(_action())
+        assert terminated is True
+        assert abs(reward - (-5.01)) < 1e-6
+
+
+class TestScoreRewardResetIntegration:
+    """Tests for score OCR state reset during reset()."""
+
+    @mock.patch("src.platform.base_env.time")
+    def test_reset_clears_ocr_state(self, mock_time):
+        """reset() clears the OCR score reader state."""
+        env = _make_ready_env(reward_mode="score")
+        env._prev_ocr_score = 500
+        env._score_ocr = mock.MagicMock()
+
+        env.reset()
+
+        env._score_ocr.reset.assert_called_once()
+        assert env._prev_ocr_score is None
+
+    @mock.patch("src.platform.base_env.time")
+    def test_reset_succeeds_in_score_mode_without_valid_detections(self, mock_time):
+        """reset() in score mode is lenient like survival mode.
+
+        YOLO detections are not needed for CNN observations or
+        OCR-based reward computation.
+        """
+        env = _make_ready_env(reward_mode="score")
+        env._detector.detect_to_game_state.return_value = _make_detections(ball=None)
+
+        # Should NOT raise — score mode is lenient
+        obs, info = env.reset()
+        assert obs is not None
+
+
+# ===========================================================================
 # GameOverDetector integration with step() and reset()
 # ===========================================================================
 

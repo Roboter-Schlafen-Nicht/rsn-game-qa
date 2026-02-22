@@ -11,6 +11,7 @@ from .game_over_detector import (
     ScreenFreezeStrategy,
     TextDetectionStrategy,
 )
+from .score_ocr import ScoreOCR
 
 # RNDRewardWrapper requires torch; lazy-import to avoid pulling in torch
 # unconditionally (CI/docs environments may not have it installed).
@@ -29,6 +30,7 @@ __all__ = [
     "GameOverStrategy",
     "MotionCessationStrategy",
     "RNDRewardWrapper",
+    "ScoreOCR",
     "ScreenFreezeStrategy",
     "TextDetectionStrategy",
 ]

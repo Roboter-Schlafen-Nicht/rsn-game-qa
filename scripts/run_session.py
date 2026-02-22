@@ -148,11 +148,41 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--reward-mode",
         type=str,
         default="yolo",
-        choices=["yolo", "survival"],
+        choices=["yolo", "survival", "score"],
         help=(
             "Reward signal strategy.  'yolo' (default) uses game-specific "
             "YOLO-based reward.  'survival' uses +0.01 per step, -5.0 on "
-            "game over, +5.0 on level clear."
+            "game over, +5.0 on level clear.  'score' uses OCR-based score "
+            "delta as reward signal."
+        ),
+    )
+    parser.add_argument(
+        "--score-region",
+        type=str,
+        default=None,
+        metavar="X,Y,W,H",
+        help=(
+            "Bounding box for OCR score reading as X,Y,W,H integers.  "
+            "Only used when --reward-mode=score.  If omitted, OCR scans "
+            "the full frame."
+        ),
+    )
+    parser.add_argument(
+        "--score-ocr-interval",
+        type=int,
+        default=5,
+        help=(
+            "Run OCR every N steps to reduce overhead (default: 5).  "
+            "Only used when --reward-mode=score."
+        ),
+    )
+    parser.add_argument(
+        "--score-reward-coeff",
+        type=float,
+        default=0.01,
+        help=(
+            "Coefficient for score delta reward (default: 0.01).  "
+            "reward = delta * coeff.  Only used when --reward-mode=score."
         ),
     )
     parser.add_argument(
@@ -256,6 +286,17 @@ def main(argv: list[str] | None = None) -> int:
             args.detector_threshold,
         )
 
+    # Parse score OCR region (if provided)
+    score_region = None
+    if args.score_region is not None:
+        try:
+            parts = [int(p.strip()) for p in args.score_region.split(",")]
+            if len(parts) != 4:
+                raise ValueError("expected 4 values")
+            score_region = tuple(parts)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"--score-region must be X,Y,W,H (4 integers): {exc}") from exc
+
     runner = SessionRunner(
         game=args.game,
         game_config=args.config,
@@ -272,6 +313,9 @@ def main(argv: list[str] | None = None) -> int:
         frame_stack=args.frame_stack,
         reward_mode=args.reward_mode,
         game_over_detector=detector,
+        score_region=score_region,
+        score_ocr_interval=args.score_ocr_interval,
+        score_reward_coeff=args.score_reward_coeff,
     )
 
     report = runner.run()
