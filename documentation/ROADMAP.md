@@ -1,13 +1,15 @@
 # RSN Game QA — Roadmap
 
-Six-phase plan for delivering the platform's core value: autonomous
+Multi-phase plan for delivering the platform's core value: autonomous
 RL-driven game testing that finds bugs humans miss.
 
-**Current state (session 61):** Phases 1-5 complete. Phase 6 Tier 2
-(OCR score delta reward) complete (PRs #139, #141, #142), live
-validation passed on Hextris. Three games onboarded (Breakout 71,
-Hextris, shapez.io) across three genres with no game-specific changes
-to `src/platform/` required after the plugin system. 1398 tests.
+**Current state (session 62):** Phases 1-6 complete. Phase 7 (Human
+Demo Recording & Knowledge Extraction) is highest priority — the key
+to unlocking training on complex games where pure RL from pixels
+struggles. Phase 8 (Savegame Injection) follows. Three games onboarded
+(Breakout 71, Hextris, shapez.io) across three genres with no
+game-specific changes to `src/platform/` required after the plugin
+system. 1398 tests.
 
 ---
 
@@ -565,6 +567,142 @@ on canvas.
 
 ---
 
+## Phase 7: Human Demo Recording & Knowledge Extraction
+
+**Goal:** Enable a human player to play any onboarded game while the
+platform records frames, input events, game state, and oracle findings.
+Post-process recorded demos to extract actionable knowledge (macro-actions,
+spatial priors, reward candidates, build-order curricula) that transforms
+RL training for complex games where pure pixel-based exploration fails.
+
+**Why this matters:** Phases 1-6 proved that survival reward works for
+arcade/puzzle games but fails completely for factory builders (shapez.io
+trained=random). The fundamental problem is that complex games require
+multi-step action sequences that random exploration never discovers.
+Human demos provide the missing prior: what actions are meaningful, where
+to act, and in what order. This is the key to unlocking training on
+strategy, builder, and simulation games.
+
+**Architecture:** The human plays through the platform's Selenium-controlled
+browser (Option 2 — reuse existing infrastructure). The platform runs its
+normal `step()` loop but with `apply_action()` as a no-op. A JS event
+recorder captures what the human actually did between ticks. Everything
+is saved in an enriched recording format for post-processing.
+
+### 7a. JS Event Recorder (platform-level)
+
+| Task | Details |
+|---|---|
+| `src/platform/event_recorder.py` | Game-agnostic JS snippet injected on page load. Listens to `mousemove`, `mousedown`, `mouseup`, `click`, `keydown`, `keyup`, `wheel` on `document`. Buffers events with timestamps into `window.__rsn_events`. Platform reads and flushes each step via `execute_script`. |
+| `EventRecorder` class | `inject(driver)`, `read_and_flush(driver) -> list[dict]`, `JS_SNIPPET` constant |
+| Tests | TDD: injection, event capture, flush, serialization |
+
+### 7b. Human Play Mode in BaseGameEnv + SessionRunner
+
+| Task | Details |
+|---|---|
+| `human_mode` param in `BaseGameEnv.__init__()` | When True, `apply_action()` is a no-op |
+| Step timing | Fixed-interval sleep (~66ms for ~15 FPS) so human plays at normal speed |
+| `SessionRunner` human mode | Skip `policy_fn`/random action, inject event recorder JS in `_setup()` |
+| `--human` CLI flag in `run_session.py` | Disables headless, enables event recording, forces visible browser |
+| Tests | TDD: no-op action, step timing, CLI integration |
+
+### 7c. Demo Recorder (enriched recording format)
+
+| Task | Details |
+|---|---|
+| `src/orchestrator/demo_recorder.py` | Extended `FrameCollector` saving per-step: frame PNG, human events, game state (via JS bridge), reward, oracle findings, observation hash |
+| JSONL demo format | One JSON object per step, frame files referenced by path |
+| `manifest.json` | Episode metadata, total steps, game config, recording params |
+| Tests | TDD: serialization, file I/O, manifest generation |
+
+### 7d. Knowledge Extraction (post-processing)
+
+| Task | Details |
+|---|---|
+| `scripts/analyze_demo.py` | Reads recorded demo, extracts structured knowledge |
+| Macro-action clustering | Group event sequences into semantic actions (e.g., "select building" = keydown digit → keyup digit, "place" = click at grid position) |
+| Action frequency analysis | Which actions does the human use most? Prune action space |
+| Spatial heatmap | Where on screen/grid does the human act? Placement prior |
+| Game state correlation | At what states does the human take which actions? Decision rules |
+| Build order extraction | Temporal sequence of macro-actions → curriculum definition |
+| Reward candidate identification | Which game state metrics change during play? → reward signals |
+| Tests | TDD: clustering, frequency, spatial, correlation |
+
+### 7e. Live Validation
+
+| Task | Details |
+|---|---|
+| Human plays shapez.io | 30-60 minute session with `--human` mode |
+| Verify recording | Confirm frames, events, game state captured correctly |
+| Run `analyze_demo.py` | Extract knowledge, validate output quality |
+| Compare extracted macro-actions to manually designed action space | Measure coverage overlap |
+
+**Success criteria:**
+- Human play session recorded with complete frame + event + state data
+- `analyze_demo.py` produces actionable macro-action definitions
+- Extracted spatial priors show non-uniform distribution (human builds
+  in structured patterns, not randomly)
+- At least 3 reward candidate metrics identified from game state changes
+
+---
+
+## Phase 8: Savegame Injection
+
+**Goal:** Start RL episodes from interesting mid-game states instead of
+always from scratch. Bypass the "agent can't build" problem for complex
+games by loading pre-built factories, cities, or game states.
+
+**Why this matters:** shapez.io has 112 open issues. Many bugs only
+manifest in late-game states with large factories (performance bugs,
+throughput inconsistencies, rendering glitches at scale). An agent that
+starts from scratch in a factory builder will never reach these states
+via random exploration. Savegame injection provides instant access to
+the game states where bugs hide.
+
+**Architecture:** A platform-level `SavegameInjector` that loads save
+files via game-specific JS bridge calls. Each game plugin provides a
+`LOAD_SAVE_JS` snippet and a directory of interesting save files.
+
+| Task | Details |
+|---|---|
+| `src/platform/savegame_injector.py` | Platform-level class: `inject(driver, save_path)`, delegates to plugin's `LOAD_SAVE_JS` |
+| Plugin hook: `load_save_js` | Optional attribute in game plugin `__init__.py` — JS snippet that accepts save data and loads it |
+| `games/shapez/saves/` | Directory of curated save files from GitHub issues (large factories, edge-case configs) |
+| shapez.io `LOAD_SAVE_JS` | JS that calls `app.savegameMgr.importSave()` or equivalent |
+| `--savegame-dir` CLI flag | Point to a directory of saves; each episode loads a random save |
+| `SavegamePool` | Manages multiple save files, random or sequential selection per episode |
+| Tests | TDD: injection, pool management, plugin hook validation |
+
+**Success criteria:**
+- Agent starts episodes from pre-built factory states
+- Performance oracles detect more findings from large-factory saves than
+  from-scratch episodes
+- At least 1 throughput bug from shapez.io GitHub issues reproduced
+
+---
+
+## Cross-Cutting: Game Spec Extraction
+
+**Status:** Specs exist only for Breakout 71 (`documentation/specs/
+breakout71_*.md`). Hextris and shapez.io are missing game specs.
+
+Each onboarded game should have:
+
+| Spec | Contents |
+|---|---|
+| `<game>_game_spec.md` | Game mechanics, state model, scoring, input model, visual layout, level system |
+| `<game>_env_spec.md` | Action space, observation space, reward design, termination conditions, modal handling |
+
+| Task | Details |
+|---|---|
+| `documentation/specs/hextris_game_spec.md` | Study Hextris source, document mechanics |
+| `documentation/specs/hextris_env_spec.md` | Document plugin design decisions |
+| `documentation/specs/shapez_game_spec.md` | Study shapez.io source, document mechanics, building types, upgrade system, shape grammar |
+| `documentation/specs/shapez_env_spec.md` | Document plugin design decisions, action space rationale, idle detection |
+
+---
+
 ## Deprioritized
 
 These are nice-to-haves that don't block the core value proposition:
@@ -574,3 +712,6 @@ These are nice-to-haves that don't block the core value proposition:
 - `games/breakout71/reward.py` extraction — reward logic is small, stays in env
 - Retrain YOLO with human-reviewed Roboflow annotations — CNN is default now
 - DXGI Desktop Duplication (DXcam) for capture — wincam already <1ms
+- Phase 6 Tier 3: Oracle-Guided Exploration — research direction, not
+  blocking core value. Can revisit after Phase 7 knowledge extraction
+  proves the human-demo approach

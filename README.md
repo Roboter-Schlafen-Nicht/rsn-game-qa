@@ -21,14 +21,13 @@ provides strategic direction and domain expertise.
 The project demonstrates what this workflow produces:
 
 - **6-8x calendar compression** vs a traditional engineering team
-- **123+ PRs merged** with automated Copilot code review, zero review
+- **142+ PRs merged** with automated Copilot code review, zero review
   bottleneck
 - **95%+ test coverage** not from a coverage sprint, but built into the
   workflow from day one
 - **Thousands of lines of documentation** generated as a natural byproduct
   of working, not a separate effort
-- **8 subsystems, 2 game plugins, full CI/CD** -- built in 9 active days
-  across 17 calendar days
+- **8 subsystems, 3 game plugins, full CI/CD** -- built across 62 sessions
 
 The codebase is real, the tests pass, the CI is green. The methodology
 behind it is the point.
@@ -90,7 +89,7 @@ The platform uses a two-layer approach to find bugs that human testers miss:
 |------|-------|-------------|-----------|--------|
 | **Breakout 71** | Brick-breaking arcade | Continuous paddle position | Headless Selenium | Complete |
 | **Hextris** | Hexagonal puzzle | Discrete rotation (3 actions) | Headless Selenium | Complete |
-| **shapez.io** | Factory builder | Mouse + keyboard (MultiDiscrete) | Headless Selenium | Onboarding |
+| **shapez.io** | Factory builder | Mouse + keyboard (MultiDiscrete) | Headless Selenium | Complete |
 
 New games are added as plugins in `games/` with zero changes to the
 platform code. See [`documentation/ROADMAP.md`](documentation/ROADMAP.md)
@@ -111,6 +110,7 @@ src/
 games/
   breakout71/           Breakout 71 game plugin (env, loader, modal handler)
   hextris/              Hextris game plugin (env, loader, modal handler)
+  shapez/               shapez.io game plugin (env, loader, modal handler)
 configs/
   games/                Game loader YAML configs
   training/             YOLO training configs per game
