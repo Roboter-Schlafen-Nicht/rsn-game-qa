@@ -42,7 +42,7 @@ decisions, and provides course corrections. Structured documentation
 continuity across sessions.
 
 See [`documentation/ROADMAP.md`](documentation/ROADMAP.md) for the
-development history and current phase.
+current phase and project summary.
 
 ---
 
@@ -93,7 +93,7 @@ The platform uses a two-layer approach to find bugs that human testers miss:
 
 New games are added as plugins in `games/` with zero changes to the
 platform code. See [`documentation/ROADMAP.md`](documentation/ROADMAP.md)
-for development history and training results.
+for the current phase and project summary.
 
 ## Project Structure
 
@@ -119,7 +119,7 @@ tests/                  pytest suite
 docs/                   Sphinx docs (Furo theme, MyST Markdown)
 documentation/
   specs/                Design specs (env, oracles, capture, reporting, loader)
-  ROADMAP.md            Development plan and training results
+  ROADMAP.md            Current phase summary (full roadmap is internal)
 ```
 
 ## AI Agent System
