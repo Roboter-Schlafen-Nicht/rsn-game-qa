@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# pre-commit -- Run the CI pipeline locally via act before commit.
+#
+# This hook runs the CI workflow from .github/workflows/ci.yml using
+# act. It catches everything CI would catch: Python linting, tests,
+# model validation, and training smoke tests.
+#
+# Install:
+#   ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+#
+# Requires: act (https://github.com/nektos/act), Docker
+#
+# NOTE: --no-verify bypasses this hook entirely. Project methodology
+# forbids its use. If the hook fails, fix the underlying issue.
+# The branch guard is enforced here; server-side branch protection
+# provides the backup.
+
+set -euo pipefail
+
+# --- Branch guard: reject commits directly on main/master ---
+# All work must go through feature branches and PRs.
+# Override: ALLOW_MAIN_COMMIT=1 git commit ... (project setup only)
+BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]] && [[ "${ALLOW_MAIN_COMMIT:-0}" != "1" ]]; then
+    printf '[pre-commit] BLOCKED: Direct commits to %s are not allowed.\n' "$BRANCH" >&2
+    printf '[pre-commit] Create a feature branch: git checkout -b feature/<name>\n' >&2
+    printf '[pre-commit] Override (project setup only): ALLOW_MAIN_COMMIT=1 git commit ...\n' >&2
+    exit 1
+fi
+
+printf '[pre-commit] Running CI pipeline locally via act...\n'
+
+# Verify act is available.
+if ! command -v act &>/dev/null; then
+    printf '[pre-commit] ERROR: act not found. Install: https://github.com/nektos/act\n' >&2
+    exit 1
+fi
+
+# Verify Docker CLI is available.
+if ! command -v docker &>/dev/null; then
+    printf '[pre-commit] ERROR: docker not found. Install Docker and ensure it is on your PATH.\n' >&2
+    exit 1
+fi
+
+# Verify Docker daemon is running.
+if ! docker info &>/dev/null 2>&1; then
+    printf '[pre-commit] ERROR: Docker daemon is not running.\n' >&2
+    exit 1
+fi
+
+# Run the CI workflow via act.
+if act --detect-event -W .github/workflows/ci.yml 2>&1; then
+    printf '\n[pre-commit] PASS: All checks passed.\n'
+else
+    printf '\n[pre-commit] FAIL: CI checks failed. Fix issues before committing.\n' >&2
+    printf '[pre-commit] Fix the issues above. Do NOT use --no-verify.\n' >&2
+    exit 1
+fi
