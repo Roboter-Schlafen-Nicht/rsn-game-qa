@@ -48,8 +48,9 @@ if ! docker info &>/dev/null 2>&1; then
     exit 1
 fi
 
-# Run the CI workflow via act.
-if act --detect-event -W .github/workflows/ci.yml 2>&1; then
+# Run the CI workflow via act using pull_request event so branch
+# filters don't skip checks on feature branches.
+if act pull_request -W .github/workflows/ci.yml 2>&1; then
     printf '\n[pre-commit] PASS: All checks passed.\n'
 else
     printf '\n[pre-commit] FAIL: CI checks failed. Fix issues before committing.\n' >&2
