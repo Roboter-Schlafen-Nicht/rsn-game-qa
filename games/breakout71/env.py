@@ -62,6 +62,7 @@ from games.breakout71.modal_handler import (
     MOVE_MOUSE_JS,
     READ_GAME_STATE_JS,
 )
+from games.breakout71.reward import RewardState, compute_breakout_reward
 from src.platform.base_env import BaseGameEnv
 
 logger = logging.getLogger(__name__)
@@ -406,6 +407,9 @@ class Breakout71Env(BaseGameEnv):
     ) -> float:
         """Compute the reward for the current step.
 
+        Delegates to :func:`games.breakout71.reward.compute_breakout_reward`
+        for the actual computation.
+
         Parameters
         ----------
         detections : dict[str, Any]
@@ -427,32 +431,25 @@ class Breakout71Env(BaseGameEnv):
         if score is None:
             game_state = self._read_game_state()
             score = game_state.get("score", 0)
+        assert isinstance(score, int)  # narrowing for type checker
 
-        # Brick destruction reward
-        bricks_left = len(detections.get("bricks", []))
-        bricks_total = self._bricks_total if self._bricks_total else 1
-        bricks_norm = bricks_left / bricks_total
-        brick_delta = self._prev_bricks_norm - bricks_norm
-        reward = brick_delta * 10.0
+        state = RewardState(
+            prev_bricks_norm=self._prev_bricks_norm,
+            bricks_total=self._bricks_total,
+            prev_score=self._prev_score,
+        )
 
-        # Score delta reward (JS bridge)
-        score_delta = score - self._prev_score
-        reward += score_delta * 0.01
+        reward, new_state = compute_breakout_reward(
+            detections=detections,
+            terminated=terminated,
+            level_cleared=level_cleared,
+            score=score,
+            state=state,
+        )
 
-        # Time penalty
-        reward -= 0.01
-
-        # Terminal rewards
-        if terminated and not level_cleared:
-            reward -= 5.0
-
-        # Level cleared bonus (awarded whether or not episode continues)
-        if level_cleared:
-            reward += 1.0
-
-        # Update state for next step
-        self._prev_bricks_norm = bricks_norm
-        self._prev_score = score
+        # Write updated state back to env attributes
+        self._prev_bricks_norm = new_state.prev_bricks_norm
+        self._prev_score = new_state.prev_score
 
         return reward
 
