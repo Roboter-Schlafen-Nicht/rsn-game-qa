@@ -408,11 +408,16 @@ class YoloDetector:
         frame_width: int,
         frame_height: int,
     ) -> dict[str, Any]:
-        """Run detection and convert results to game-state dict.
+        """Run detection and group results by class name.
 
-        This is the primary interface used by ``Breakout71Env``.  It
-        runs ``detect()`` and groups results by class, extracting the
-        paddle position, ball position, and brick grid.
+        Game-agnostic interface: runs ``detect()`` and groups results
+        into normalised bounding boxes keyed by class name.  Each
+        class maps to a list of ``(cx, cy, w, h, confidence)`` tuples
+        sorted by confidence descending.
+
+        Game-specific interpretation (e.g. picking the highest-confidence
+        paddle) is the responsibility of each game plugin's
+        ``_detect_objects()`` override.
 
         Parameters
         ----------
@@ -426,56 +431,40 @@ class YoloDetector:
         Returns
         -------
         dict[str, Any]
-            Game state with keys:
+            Detection results with keys:
 
-            - ``"paddle"`` : ``(cx_norm, cy_norm, w_norm, h_norm)`` or None
-            - ``"ball"``   : ``(cx_norm, cy_norm, w_norm, h_norm)`` or None
-            - ``"bricks"`` : list of ``(cx_norm, cy_norm, w_norm, h_norm)``
-            - ``"powerups"``: list of ``(cx_norm, cy_norm, w_norm, h_norm)``
-            - ``"raw_detections"``: full detection list
+            - ``"by_class"`` : ``dict[str, list[tuple]]`` — each class
+              name maps to a list of
+              ``(cx_norm, cy_norm, w_norm, h_norm, confidence)`` tuples,
+              sorted by confidence descending.
+            - ``"raw_detections"`` : full detection list from ``detect()``.
         """
         raw = self.detect(frame)
 
-        paddle: tuple[float, float, float, float] | None = None
-        ball: tuple[float, float, float, float] | None = None
-        bricks: list[tuple[float, float, float, float]] = []
-        powerups: list[tuple[float, float, float, float]] = []
+        by_class: dict[str, list[tuple[float, float, float, float, float]]] = {}
 
-        # Track best confidence for paddle/ball (pick highest if multiple)
-        best_paddle_conf = -1.0
-        best_ball_conf = -1.0
+        fw = frame_width if frame_width > 0 else 1
+        fh = frame_height if frame_height > 0 else 1
 
         for det in raw:
             name = det["class_name"]
             conf = det["confidence"]
-            xyxy = det["bbox_xyxy"]
-            x1, y1, x2, y2 = xyxy
+            x1, y1, x2, y2 = det["bbox_xyxy"]
 
-            # Normalise using provided frame dimensions
-            fw = frame_width if frame_width > 0 else 1
-            fh = frame_height if frame_height > 0 else 1
             cx_norm = ((x1 + x2) / 2.0) / fw
             cy_norm = ((y1 + y2) / 2.0) / fh
             w_norm = (x2 - x1) / fw
             h_norm = (y2 - y1) / fh
-            bbox_norm = (cx_norm, cy_norm, w_norm, h_norm)
 
-            if name == "paddle" and conf > best_paddle_conf:
-                paddle = bbox_norm
-                best_paddle_conf = conf
-            elif name == "ball" and conf > best_ball_conf:
-                ball = bbox_norm
-                best_ball_conf = conf
-            elif name == "brick":
-                bricks.append(bbox_norm)
-            elif name == "powerup":
-                powerups.append(bbox_norm)
+            entry = (cx_norm, cy_norm, w_norm, h_norm, conf)
+            by_class.setdefault(name, []).append(entry)
+
+        # Sort each class list by confidence descending
+        for entries in by_class.values():
+            entries.sort(key=lambda t: t[4], reverse=True)
 
         return {
-            "paddle": paddle,
-            "ball": ball,
-            "bricks": bricks,
-            "powerups": powerups,
+            "by_class": by_class,
             "raw_detections": raw,
         }
 

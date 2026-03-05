@@ -364,8 +364,10 @@ def phase2_paddle_tracking(
         frame = cap.capture_frame()
         game_state = detector.detect_to_game_state(frame, cap.width, cap.height)
         detections = game_state["raw_detections"]
+        by_class = game_state.get("by_class", {})
 
-        paddle = game_state["paddle"]
+        paddle_list = by_class.get("paddle", [])
+        paddle = paddle_list[0][:4] if paddle_list else None
         if paddle is not None:
             detected_x = paddle[0]  # cx_norm
             error = abs(detected_x - target_x)
@@ -444,8 +446,10 @@ def phase3_ball_tracking(
         frame = cap.capture_frame()
         game_state = detector.detect_to_game_state(frame, cap.width, cap.height)
         frame_count += 1
+        by_class = game_state.get("by_class", {})
 
-        ball = game_state["ball"]
+        ball_list = by_class.get("ball", [])
+        ball = ball_list[0][:4] if ball_list else None
         if ball is not None:
             ball_count += 1
             elapsed = time.perf_counter() - start
@@ -616,9 +620,12 @@ def phase4_gameplay_loop(
         if dt > 0:
             fps_samples.append(1.0 / dt)
 
-        ball = game_state["ball"]
-        paddle = game_state["paddle"]
-        bricks = game_state["bricks"]
+        by_class = game_state.get("by_class", {})
+        ball_list = by_class.get("ball", [])
+        ball = ball_list[0][:4] if ball_list else None
+        paddle_list = by_class.get("paddle", [])
+        paddle = paddle_list[0][:4] if paddle_list else None
+        bricks = [b[:4] for b in by_class.get("brick", [])]
         brick_counts.append(len(bricks))
 
         if ball is not None:

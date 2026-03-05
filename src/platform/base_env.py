@@ -1233,7 +1233,16 @@ class BaseGameEnv(gym.Env, abc.ABC):
         return frame
 
     def _detect_objects(self, frame: np.ndarray) -> dict[str, Any]:
-        """Run YOLO inference on a frame.
+        """Run YOLO inference on a frame and return game-specific detections.
+
+        The default implementation calls
+        ``YoloDetector.detect_to_game_state`` which returns a generic
+        dict with ``"by_class"`` and ``"raw_detections"`` keys.
+
+        Game plugins that use YOLO should override this method to
+        convert the generic format into game-specific keys.  Games
+        that don't use YOLO (e.g. Hextris, shapez.io) override this
+        to return ``{}``.
 
         Parameters
         ----------
@@ -1243,7 +1252,7 @@ class BaseGameEnv(gym.Env, abc.ABC):
         Returns
         -------
         dict[str, Any]
-            Detection results from ``YoloDetector.detect_to_game_state``.
+            Detection results.  Format depends on the game plugin.
         """
         h, w = frame.shape[:2]
         return self._detector.detect_to_game_state(frame, w, h)

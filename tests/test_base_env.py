@@ -96,6 +96,18 @@ class StubEnv(BaseGameEnv):
         self._no_ball_count = 0
         self._no_bricks_count = 0
 
+    def _detect_objects(self, frame: np.ndarray) -> dict[str, Any]:
+        """Convert generic YOLO detections to StubEnv format."""
+        h, w = frame.shape[:2]
+        generic = self._detector.detect_to_game_state(frame, w, h)
+        by_class = generic.get("by_class", {})
+        ball_list = by_class.get("ball", [])
+        ball = ball_list[0][:4] if ball_list else None
+        return {
+            "ball": ball,
+            "raw_detections": generic.get("raw_detections", []),
+        }
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -103,12 +115,42 @@ class StubEnv(BaseGameEnv):
 
 
 def _make_detections(*, ball=(0.5, 0.5, 0.02, 0.02), bricks=None):
-    """Build a minimal detections dict."""
+    """Build a minimal detections dict.
+
+    Used for direct calls to build_observation(), compute_reward(), etc.
+    For mocking detect_to_game_state, use _generic_make_detections() instead.
+    """
     return {
         "ball": ball,
         "paddle": (0.5, 0.9, 0.1, 0.02),
         "bricks": bricks or [(0.1 * i, 0.1, 0.05, 0.03) for i in range(5)],
         "powerups": [],
+        "raw_detections": [],
+    }
+
+
+def _generic_make_detections(
+    *,
+    ball=(0.5, 0.5, 0.02, 0.02),
+    bricks=None,
+    ball_conf=0.90,
+    brick_conf=0.80,
+):
+    """Build a generic detections dict matching YoloDetector.detect_to_game_state.
+
+    Returns the game-agnostic by_class format that _detect_objects()
+    converts into game-specific keys.
+    """
+    if bricks is None:
+        bricks = [(0.1 * i, 0.1, 0.05, 0.03) for i in range(5)]
+    by_class: dict[str, list] = {}
+    by_class["paddle"] = [(0.5, 0.9, 0.1, 0.02, 0.95)]
+    if ball is not None:
+        by_class["ball"] = [(*ball, ball_conf)]
+    if bricks:
+        by_class["brick"] = [(*b, brick_conf) for b in bricks]
+    return {
+        "by_class": by_class,
         "raw_detections": [],
     }
 
@@ -126,7 +168,7 @@ def _make_ready_env(**kwargs):
 
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
     env._capture.capture_frame.return_value = frame
-    env._detector.detect_to_game_state.return_value = _make_detections()
+    env._detector.detect_to_game_state.return_value = _generic_make_detections()
     env._last_frame = frame
     return env
 
@@ -417,7 +459,7 @@ class TestReset:
         """reset() raises RuntimeError if on_reset_detections always False."""
         env = _make_ready_env()
         # Return no ball in detections
-        env._detector.detect_to_game_state.return_value = _make_detections(ball=None)
+        env._detector.detect_to_game_state.return_value = _generic_make_detections(ball=None)
 
         with pytest.raises(RuntimeError, match="failed to get valid detections"):
             env.reset()
@@ -941,7 +983,7 @@ class TestSurvivalReward:
         """Late game-over (ball disappears) in survival mode uses survival terminal."""
         env = _make_ready_env(reward_mode="survival")
         # Make detection return no ball
-        no_ball_det = _make_detections(ball=None)
+        no_ball_det = _generic_make_detections(ball=None)
         env._detector.detect_to_game_state.return_value = no_ball_det
         # Make handle_modals return game_over when called with dismiss=False
         env.handle_modals = lambda **kw: (
@@ -1010,7 +1052,7 @@ class TestSurvivalResetDetections:
         """
         env = _make_ready_env(reward_mode="survival")
         # Simulate YOLO failing to detect ball (common in headless mode)
-        env._detector.detect_to_game_state.return_value = _make_detections(ball=None)
+        env._detector.detect_to_game_state.return_value = _generic_make_detections(ball=None)
 
         # Should NOT raise — survival mode is lenient
         obs, info = env.reset()
@@ -1020,7 +1062,7 @@ class TestSurvivalResetDetections:
     def test_reset_still_validates_in_yolo_mode(self, mock_time):
         """reset() still requires valid detections in yolo mode."""
         env = _make_ready_env(reward_mode="yolo")
-        env._detector.detect_to_game_state.return_value = _make_detections(ball=None)
+        env._detector.detect_to_game_state.return_value = _generic_make_detections(ball=None)
 
         with pytest.raises(RuntimeError, match="failed to get valid detections"):
             env.reset()
@@ -1035,8 +1077,8 @@ class TestSurvivalResetDetections:
         env = _make_ready_env(reward_mode="survival")
         # First call: no ball; second call: ball detected
         env._detector.detect_to_game_state.side_effect = [
-            _make_detections(ball=None),
-            _make_detections(ball=(0.5, 0.5, 0.02, 0.02)),
+            _generic_make_detections(ball=None),
+            _generic_make_detections(ball=(0.5, 0.5, 0.02, 0.02)),
         ]
 
         obs, info = env.reset()
@@ -1323,7 +1365,7 @@ class TestScoreRewardResetIntegration:
         OCR-based reward computation.
         """
         env = _make_ready_env(reward_mode="score")
-        env._detector.detect_to_game_state.return_value = _make_detections(ball=None)
+        env._detector.detect_to_game_state.return_value = _generic_make_detections(ball=None)
 
         # Should NOT raise — score mode is lenient
         obs, info = env.reset()
@@ -1577,7 +1619,7 @@ class TestSavegameInjectorResetIntegration:
         env._detector = mock.MagicMock()
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         env._capture.capture_frame.return_value = frame
-        env._detector.detect_to_game_state.return_value = _make_detections()
+        env._detector.detect_to_game_state.return_value = _generic_make_detections()
         env._last_frame = frame
         env._driver = mock.MagicMock()
 

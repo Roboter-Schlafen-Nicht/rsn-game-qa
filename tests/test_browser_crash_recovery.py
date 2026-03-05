@@ -100,6 +100,18 @@ class StubEnv(BaseGameEnv):
         self._no_ball_count = 0
         self._no_bricks_count = 0
 
+    def _detect_objects(self, frame: np.ndarray) -> dict[str, Any]:
+        """Convert generic YOLO detections to StubEnv format."""
+        h, w = frame.shape[:2]
+        generic = self._detector.detect_to_game_state(frame, w, h)
+        by_class = generic.get("by_class", {})
+        ball_list = by_class.get("ball", [])
+        ball = ball_list[0][:4] if ball_list else None
+        return {
+            "ball": ball,
+            "raw_detections": generic.get("raw_detections", []),
+        }
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -107,12 +119,38 @@ class StubEnv(BaseGameEnv):
 
 
 def _make_detections(*, ball=(0.5, 0.5, 0.02, 0.02), bricks=None):
-    """Build a minimal detections dict."""
+    """Build a minimal detections dict.
+
+    Used for direct calls to build_observation(), compute_reward(), etc.
+    For mocking detect_to_game_state, use _generic_make_detections() instead.
+    """
     return {
         "ball": ball,
         "paddle": (0.5, 0.9, 0.1, 0.02),
         "bricks": bricks or [(0.1 * i, 0.1, 0.05, 0.03) for i in range(5)],
         "powerups": [],
+        "raw_detections": [],
+    }
+
+
+def _generic_make_detections(
+    *,
+    ball=(0.5, 0.5, 0.02, 0.02),
+    bricks=None,
+    ball_conf=0.90,
+    brick_conf=0.80,
+):
+    """Build a generic detections dict matching YoloDetector.detect_to_game_state."""
+    if bricks is None:
+        bricks = [(0.1 * i, 0.1, 0.05, 0.03) for i in range(5)]
+    by_class: dict[str, list] = {}
+    by_class["paddle"] = [(0.5, 0.9, 0.1, 0.02, 0.95)]
+    if ball is not None:
+        by_class["ball"] = [(*ball, ball_conf)]
+    if bricks:
+        by_class["brick"] = [(*b, brick_conf) for b in bricks]
+    return {
+        "by_class": by_class,
         "raw_detections": [],
     }
 
@@ -130,7 +168,7 @@ def _make_ready_env(**kwargs):
 
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
     env._capture.capture_frame.return_value = frame
-    env._detector.detect_to_game_state.return_value = _make_detections()
+    env._detector.detect_to_game_state.return_value = _generic_make_detections()
     env._last_frame = frame
     return env
 
