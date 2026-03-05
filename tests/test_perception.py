@@ -425,10 +425,13 @@ class TestYoloDetectorDetect:
 
 
 class TestYoloDetectorGameState:
-    """Tests for detect_to_game_state — structured game state extraction."""
+    """Tests for detect_to_game_state — generic game state extraction.
+
+    These tests verify the generic by_class grouping API.
+    """
 
     def test_full_game_state(self):
-        """detect_to_game_state returns paddle, ball, bricks, powerups."""
+        """detect_to_game_state returns by_class with all detected classes."""
         detector = _make_detector_with_mock_model(
             boxes_data=[
                 (0, 0.95, (280, 440, 360, 460)),  # paddle
@@ -441,14 +444,14 @@ class TestYoloDetectorGameState:
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         state = detector.detect_to_game_state(frame, 640, 480)
 
-        assert state["paddle"] is not None
-        assert state["ball"] is not None
-        assert len(state["bricks"]) == 2
-        assert len(state["powerups"]) == 1
+        assert len(state["by_class"]["paddle"]) == 1
+        assert len(state["by_class"]["ball"]) == 1
+        assert len(state["by_class"]["brick"]) == 2
+        assert len(state["by_class"]["powerup"]) == 1
         assert len(state["raw_detections"]) == 5
 
-    def test_missing_paddle_returns_none(self):
-        """detect_to_game_state returns None for paddle when not detected."""
+    def test_missing_paddle_not_in_by_class(self):
+        """detect_to_game_state omits 'paddle' from by_class when not detected."""
         detector = _make_detector_with_mock_model(
             boxes_data=[
                 (1, 0.90, (310, 200, 330, 220)),  # ball only
@@ -457,11 +460,11 @@ class TestYoloDetectorGameState:
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         state = detector.detect_to_game_state(frame, 640, 480)
 
-        assert state["paddle"] is None
-        assert state["ball"] is not None
+        assert "paddle" not in state["by_class"]
+        assert "ball" in state["by_class"]
 
-    def test_missing_ball_returns_none(self):
-        """detect_to_game_state returns None for ball when not detected."""
+    def test_missing_ball_not_in_by_class(self):
+        """detect_to_game_state omits 'ball' from by_class when not detected."""
         detector = _make_detector_with_mock_model(
             boxes_data=[
                 (0, 0.95, (280, 440, 360, 460)),  # paddle only
@@ -470,23 +473,20 @@ class TestYoloDetectorGameState:
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         state = detector.detect_to_game_state(frame, 640, 480)
 
-        assert state["paddle"] is not None
-        assert state["ball"] is None
+        assert "paddle" in state["by_class"]
+        assert "ball" not in state["by_class"]
 
     def test_no_detections_returns_empty_state(self):
-        """detect_to_game_state returns all-empty when nothing detected."""
+        """detect_to_game_state returns empty by_class when nothing detected."""
         detector = _make_detector_with_mock_model(boxes_data=[])
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         state = detector.detect_to_game_state(frame, 640, 480)
 
-        assert state["paddle"] is None
-        assert state["ball"] is None
-        assert state["bricks"] == []
-        assert state["powerups"] == []
+        assert state["by_class"] == {}
         assert state["raw_detections"] == []
 
-    def test_multiple_paddles_picks_highest_confidence(self):
-        """When multiple paddles detected, pick the one with highest confidence."""
+    def test_multiple_paddles_all_in_list(self):
+        """When multiple paddles detected, all appear sorted by confidence."""
         detector = _make_detector_with_mock_model(
             boxes_data=[
                 (0, 0.60, (100, 440, 180, 460)),  # paddle low conf
@@ -496,14 +496,14 @@ class TestYoloDetectorGameState:
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         state = detector.detect_to_game_state(frame, 640, 480)
 
-        # Should pick the second paddle (higher confidence)
-        assert state["paddle"] is not None
-        cx = state["paddle"][0]
-        expected_cx = (280 + 360) / 2.0 / 640
-        assert cx == pytest.approx(expected_cx, abs=0.001)
+        paddles = state["by_class"]["paddle"]
+        assert len(paddles) == 2
+        # Sorted by confidence descending
+        assert paddles[0][4] == pytest.approx(0.95)
+        assert paddles[1][4] == pytest.approx(0.60)
 
-    def test_multiple_balls_picks_highest_confidence(self):
-        """When multiple balls detected, pick the one with highest confidence."""
+    def test_multiple_balls_all_in_list(self):
+        """When multiple balls detected, all appear sorted by confidence."""
         detector = _make_detector_with_mock_model(
             boxes_data=[
                 (1, 0.50, (50, 50, 70, 70)),  # ball low conf
@@ -513,10 +513,10 @@ class TestYoloDetectorGameState:
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         state = detector.detect_to_game_state(frame, 640, 480)
 
-        assert state["ball"] is not None
-        cx = state["ball"][0]
-        expected_cx = (310 + 330) / 2.0 / 640
-        assert cx == pytest.approx(expected_cx, abs=0.001)
+        balls = state["by_class"]["ball"]
+        assert len(balls) == 2
+        assert balls[0][4] == pytest.approx(0.99)
+        assert balls[1][4] == pytest.approx(0.50)
 
     def test_normalisation_uses_provided_dimensions(self):
         """detect_to_game_state uses frame_width/frame_height, not frame.shape."""
@@ -529,16 +529,17 @@ class TestYoloDetectorGameState:
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         state = detector.detect_to_game_state(frame, 1000, 500)
 
-        assert state["paddle"] is not None
-        cx, cy, w, h = state["paddle"]
+        paddles = state["by_class"]["paddle"]
+        assert len(paddles) == 1
+        cx, cy, w, h, _conf = paddles[0]
         # cx = (0+100)/2/1000 = 0.05, cy = (0+50)/2/500 = 0.05
         assert cx == pytest.approx(0.05, abs=0.001)
         assert cy == pytest.approx(0.05, abs=0.001)
         assert w == pytest.approx(100 / 1000, abs=0.001)
         assert h == pytest.approx(50 / 500, abs=0.001)
 
-    def test_wall_detections_not_in_game_state_keys(self):
-        """Wall detections appear only in raw_detections, not in named keys."""
+    def test_wall_detections_in_by_class(self):
+        """Wall detections appear in by_class under 'wall' key."""
         detector = _make_detector_with_mock_model(
             boxes_data=[
                 (4, 0.80, (0, 0, 640, 10)),  # wall
@@ -547,12 +548,142 @@ class TestYoloDetectorGameState:
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         state = detector.detect_to_game_state(frame, 640, 480)
 
-        assert state["paddle"] is None
-        assert state["ball"] is None
-        assert state["bricks"] == []
-        assert state["powerups"] == []
+        assert "wall" in state["by_class"]
+        assert len(state["by_class"]["wall"]) == 1
         assert len(state["raw_detections"]) == 1
         assert state["raw_detections"][0]["class_name"] == "wall"
+
+
+# ── detect_to_game_state() — generic API ────────────────────────────
+
+
+class TestDetectToGameStateGeneric:
+    """Tests for the generic (game-agnostic) detect_to_game_state API.
+
+    After the refactor, detect_to_game_state returns a generic dict
+    keyed by class name with lists of normalised bboxes sorted by
+    confidence descending.
+    """
+
+    def test_returns_by_class_dict(self):
+        """detect_to_game_state returns a 'by_class' dict keyed by class name."""
+        detector = _make_detector_with_mock_model(
+            boxes_data=[
+                (0, 0.95, (280, 440, 360, 460)),  # paddle
+                (1, 0.90, (310, 200, 330, 220)),  # ball
+            ],
+        )
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        state = detector.detect_to_game_state(frame, 640, 480)
+
+        assert "by_class" in state
+        assert "paddle" in state["by_class"]
+        assert "ball" in state["by_class"]
+
+    def test_by_class_lists_contain_tuples(self):
+        """Each class entry is a list of (cx, cy, w, h, conf) tuples."""
+        detector = _make_detector_with_mock_model(
+            boxes_data=[
+                (2, 0.80, (100, 50, 150, 70)),  # brick
+            ],
+        )
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        state = detector.detect_to_game_state(frame, 640, 480)
+
+        bricks = state["by_class"]["brick"]
+        assert len(bricks) == 1
+        assert len(bricks[0]) == 5  # (cx, cy, w, h, conf)
+        assert bricks[0][4] == pytest.approx(0.80)  # confidence
+
+    def test_multiple_detections_sorted_by_confidence_desc(self):
+        """Multiple detections per class are sorted by confidence descending."""
+        detector = _make_detector_with_mock_model(
+            boxes_data=[
+                (2, 0.60, (100, 50, 150, 70)),  # brick low conf
+                (2, 0.95, (200, 50, 250, 70)),  # brick high conf
+                (2, 0.75, (300, 50, 350, 70)),  # brick mid conf
+            ],
+        )
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        state = detector.detect_to_game_state(frame, 640, 480)
+
+        bricks = state["by_class"]["brick"]
+        assert len(bricks) == 3
+        confs = [b[4] for b in bricks]
+        assert confs == sorted(confs, reverse=True)
+
+    def test_empty_detections_returns_empty_by_class(self):
+        """Empty detections return empty by_class dict."""
+        detector = _make_detector_with_mock_model(boxes_data=[])
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        state = detector.detect_to_game_state(frame, 640, 480)
+
+        assert state["by_class"] == {}
+        assert state["raw_detections"] == []
+
+    def test_raw_detections_preserved(self):
+        """raw_detections key still contains the full detection list."""
+        detector = _make_detector_with_mock_model(
+            boxes_data=[
+                (0, 0.95, (280, 440, 360, 460)),  # paddle
+            ],
+        )
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        state = detector.detect_to_game_state(frame, 640, 480)
+
+        assert len(state["raw_detections"]) == 1
+        assert state["raw_detections"][0]["class_name"] == "paddle"
+
+    def test_normalisation_uses_provided_dimensions(self):
+        """Normalisation uses frame_width/frame_height parameters."""
+        detector = _make_detector_with_mock_model(
+            boxes_data=[
+                (0, 0.95, (0, 0, 100, 50)),  # paddle at top-left
+            ],
+        )
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        state = detector.detect_to_game_state(frame, 1000, 500)
+
+        paddles = state["by_class"]["paddle"]
+        assert len(paddles) == 1
+        cx, cy, w, h, conf = paddles[0]
+        assert cx == pytest.approx(0.05, abs=0.001)
+        assert cy == pytest.approx(0.05, abs=0.001)
+        assert w == pytest.approx(100 / 1000, abs=0.001)
+        assert h == pytest.approx(50 / 500, abs=0.001)
+
+    def test_all_classes_represented(self):
+        """All detected class names appear in by_class."""
+        detector = _make_detector_with_mock_model(
+            boxes_data=[
+                (0, 0.95, (280, 440, 360, 460)),  # paddle
+                (1, 0.90, (310, 200, 330, 220)),  # ball
+                (2, 0.80, (100, 50, 150, 70)),  # brick
+                (3, 0.60, (300, 300, 320, 320)),  # powerup
+                (4, 0.80, (0, 0, 640, 10)),  # wall
+            ],
+        )
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        state = detector.detect_to_game_state(frame, 640, 480)
+
+        assert set(state["by_class"].keys()) == {"paddle", "ball", "brick", "powerup", "wall"}
+
+    def test_no_legacy_breakout_keys_at_top_level(self):
+        """The generic API does not have Breakout-specific top-level keys."""
+        detector = _make_detector_with_mock_model(
+            boxes_data=[
+                (0, 0.95, (280, 440, 360, 460)),  # paddle
+                (1, 0.90, (310, 200, 330, 220)),  # ball
+            ],
+        )
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        state = detector.detect_to_game_state(frame, 640, 480)
+
+        # These should NOT be top-level keys anymore
+        assert "paddle" not in state
+        assert "ball" not in state
+        assert "bricks" not in state
+        assert "powerups" not in state
 
 
 # ── breakout_capture ────────────────────────────────────────────────
@@ -593,10 +724,10 @@ class TestBreakoutCapture:
 
         mock_detector = mock.MagicMock()
         expected_state = {
-            "paddle": (0.5, 0.9, 0.1, 0.05),
-            "ball": (0.5, 0.5, 0.02, 0.02),
-            "bricks": [],
-            "powerups": [],
+            "by_class": {
+                "paddle": [(0.5, 0.9, 0.1, 0.05, 0.95)],
+                "ball": [(0.5, 0.5, 0.02, 0.02, 0.90)],
+            },
             "raw_detections": [],
         }
         mock_detector.detect_to_game_state.return_value = expected_state

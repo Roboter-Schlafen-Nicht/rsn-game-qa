@@ -616,17 +616,18 @@ class TestEnvBugFixes:
 
         # First 2 detections: no ball. Third: ball found.
         no_ball = {
-            "paddle": (0.5, 0.9, 0.1, 0.02),
-            "ball": None,
-            "bricks": [(0.1, 0.1, 0.05, 0.03)] * 10,
-            "powerups": [],
+            "by_class": {
+                "paddle": [(0.5, 0.9, 0.1, 0.02, 0.95)],
+                "brick": [(0.1, 0.1, 0.05, 0.03, 0.80)] * 10,
+            },
             "raw_detections": [],
         }
         with_ball = {
-            "paddle": (0.5, 0.9, 0.1, 0.02),
-            "ball": (0.5, 0.5, 0.02, 0.02),
-            "bricks": [(0.1, 0.1, 0.05, 0.03)] * 10,
-            "powerups": [],
+            "by_class": {
+                "paddle": [(0.5, 0.9, 0.1, 0.02, 0.95)],
+                "ball": [(0.5, 0.5, 0.02, 0.02, 0.90)],
+                "brick": [(0.1, 0.1, 0.05, 0.03, 0.80)] * 10,
+            },
             "raw_detections": [],
         }
         mock_detector.detect_to_game_state.side_effect = [no_ball, no_ball, with_ball]
@@ -655,10 +656,11 @@ class TestEnvBugFixes:
 
         # Retry detection returns 10 bricks
         retry_dets = {
-            "paddle": (0.5, 0.9, 0.1, 0.02),
-            "ball": (0.5, 0.5, 0.02, 0.02),
-            "bricks": [(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)],
-            "powerups": [],
+            "by_class": {
+                "paddle": [(0.5, 0.9, 0.1, 0.02, 0.95)],
+                "ball": [(0.5, 0.5, 0.02, 0.02, 0.90)],
+                "brick": [(0.1 * i, 0.1, 0.05, 0.03, 0.80) for i in range(10)],
+            },
             "raw_detections": [],
         }
         mock_detector.detect_to_game_state.return_value = retry_dets

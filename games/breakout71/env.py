@@ -266,6 +266,56 @@ class Breakout71Env(BaseGameEnv):
         """
         return "game"
 
+    def _detect_objects(self, frame: np.ndarray) -> dict[str, Any]:
+        """Convert generic YOLO detections to Breakout-specific format.
+
+        Calls the base detector's game-agnostic ``detect_to_game_state``
+        and converts the ``by_class`` dict into the Breakout-specific
+        format expected by ``build_observation``, ``compute_reward``,
+        ``check_termination``, and other game methods.
+
+        Parameters
+        ----------
+        frame : np.ndarray
+            BGR game frame.
+
+        Returns
+        -------
+        dict[str, Any]
+            Breakout-specific detection dict with keys:
+
+            - ``"paddle"`` : ``(cx, cy, w, h)`` or ``None``
+            - ``"ball"``   : ``(cx, cy, w, h)`` or ``None``
+            - ``"bricks"`` : list of ``(cx, cy, w, h)``
+            - ``"powerups"``: list of ``(cx, cy, w, h)``
+            - ``"raw_detections"`` : full detection list
+        """
+        h, w = frame.shape[:2]
+        generic = self._detector.detect_to_game_state(frame, w, h)
+        by_class = generic.get("by_class", {})
+
+        # Paddle: pick highest-confidence (first in sorted list), strip conf
+        paddle_list = by_class.get("paddle", [])
+        paddle = paddle_list[0][:4] if paddle_list else None
+
+        # Ball: pick highest-confidence, strip conf
+        ball_list = by_class.get("ball", [])
+        ball = ball_list[0][:4] if ball_list else None
+
+        # Bricks: all detections, strip conf
+        bricks = [b[:4] for b in by_class.get("brick", [])]
+
+        # Powerups: all detections, strip conf
+        powerups = [p[:4] for p in by_class.get("powerup", [])]
+
+        return {
+            "paddle": paddle,
+            "ball": ball,
+            "bricks": bricks,
+            "powerups": powerups,
+            "raw_detections": generic["raw_detections"],
+        }
+
     def build_observation(self, detections: dict[str, Any], *, reset: bool = False) -> np.ndarray:
         """Convert YOLO detections into the flat observation vector.
 

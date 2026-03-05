@@ -3,6 +3,12 @@
 Convenience functions that bridge the :mod:`src.capture` and
 :mod:`src.perception` subsystems, providing a simple two-step pipeline:
 grab a frame from the game window, then run YOLO detection on it.
+
+.. deprecated:: 0.2
+    The ``detect_objects`` function returns the generic
+    ``detect_to_game_state`` format (``by_class`` / ``raw_detections``).
+    Breakout-specific grouping now lives in
+    ``Breakout71Env._detect_objects()``.
 """
 
 from __future__ import annotations
@@ -46,7 +52,7 @@ def detect_objects(
     frame_width: int | None = None,
     frame_height: int | None = None,
 ) -> dict[str, Any]:
-    """Run YOLO detection on a game frame and return the game state.
+    """Run YOLO detection on a game frame and return detection results.
 
     Parameters
     ----------
@@ -62,14 +68,13 @@ def detect_objects(
     Returns
     -------
     dict[str, Any]
-        Game-state dict as returned by
+        Generic detection dict as returned by
         :meth:`YoloDetector.detect_to_game_state`:
 
-        - ``"paddle"`` : normalised bbox tuple or None
-        - ``"ball"``   : normalised bbox tuple or None
-        - ``"bricks"`` : list of normalised bbox tuples
-        - ``"powerups"``: list of normalised bbox tuples
-        - ``"raw_detections"``: full detection list
+        - ``"by_class"`` : dict mapping class names to lists of
+          ``(cx, cy, w, h, confidence)`` tuples sorted by confidence
+          descending.
+        - ``"raw_detections"`` : full detection list.
 
     Raises
     ------

@@ -106,7 +106,11 @@ def _detections(
     bricks=None,
     powerups=None,
 ):
-    """Build a fake detections dict."""
+    """Build a fake Breakout-specific detections dict.
+
+    Used for direct calls to build_observation(), compute_reward(), etc.
+    For mocking detect_to_game_state, use _generic_detections() instead.
+    """
     if bricks is None:
         bricks = [(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)]
     return {
@@ -114,6 +118,35 @@ def _detections(
         "ball": ball,
         "bricks": bricks,
         "powerups": powerups or [],
+        "raw_detections": [],
+    }
+
+
+def _generic_detections(
+    paddle=(0.5, 0.9, 0.1, 0.02),
+    ball=(0.5, 0.5, 0.02, 0.02),
+    bricks=None,
+    powerups=None,
+    *,
+    paddle_conf=0.95,
+    ball_conf=0.90,
+    brick_conf=0.80,
+    powerup_conf=0.60,
+):
+    """Build a generic detections dict matching YoloDetector.detect_to_game_state."""
+    if bricks is None:
+        bricks = [(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)]
+    by_class: dict[str, list] = {}
+    if paddle is not None:
+        by_class["paddle"] = [(*paddle, paddle_conf)]
+    if ball is not None:
+        by_class["ball"] = [(*ball, ball_conf)]
+    if bricks:
+        by_class["brick"] = [(*b, brick_conf) for b in bricks]
+    if powerups:
+        by_class["powerup"] = [(*p, powerup_conf) for p in powerups]
+    return {
+        "by_class": by_class,
         "raw_detections": [],
     }
 
@@ -147,7 +180,7 @@ def _make_base_env_ready(bricks_count=10):
     env._capture.capture_frame.return_value = _frame()
 
     env._detector = mock.MagicMock()
-    env._detector.detect_to_game_state.return_value = _detections(
+    env._detector.detect_to_game_state.return_value = _generic_detections(
         bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(bricks_count)]
     )
     return env
@@ -340,7 +373,7 @@ class TestCnnWrapperStep:
         base_env = _make_base_env_ready()
         # Simulate ball missing for several frames to trigger game-over
         base_env._no_ball_count = 5
-        base_env._detector.detect_to_game_state.return_value = _detections(
+        base_env._detector.detect_to_game_state.return_value = _generic_detections(
             ball=None, bricks=[(0.1, 0.1, 0.05, 0.03)] * 10
         )
         base_env._driver.execute_script.return_value = {

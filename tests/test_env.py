@@ -61,7 +61,11 @@ def _detections(
     bricks=None,
     powerups=None,
 ):
-    """Build a fake detections dict matching YoloDetector.detect_to_game_state."""
+    """Build a fake Breakout-specific detections dict.
+
+    Used for direct calls to build_observation(), compute_reward(), etc.
+    For mocking detect_to_game_state, use _generic_detections() instead.
+    """
     if bricks is None:
         bricks = [(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)]
     return {
@@ -69,6 +73,39 @@ def _detections(
         "ball": ball,
         "bricks": bricks,
         "powerups": powerups or [],
+        "raw_detections": [],
+    }
+
+
+def _generic_detections(
+    paddle=(0.5, 0.9, 0.1, 0.02),
+    ball=(0.5, 0.5, 0.02, 0.02),
+    bricks=None,
+    powerups=None,
+    *,
+    paddle_conf=0.95,
+    ball_conf=0.90,
+    brick_conf=0.80,
+    powerup_conf=0.60,
+):
+    """Build a generic detections dict matching YoloDetector.detect_to_game_state.
+
+    Returns the game-agnostic by_class format that Breakout71Env._detect_objects()
+    converts into Breakout-specific keys.
+    """
+    if bricks is None:
+        bricks = [(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)]
+    by_class: dict[str, list] = {}
+    if paddle is not None:
+        by_class["paddle"] = [(*paddle, paddle_conf)]
+    if ball is not None:
+        by_class["ball"] = [(*ball, ball_conf)]
+    if bricks:
+        by_class["brick"] = [(*b, brick_conf) for b in bricks]
+    if powerups:
+        by_class["powerup"] = [(*p, powerup_conf) for p in powerups]
+    return {
+        "by_class": by_class,
         "raw_detections": [],
     }
 
@@ -128,7 +165,7 @@ def _make_env_ready(bricks_count=10):
     env._game_canvas = mock.MagicMock()
     env._canvas_size = (640, 480)
     env._detector = mock.MagicMock()
-    env._detector.detect_to_game_state.return_value = _detections(
+    env._detector.detect_to_game_state.return_value = _generic_detections(
         bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(bricks_count)]
     )
     return env
@@ -417,21 +454,21 @@ class TestDetectObjects:
         """_detect_objects should delegate to YoloDetector.detect_to_game_state."""
         env = Breakout71Env()
         frame = _frame(480, 640)
-        expected_detections = _detections()
         env._detector = mock.MagicMock()
-        env._detector.detect_to_game_state.return_value = expected_detections
+        env._detector.detect_to_game_state.return_value = _generic_detections()
 
         result = env._detect_objects(frame)
 
         env._detector.detect_to_game_state.assert_called_once_with(frame, 640, 480)
-        assert result == expected_detections
+        # _detect_objects converts generic by_class → Breakout-specific keys
+        assert result == _detections()
 
     def test_detect_objects_passes_correct_dimensions(self):
         """_detect_objects should pass frame width and height correctly."""
         env = Breakout71Env()
         frame = _frame(100, 200)
         env._detector = mock.MagicMock()
-        env._detector.detect_to_game_state.return_value = _detections()
+        env._detector.detect_to_game_state.return_value = _generic_detections()
 
         env._detect_objects(frame)
 
@@ -1133,7 +1170,7 @@ class TestReset:
         env._game_canvas = mock.MagicMock()
         env._canvas_size = (640, 480)
         env._detector = mock.MagicMock()
-        env._detector.detect_to_game_state.return_value = _detections()
+        env._detector.detect_to_game_state.return_value = _generic_detections()
         return env
 
     @mock.patch("games.breakout71.env.time")
@@ -1194,7 +1231,7 @@ class TestReset:
         # After lazy_init, we need the sub-components set up
         _setup_capture_mock(env)
         env._detector = mock.MagicMock()
-        env._detector.detect_to_game_state.return_value = _detections()
+        env._detector.detect_to_game_state.return_value = _generic_detections()
         env._game_canvas = mock.MagicMock()
         env._canvas_size = (640, 480)
 
@@ -1212,7 +1249,7 @@ class TestReset:
         env._game_canvas = mock.MagicMock()
         env._canvas_size = (640, 480)
         env._detector = mock.MagicMock()
-        env._detector.detect_to_game_state.return_value = _detections(ball=None)
+        env._detector.detect_to_game_state.return_value = _generic_detections(ball=None)
 
         with pytest.raises(RuntimeError, match="failed to get valid detections"):
             env.reset()
@@ -1291,7 +1328,7 @@ class TestStep:
         env._no_ball_count = Breakout71Env._BALL_LOST_THRESHOLD - 1
 
         # Return detections with no ball
-        env._detector.detect_to_game_state.return_value = _detections(
+        env._detector.detect_to_game_state.return_value = _generic_detections(
             ball=None,
             bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)],
         )
@@ -1321,7 +1358,7 @@ class TestStep:
         env._no_bricks_count = Breakout71Env._LEVEL_CLEAR_THRESHOLD - 1
 
         # Return detections with no bricks
-        env._detector.detect_to_game_state.return_value = _detections(bricks=[])
+        env._detector.detect_to_game_state.return_value = _generic_detections(bricks=[])
 
         _, _, terminated, _, _ = env.step(_action())
 
@@ -1909,7 +1946,7 @@ class TestModalCheckThrottling:
         assert env._no_ball_count == 0  # ball was visible last step
 
         # YOLO detects no ball (modal occludes it) but sees bricks
-        env._detector.detect_to_game_state.return_value = _detections(
+        env._detector.detect_to_game_state.return_value = _generic_detections(
             ball=None, bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(5)]
         )
 
@@ -1932,7 +1969,7 @@ class TestModalCheckThrottling:
 
         # Set up YOLO to return fewer bricks (simulating modal occlusion
         # that would normally produce a large positive brick-delta reward)
-        env._detector.detect_to_game_state.return_value = _detections(
+        env._detector.detect_to_game_state.return_value = _generic_detections(
             ball=None, bricks=[(0.5, 0.1, 0.05, 0.03)]
         )
 
@@ -2121,7 +2158,7 @@ class TestStepMultiLevel:
 
         # Simulate zero bricks for 3+ frames → level_cleared
         env._no_bricks_count = 2  # one more zero will trigger
-        env._detector.detect_to_game_state.return_value = _detections(bricks=[])
+        env._detector.detect_to_game_state.return_value = _generic_detections(bricks=[])
 
         with mock.patch.object(env, "_handle_level_transition", return_value=True):
             _, reward, terminated, truncated, info = env.step(_action())
@@ -2135,7 +2172,7 @@ class TestStepMultiLevel:
 
         # Simulate level_cleared
         env._no_bricks_count = 2
-        env._detector.detect_to_game_state.return_value = _detections(bricks=[])
+        env._detector.detect_to_game_state.return_value = _generic_detections(bricks=[])
 
         with mock.patch.object(env, "_handle_level_transition", return_value=False):
             _, reward, terminated, truncated, info = env.step(_action())
@@ -2147,7 +2184,7 @@ class TestStepMultiLevel:
         env = self._make_env_ready(bricks_count=10)
 
         env._no_bricks_count = 2
-        env._detector.detect_to_game_state.return_value = _detections(bricks=[])
+        env._detector.detect_to_game_state.return_value = _generic_detections(bricks=[])
 
         with mock.patch.object(env, "_handle_level_transition", return_value=True):
             _, reward, terminated, _, _ = env.step(_action())
@@ -2161,7 +2198,7 @@ class TestStepMultiLevel:
 
         # Ball lost for enough frames
         env._no_ball_count = env._BALL_LOST_THRESHOLD
-        env._detector.detect_to_game_state.return_value = _detections(
+        env._detector.detect_to_game_state.return_value = _generic_detections(
             ball=None,
             bricks=[(0.1 * i, 0.1, 0.05, 0.03) for i in range(10)],
         )
