@@ -1150,6 +1150,10 @@ def main(argv: list[str] | None = None) -> int:
             except (ValueError, TypeError) as exc:
                 raise ValueError(f"--score-region must be X,Y,W,H (4 integers): {exc}") from exc
 
+        # Fall back to plugin default_score_region if CLI arg not provided
+        if score_region is None:
+            score_region = getattr(plugin, "default_score_region", None)
+
         # -- Pixel-based game-over detector (optional) ---------------------
         detector = None
         if args.game_over_detector:

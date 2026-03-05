@@ -45,3 +45,7 @@ setup_js = SETUP_TRAINING_JS
 # JS snippet to load a savegame from JSON data (arguments[0]).
 # Used by SavegameInjector for starting episodes from mid-game states.
 load_save_js = LOAD_SAVE_JS
+
+# Default (x, y, width, height) region for score OCR.
+# shapez.io does not display a simple numeric score; None disables OCR.
+default_score_region: tuple[int, int, int, int] | None = None

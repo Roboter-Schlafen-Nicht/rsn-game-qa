@@ -443,3 +443,250 @@ class TestThresholdPreprocessing:
         assert processed.dtype == np.uint8
         unique_vals = set(np.unique(processed))
         assert unique_vals <= {0, 255}
+
+
+# ---------------------------------------------------------------------------
+# detect_score_region (standalone function)
+# ---------------------------------------------------------------------------
+
+
+class TestDetectScoreRegion:
+    """Test heuristic score region auto-detection."""
+
+    def test_detect_score_region_exists_as_function(self):
+        """detect_score_region is importable from score_ocr module."""
+        from src.platform.score_ocr import detect_score_region
+
+        assert callable(detect_score_region)
+
+    def test_returns_tuple_of_four_ints_when_score_found(self):
+        """Returns (x, y, w, h) tuple when a numeric region is found."""
+        from src.platform.score_ocr import detect_score_region
+
+        frame = _make_frame(480, 640)
+        mock_pytesseract = mock.MagicMock()
+        # Simulate OCR finding a score in a candidate region
+        mock_pytesseract.image_to_string.return_value = "Score: 1234"
+
+        with mock.patch.dict("sys.modules", {"pytesseract": mock_pytesseract}):
+            result = detect_score_region(frame)
+
+        assert result is not None
+        assert len(result) == 4
+        x, y, w, h = result
+        assert isinstance(x, int)
+        assert isinstance(y, int)
+        assert isinstance(w, int)
+        assert isinstance(h, int)
+
+    def test_returns_none_when_no_score_found(self):
+        """Returns None when no candidate region contains numbers."""
+        from src.platform.score_ocr import detect_score_region
+
+        frame = _make_frame(480, 640)
+        mock_pytesseract = mock.MagicMock()
+        mock_pytesseract.image_to_string.return_value = ""
+
+        with mock.patch.dict("sys.modules", {"pytesseract": mock_pytesseract}):
+            result = detect_score_region(frame)
+
+        assert result is None
+
+    def test_returns_none_when_pytesseract_missing(self):
+        """Returns None gracefully when pytesseract is not installed."""
+        from src.platform.score_ocr import detect_score_region
+
+        frame = _make_frame(480, 640)
+
+        with mock.patch.dict("sys.modules", {"pytesseract": None}):
+            result = detect_score_region(frame)
+
+        assert result is None
+
+    def test_region_within_frame_bounds(self):
+        """Returned region is within the frame boundaries."""
+        from src.platform.score_ocr import detect_score_region
+
+        frame = _make_frame(480, 640)
+        mock_pytesseract = mock.MagicMock()
+        mock_pytesseract.image_to_string.return_value = "42"
+
+        with mock.patch.dict("sys.modules", {"pytesseract": mock_pytesseract}):
+            result = detect_score_region(frame)
+
+        if result is not None:
+            x, y, w, h = result
+            assert x >= 0
+            assert y >= 0
+            assert x + w <= 640
+            assert y + h <= 480
+
+    def test_scans_top_strip_of_frame(self):
+        """Auto-detection checks the top portion of the frame (scores are typically at top or bottom)."""
+        from src.platform.score_ocr import detect_score_region
+
+        frame = _make_frame(480, 640)
+        mock_pytesseract = mock.MagicMock()
+        # Only return a score for the first call (top strip)
+        call_count = 0
+
+        def _side_effect(img):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return "Score: 999"
+            return ""
+
+        mock_pytesseract.image_to_string.side_effect = _side_effect
+
+        with mock.patch.dict("sys.modules", {"pytesseract": mock_pytesseract}):
+            result = detect_score_region(frame)
+
+        # Should find a region since the first candidate returned digits
+        assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# ScoreOCR auto_detect parameter
+# ---------------------------------------------------------------------------
+
+
+class TestScoreOCRAutoDetect:
+    """Test ScoreOCR auto_detect parameter for automatic region detection."""
+
+    def test_auto_detect_parameter_accepted(self):
+        """ScoreOCR accepts auto_detect parameter."""
+        ocr = ScoreOCR(auto_detect=True)
+        assert ocr._auto_detect is True
+
+    def test_auto_detect_defaults_to_false(self):
+        """auto_detect defaults to False for backward compatibility."""
+        ocr = ScoreOCR()
+        assert ocr._auto_detect is False
+
+    def test_auto_detect_sets_region_on_first_read(self):
+        """When auto_detect=True and region=None, region is set on first read_score()."""
+        ocr = ScoreOCR(auto_detect=True)
+        frame = _make_frame(480, 640)
+        mock_pytesseract = mock.MagicMock()
+        mock_pytesseract.image_to_string.return_value = "Score: 500"
+
+        with mock.patch.dict("sys.modules", {"pytesseract": mock_pytesseract}):
+            with mock.patch(
+                "src.platform.score_ocr.detect_score_region",
+                return_value=(10, 5, 200, 40),
+            ):
+                ocr.read_score(frame)
+
+        # Region should now be set
+        assert ocr._region == (10, 5, 200, 40)
+
+    def test_auto_detect_skipped_when_region_already_set(self):
+        """When region is already provided, auto_detect does not override it."""
+        ocr = ScoreOCR(region=(100, 200, 150, 50), auto_detect=True)
+        frame = _make_frame(480, 640)
+        mock_pytesseract = mock.MagicMock()
+        mock_pytesseract.image_to_string.return_value = "42"
+
+        with mock.patch.dict("sys.modules", {"pytesseract": mock_pytesseract}):
+            with mock.patch("src.platform.score_ocr.detect_score_region") as mock_detect:
+                ocr.read_score(frame)
+
+        # detect_score_region should NOT have been called
+        mock_detect.assert_not_called()
+        assert ocr._region == (100, 200, 150, 50)
+
+    def test_auto_detect_only_runs_once(self):
+        """Auto-detection only runs on the first read_score() call, not subsequent ones."""
+        ocr = ScoreOCR(auto_detect=True)
+        frame = _make_frame(480, 640)
+        mock_pytesseract = mock.MagicMock()
+        mock_pytesseract.image_to_string.return_value = "100"
+
+        with mock.patch.dict("sys.modules", {"pytesseract": mock_pytesseract}):
+            with mock.patch(
+                "src.platform.score_ocr.detect_score_region",
+                return_value=(10, 5, 200, 40),
+            ) as mock_detect:
+                ocr.read_score(frame)
+                ocr.read_score(frame)
+                ocr.read_score(frame)
+
+        # Only called once (on first read)
+        assert mock_detect.call_count == 1
+
+    def test_auto_detect_falls_back_gracefully_when_detection_fails(self):
+        """When auto-detect returns None, OCR uses full frame (no crash)."""
+        ocr = ScoreOCR(auto_detect=True)
+        frame = _make_frame(480, 640)
+        mock_pytesseract = mock.MagicMock()
+        mock_pytesseract.image_to_string.return_value = "77"
+
+        with mock.patch.dict("sys.modules", {"pytesseract": mock_pytesseract}):
+            with mock.patch(
+                "src.platform.score_ocr.detect_score_region",
+                return_value=None,
+            ):
+                score = ocr.read_score(frame)
+
+        # Should still read the score from full frame
+        assert score == 77
+        # Region stays None
+        assert ocr._region is None
+
+
+# ---------------------------------------------------------------------------
+# Plugin default_score_region metadata
+# ---------------------------------------------------------------------------
+
+
+class TestPluginDefaultScoreRegion:
+    """Test that game plugins can export default_score_region metadata."""
+
+    def test_discover_plugins_collects_default_score_region(self):
+        """discover_plugins collects default_score_region into PluginEntry.extra."""
+        from games import GameRegistry, discover_plugins
+
+        mock_module = mock.MagicMock()
+        mock_module.env_class = type("MockEnv", (), {})
+        mock_module.loader_class = None
+        mock_module.game_name = "test-game"
+        mock_module.default_config = "configs/games/test.yaml"
+        mock_module.default_weights = ""
+        mock_module.default_score_region = (100, 10, 200, 50)
+        # Make dir() return the expected attributes
+        mock_module.__dir__ = lambda self: [
+            "env_class",
+            "loader_class",
+            "game_name",
+            "default_config",
+            "default_weights",
+            "default_score_region",
+        ]
+
+        registry = GameRegistry()
+        with mock.patch("games.pkgutil.iter_modules", return_value=[("", "mockgame", True)]):
+            with mock.patch("games.importlib.import_module", return_value=mock_module):
+                discover_plugins(registry)
+
+        entry = registry.get("mockgame")
+        assert entry is not None
+        assert entry.extra.get("default_score_region") == (100, 10, 200, 50)
+
+    def test_plugin_entry_extra_contains_score_region_when_present(self):
+        """PluginEntry.extra stores default_score_region from plugin module."""
+        from games import GameRegistry
+
+        registry = GameRegistry()
+        registry.register(
+            "test",
+            env_class=type("E", (), {}),
+            loader_class=None,
+            game_name="test",
+            default_config="c.yaml",
+            default_weights="",
+            default_score_region=(540, 402, 200, 80),
+        )
+        entry = registry.get("test")
+        assert entry is not None
+        assert entry.extra["default_score_region"] == (540, 402, 200, 80)

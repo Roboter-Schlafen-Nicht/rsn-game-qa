@@ -43,3 +43,7 @@ mute_js = """(function() {
 
 # No setup_js needed — Hextris has no training-specific settings to configure.
 # No reinit_js needed — init(1) handles game restart (done in DISMISS_GAME_OVER_JS).
+
+# Default (x, y, width, height) region for score OCR.
+# The score counter sits above the central hexagon.
+default_score_region: tuple[int, int, int, int] | None = (540, 402, 200, 80)
