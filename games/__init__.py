@@ -262,7 +262,13 @@ def discover_plugins(registry: GameRegistry | None = None) -> None:
                 continue
             if attr_name == "__all__":
                 continue
-            if attr_name in ("mute_js", "setup_js", "reinit_js", "load_save_js"):
+            if attr_name in (
+                "mute_js",
+                "setup_js",
+                "reinit_js",
+                "load_save_js",
+                "default_score_region",
+            ):
                 extra[attr_name] = val
 
         registry.register(

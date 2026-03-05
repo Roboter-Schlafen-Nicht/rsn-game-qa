@@ -302,6 +302,10 @@ class SessionRunner:
             yolo_weights if yolo_weights is not None else self._plugin.default_weights
         )
 
+        # Resolve score_region from plugin default if not provided by caller
+        if self.score_region is None:
+            self.score_region = getattr(self._plugin, "default_score_region", None)
+
         self._browser_instance = None
         self._env = None
         self._raw_env = None  # Unwrapped env for oracle/step_count access

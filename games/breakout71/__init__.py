@@ -54,3 +54,7 @@ setup_js = "\n".join(
 # the pointer mismatch caused by newGameState() / Object.assign in restart).
 # Must be executed AFTER the page has fully loaded.
 reinit_js = "window.restart({})"
+
+# Default (x, y, width, height) region for score OCR.
+# The "$0/$10" counter sits in the top-left area of the game zone.
+default_score_region: tuple[int, int, int, int] | None = (340, 5, 250, 45)

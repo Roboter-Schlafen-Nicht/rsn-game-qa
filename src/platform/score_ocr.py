@@ -12,6 +12,10 @@ region : tuple[int, int, int, int] or None
 ocr_interval : int
     Run OCR every N calls to :meth:`read_score`.  Between calls,
     the last cached score is returned.  Default ``1`` (every frame).
+auto_detect : bool
+    When ``True`` and *region* is ``None``, auto-detect the score
+    region on the first :meth:`read_score` call by scanning candidate
+    strips of the frame for numeric text.  Default ``False``.
 """
 
 from __future__ import annotations
@@ -22,6 +26,13 @@ import re
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# Number of horizontal strips to scan during auto-detection.
+# Each strip spans the full frame width.
+_AUTO_DETECT_STRIPS = 4
+
+# Height fraction of the frame for each candidate strip.
+_STRIP_HEIGHT_FRAC = 0.10
 
 
 class ScoreOCR:
@@ -47,9 +58,12 @@ class ScoreOCR:
         self,
         region: tuple[int, int, int, int] | None = None,
         ocr_interval: int = 1,
+        auto_detect: bool = False,
     ) -> None:
         self._region = region
         self._interval = max(ocr_interval, 1)
+        self._auto_detect = auto_detect
+        self._auto_detect_done: bool = region is not None
         self._frame_count: int = 0
         self._last_score: int | None = None
 
@@ -67,6 +81,14 @@ class ScoreOCR:
             Detected score, or ``None`` if no number was found
             or OCR is unavailable.
         """
+        # Auto-detect region on the very first call if requested
+        if self._auto_detect and not self._auto_detect_done:
+            self._auto_detect_done = True
+            detected = detect_score_region(frame)
+            if detected is not None:
+                self._region = detected
+                logger.info("Auto-detected score region: %s", detected)
+
         self._frame_count += 1
 
         # Throttle: only run OCR on designated frames
@@ -193,3 +215,65 @@ class ScoreOCR:
                 continue
 
         return max(scores) if scores else None
+
+
+# -----------------------------------------------------------------------
+# Standalone auto-detection function
+# -----------------------------------------------------------------------
+
+# Regex: sequences of digits, optionally separated by commas/periods.
+_NUMBER_RE = re.compile(r"\d[\d,.]*\d|\d")
+
+
+def detect_score_region(
+    frame: np.ndarray,
+) -> tuple[int, int, int, int] | None:
+    """Heuristically detect a score region by scanning candidate strips.
+
+    Scans horizontal strips at the top and bottom of the frame (where
+    scores typically appear) and runs OCR on each strip.  Returns the
+    first strip where OCR detects at least one number, as an
+    ``(x, y, width, height)`` tuple.
+
+    Parameters
+    ----------
+    frame : np.ndarray
+        BGR or grayscale game frame.
+
+    Returns
+    -------
+    tuple[int, int, int, int] or None
+        ``(x, y, w, h)`` of the detected region, or ``None`` if no
+        numeric text was found in any candidate strip.
+    """
+    try:
+        import pytesseract
+    except ImportError:
+        logger.debug("pytesseract not installed; score region detection disabled")
+        return None
+
+    fh, fw = frame.shape[:2]
+    strip_h = max(int(fh * _STRIP_HEIGHT_FRAC), 20)
+
+    # Candidate strips: top-left, top-right, bottom-left, bottom-right
+    candidates = [
+        (0, 0, fw, strip_h),  # full top strip
+        (0, fh - strip_h, fw, strip_h),  # full bottom strip
+        (0, 0, fw // 2, strip_h),  # top-left half
+        (fw // 2, 0, fw - fw // 2, strip_h),  # top-right half
+    ]
+
+    for x, y, w, h in candidates:
+        crop = frame[y : y + h, x : x + w]
+        # Convert to grayscale if needed
+        gray = crop.mean(axis=2).astype(np.uint8) if crop.ndim == 3 else crop
+
+        try:
+            text = pytesseract.image_to_string(gray)
+        except Exception:
+            continue
+
+        if _NUMBER_RE.search(text or ""):
+            return (x, y, w, h)
+
+    return None

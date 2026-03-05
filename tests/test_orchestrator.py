@@ -363,6 +363,22 @@ class TestSessionRunnerConstruction:
         assert isinstance(runner.yolo_weights, Path)
         assert isinstance(runner.output_dir, Path)
 
+    def test_score_region_defaults_from_plugin(self):
+        """When score_region is None, SessionRunner reads plugin default_score_region."""
+        runner = SessionRunner(game="hextris")
+        # Hextris plugin defines default_score_region = (540, 402, 200, 80)
+        assert runner.score_region == (540, 402, 200, 80)
+
+    def test_score_region_cli_overrides_plugin_default(self):
+        """Explicit score_region takes priority over plugin default."""
+        runner = SessionRunner(game="hextris", score_region=(10, 20, 100, 30))
+        assert runner.score_region == (10, 20, 100, 30)
+
+    def test_score_region_none_when_plugin_has_no_default(self):
+        """When plugin has no default_score_region, score_region stays None."""
+        runner = SessionRunner(game="shapez")
+        assert runner.score_region is None
+
 
 # ===========================================================================
 # SessionRunner._run_episode Tests (mocked subsystems)
