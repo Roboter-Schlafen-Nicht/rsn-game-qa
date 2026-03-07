@@ -21,7 +21,7 @@ provides strategic direction and domain expertise.
 The project demonstrates what this workflow produces:
 
 - **6-8x calendar compression** vs a traditional engineering team
-- **150+ PRs merged** with automated Copilot code review, zero review
+- **150+ PRs merged** with automated AI code review, zero review
   bottleneck
 - **95%+ test coverage** not from a coverage sprint, but built into the
   workflow from day one
@@ -193,7 +193,7 @@ GitHub Actions runs on every push to `main` and on PRs:
 | **Build Check** | Verifies all module imports succeed |
 | **Build Docs** | Sphinx HTML build with `-W` (warnings as errors) |
 
-Automated Copilot code review is enabled via GitHub Ruleset on all PRs.
+Automated AI code review is enabled via GitHub Ruleset on all PRs.
 
 ## Tests
 
