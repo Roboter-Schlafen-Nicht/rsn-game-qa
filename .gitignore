@@ -24,6 +24,9 @@ node_modules/
 # Private OpenCode data (credentials, local state)
 .opencode/
 
+# AgentGuard local policies (per-project, never commit)
+.agentguard/
+
 # OpenCode project config (contains local paths, not for repo)
 opencode.json
 
