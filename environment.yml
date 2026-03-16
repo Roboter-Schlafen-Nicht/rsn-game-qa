@@ -61,6 +61,8 @@ dependencies:
       - scipy==1.17.0
       - six==1.17.0
       - stable-baselines3==2.7.1
+      - sb3-contrib==2.7.1
+      - ncps>=1.0.0
       - sympy==1.14.0
       - tbb==2022.3.0
       - tcmlib==1.4.1

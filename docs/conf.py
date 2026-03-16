@@ -47,6 +47,8 @@ autodoc_mock_imports = [
     "torch",
     "gymnasium",
     "stable_baselines3",
+    "sb3_contrib",
+    "ncps",
     "ultralytics",
     "psutil",
     "win32gui",

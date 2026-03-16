@@ -194,11 +194,14 @@ class SessionRunner:
         If True, launch the browser in headless mode and use
         Selenium-based frame capture instead of Win32 APIs.
     policy : str
-        Observation policy type: ``"mlp"`` (default) or ``"cnn"``.
-        When ``"cnn"``, the environment is wrapped with
+        Observation policy type: ``"mlp"`` (default), ``"cnn"``, or
+        ``"ltc"``.  When ``"cnn"``, the environment is wrapped with
         :class:`~src.platform.cnn_wrapper.CnnEvalWrapper` to produce
         stacked grayscale image observations matching the training
-        pipeline.
+        pipeline.  When ``"ltc"``, the environment is wrapped with
+        :class:`~src.platform.ltc_wrapper.LtcEvalWrapper` for single-
+        frame CHW observations (temporal context comes from the CfC
+        recurrent hidden state).
     frame_stack : int
         Number of frames to stack when ``policy="cnn"``.  Default is 4.
         Ignored when ``policy="mlp"``.
@@ -262,7 +265,7 @@ class SessionRunner:
         record_demo: bool = False,
         savegame_dir: str | Path | None = None,
     ) -> None:
-        valid_policies = ("mlp", "cnn")
+        valid_policies = ("mlp", "cnn", "ltc")
         if policy not in valid_policies:
             raise ValueError(f"policy must be one of {valid_policies}, got {policy!r}")
         if policy == "cnn" and frame_stack < 1:
@@ -495,29 +498,45 @@ class SessionRunner:
         self._wrap_env_for_cnn()
 
     def _wrap_env_for_cnn(self) -> None:
-        """Wrap the environment for CNN policy evaluation if configured.
+        """Wrap the environment for CNN/LTC policy evaluation if configured.
 
         When ``self.policy == "cnn"``, wraps ``self._env`` with
-        :class:`~src.platform.cnn_wrapper.CnnEvalWrapper`.  Stores the
+        :class:`~src.platform.cnn_wrapper.CnnEvalWrapper`.  When
+        ``self.policy == "ltc"``, wraps with
+        :class:`~src.platform.ltc_wrapper.LtcEvalWrapper`.  Stores the
         original unwrapped env in ``self._raw_env`` for oracle access.
 
         When ``self.policy == "mlp"``, this is a no-op.
         """
-        if self.policy != "cnn":
-            return
+        if self.policy == "cnn":
+            from src.platform.cnn_wrapper import CnnEvalWrapper
 
-        from src.platform.cnn_wrapper import CnnEvalWrapper
+            self._raw_env = self._env
+            self._env = CnnEvalWrapper(self._env, frame_stack=self.frame_stack)
+            logger.info(
+                "CNN eval wrapper applied: frame_stack=%d, obs_space=%s",
+                self.frame_stack,
+                self._env.observation_space.shape,
+            )
+        elif self.policy == "ltc":
+            from src.platform.ltc_wrapper import LtcEvalWrapper
 
-        self._raw_env = self._env
-        self._env = CnnEvalWrapper(self._env, frame_stack=self.frame_stack)
-        logger.info(
-            "CNN eval wrapper applied: frame_stack=%d, obs_space=%s",
-            self.frame_stack,
-            self._env.observation_space.shape,
-        )
+            self._raw_env = self._env
+            self._env = LtcEvalWrapper(self._env)
+            logger.info(
+                "LTC eval wrapper applied: obs_space=%s (no frame stacking)",
+                self._env.observation_space.shape,
+            )
 
     def _run_episode(self, episode_id: int) -> EpisodeReport:
         """Run a single episode and return its report.
+
+        For recurrent policies (``policy="ltc"``), this method manages
+        the recurrent hidden state (``lstm_states``) and
+        ``episode_starts`` flag automatically.  The ``policy_fn`` must
+        accept keyword arguments ``state`` and ``episode_start`` and
+        return ``(action, new_state)`` — matching
+        :meth:`RecurrentPPO.predict`.
 
         Parameters
         ----------
@@ -548,12 +567,26 @@ class SessionRunner:
         truncated = False
         step_idx = 0
 
+        # Recurrent state tracking for LTC policy
+        is_recurrent = self.policy == "ltc"
+        lstm_states = None  # Initialized to None = zero state on first step
+        episode_starts = np.array([True]) if is_recurrent else None
+
         while not terminated and not truncated:
             step_start = time.perf_counter()
 
             # Select action: use policy_fn if provided, else random
             if self.policy_fn is not None:
-                action = self.policy_fn(obs)
+                if is_recurrent:
+                    action, lstm_states = self.policy_fn(
+                        obs[np.newaxis],  # add batch dim for RecurrentPPO
+                        state=lstm_states,
+                        episode_start=episode_starts,
+                        deterministic=True,
+                    )
+                    episode_starts = np.array([False])
+                else:
+                    action = self.policy_fn(obs)
             else:
                 action = env.action_space.sample()
             obs, reward, terminated, truncated, info = env.step(action)
