@@ -64,6 +64,8 @@ jobs:
             pygame==2.6.1 \
             ultralytics==8.4.14 \
             stable-baselines3==2.7.1 \
+            sb3-contrib==2.7.1 \
+            "ncps>=1.0.0" \
             scipy==1.17.0 \
             matplotlib==3.10.8 \
             pyyaml==6.0.3 \
@@ -110,6 +112,8 @@ jobs:
             pygame==2.6.1 \
             ultralytics==8.4.14 \
             stable-baselines3==2.7.1 \
+            sb3-contrib==2.7.1 \
+            "ncps>=1.0.0" \
             scipy==1.17.0 \
             matplotlib==3.10.8 \
             pyyaml==6.0.3 \
@@ -161,6 +165,8 @@ jobs:
             pygame==2.6.1 \
             ultralytics==8.4.14 \
             stable-baselines3==2.7.1 \
+            sb3-contrib==2.7.1 \
+            "ncps>=1.0.0" \
             scipy==1.17.0 \
             matplotlib==3.10.8 \
             pyyaml==6.0.3 \
