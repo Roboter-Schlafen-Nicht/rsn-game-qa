@@ -231,11 +231,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--policy",
         type=str,
         default="mlp",
-        choices=["mlp", "cnn"],
+        choices=["mlp", "cnn", "ltc"],
         help=(
             "Policy type: 'mlp' uses 8-element YOLO feature vector, "
             "'cnn' uses 84x84 grayscale pixel observations with "
-            "4-frame stacking (default: mlp)"
+            "4-frame stacking, 'ltc' uses CfC recurrent cells with "
+            "single-frame input (no frame stacking) (default: mlp)"
         ),
     )
     parser.add_argument(
@@ -1245,6 +1246,51 @@ def main(argv: list[str] | None = None) -> int:
 
             train_env = vec_env
             sb3_policy = "CnnPolicy"
+        elif args.policy == "ltc":
+            from stable_baselines3.common.vec_env import DummyVecEnv
+
+            from src.platform.ltc_wrapper import LtcEvalWrapper
+
+            ltc_env = LtcEvalWrapper(env)
+            vec_env = DummyVecEnv([lambda: ltc_env])
+            # NOTE: No VecTransposeImage — LtcEvalWrapper already outputs CHW
+
+            # -- RND intrinsic reward wrapper (exploration mode) -----------
+            if args.reward_mode == "rnd":
+                from src.platform.rnd_wrapper import RNDRewardWrapper
+
+                vec_env = RNDRewardWrapper(
+                    vec_env,
+                    int_coeff=args.rnd_int_coeff,
+                    ext_coeff=args.rnd_ext_coeff,
+                    device=args.device,
+                )
+                logger.info(
+                    "LTC pipeline: LtcEvalWrapper → DummyVecEnv → "
+                    "RNDRewardWrapper (int=%.2f, ext=%.2f)",
+                    args.rnd_int_coeff,
+                    args.rnd_ext_coeff,
+                )
+            else:
+                logger.info(
+                    "LTC pipeline: LtcEvalWrapper → DummyVecEnv (no frame stacking, CHW output)"
+                )
+            logger.info("LTC observation space: %s", vec_env.observation_space.shape)
+
+            # -- Epsilon-greedy action noise (optional, LTC only) ----------
+            if args.epsilon_greedy > 0.0:
+                from src.platform.epsilon_greedy_wrapper import EpsilonGreedyWrapper
+
+                vec_env = EpsilonGreedyWrapper(vec_env, epsilon=args.epsilon_greedy)
+                logger.info(
+                    "EpsilonGreedyWrapper: epsilon=%.3f (%.1f%% random actions)",
+                    args.epsilon_greedy,
+                    args.epsilon_greedy * 100,
+                )
+
+            train_env = vec_env
+            # sb3_policy will be CnnCfCPolicy class, set below
+            sb3_policy = None  # sentinel — RecurrentPPO uses policy class directly
         else:
             train_env = env
             sb3_policy = "MlpPolicy"
@@ -1274,30 +1320,31 @@ def main(argv: list[str] | None = None) -> int:
         # -- PPO model -----------------------------------------------------
         # Device routing:
         # - MlpPolicy: CPU is fastest (tiny network, GPU overhead hurts)
-        # - CnnPolicy: GPU benefits from NatureCNN's ~1.7M params
+        # - CnnPolicy / LTC: GPU benefits from NatureCNN's ~1.7M params
         #
         # SB3 supports "auto", "cpu", "cuda" but not "xpu" natively.
         # For XPU, we pass a torch.device object directly.
         sb3_device: Any = args.device
         if args.device in ("xpu", "auto"):
-            if args.policy == "cnn":
-                # CNN benefits from GPU — use XPU:1 (GPU.0 is for YOLO)
+            if args.policy in ("cnn", "ltc"):
+                # CNN/LTC benefits from GPU — use XPU:1 (GPU.0 is for YOLO)
                 try:
                     import torch
 
                     if torch.xpu.is_available() and torch.xpu.device_count() > 1:
                         sb3_device = torch.device("xpu:1")
-                        logger.info("CnnPolicy device: xpu:1 (dedicated GPU)")
+                        logger.info("%s device: xpu:1 (dedicated GPU)", args.policy.upper())
                     elif torch.xpu.is_available():
                         sb3_device = torch.device("xpu:0")
-                        logger.info("CnnPolicy device: xpu:0 (single GPU)")
+                        logger.info("%s device: xpu:0 (single GPU)", args.policy.upper())
                     else:
                         sb3_device = "cpu"
-                        logger.info("CnnPolicy device: cpu (XPU unavailable)")
+                        logger.info("%s device: cpu (XPU unavailable)", args.policy.upper())
                 except ImportError:
                     sb3_device = "cpu"
                     logger.warning(
-                        "PyTorch could not be imported; falling back to CPU for CnnPolicy device."
+                        "PyTorch could not be imported; falling back to CPU for %s device.",
+                        args.policy.upper(),
                     )
             else:
                 # MlpPolicy: CPU is faster than GPU for tiny networks
@@ -1305,16 +1352,26 @@ def main(argv: list[str] | None = None) -> int:
         else:
             # Explicit device specified — respect user choice but log
             # how it interacts with the selected policy.
-            if args.policy == "cnn":
-                logger.info(
-                    "CnnPolicy device: %s (explicit --device override)",
-                    args.device,
-                )
-            else:
-                logger.info(
-                    "MlpPolicy device: %s (explicit --device override)",
-                    args.device,
-                )
+            logger.info(
+                "%s device: %s (explicit --device override)",
+                args.policy.upper(),
+                args.device,
+            )
+
+        # Select algorithm class: RecurrentPPO for LTC, PPO for others
+        use_recurrent = args.policy == "ltc"
+        if use_recurrent:
+            from sb3_contrib import RecurrentPPO
+
+            from src.platform.ltc_policy import CnnCfCPolicy
+
+            AlgoClass = RecurrentPPO
+            policy_arg = CnnCfCPolicy
+            algo_name = "RecurrentPPO"
+        else:
+            AlgoClass = PPO
+            policy_arg = sb3_policy
+            algo_name = "PPO"
 
         if args.resume:
             resume_path = Path(args.resume)
@@ -1327,7 +1384,7 @@ def main(argv: list[str] | None = None) -> int:
                     return 1
             logger.info("Resuming training from checkpoint: %s", resume_path)
             try:
-                model = PPO.load(
+                model = AlgoClass.load(
                     str(resume_path),
                     env=train_env,
                     device=sb3_device,
@@ -1354,24 +1411,30 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
         else:
-            model = PPO(
-                sb3_policy,
+            model_kwargs: dict[str, Any] = {
+                "n_steps": args.n_steps,
+                "batch_size": args.batch_size,
+                "n_epochs": args.n_epochs,
+                "gamma": args.gamma,
+                "learning_rate": args.lr,
+                "clip_range": args.clip_range,
+                "ent_coef": args.ent_coef,
+                "device": sb3_device,
+                "verbose": 1,
+            }
+            if use_recurrent:
+                model_kwargs["policy_kwargs"] = {"lstm_hidden_size": 64}
+            model = AlgoClass(
+                policy_arg,
                 train_env,
-                n_steps=args.n_steps,
-                batch_size=args.batch_size,
-                n_epochs=args.n_epochs,
-                gamma=args.gamma,
-                learning_rate=args.lr,
-                clip_range=args.clip_range,
-                ent_coef=args.ent_coef,
-                device=sb3_device,
-                verbose=1,
+                **model_kwargs,
             )
 
         logger.info(
-            "Starting PPO training: %d timesteps, policy=%s, device=%s (sb3=%s)%s",
+            "Starting %s training: %d timesteps, policy=%s, device=%s (sb3=%s)%s",
+            algo_name,
             args.timesteps,
-            sb3_policy,
+            policy_arg if isinstance(policy_arg, str) else policy_arg.__name__,
             args.device,
             sb3_device,
             f", resumed from {args.resume}" if args.resume else "",

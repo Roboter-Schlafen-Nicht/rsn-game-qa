@@ -125,3 +125,19 @@ EventRecorder
    :members:
    :undoc-members:
    :show-inheritance:
+
+LtcEvalWrapper
+--------------
+
+.. autoclass:: src.platform.LtcEvalWrapper
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+CnnCfCPolicy
+-------------
+
+.. autoclass:: src.platform.CnnCfCPolicy
+   :members:
+   :undoc-members:
+   :show-inheritance:

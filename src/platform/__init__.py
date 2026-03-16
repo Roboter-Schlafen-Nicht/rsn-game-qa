@@ -19,11 +19,19 @@ from .score_ocr import ScoreOCR
 # unconditionally (CI/docs environments may not have it installed).
 try:
     from .rnd_wrapper import RNDRewardWrapper
-except ImportError:  # pragma: no cover
+except Exception:  # pragma: no cover - torch may raise AttributeError in CI
+    pass
+
+# LTC (CfC) modules require torch + ncps + sb3-contrib; lazy-import.
+try:
+    from .ltc_policy import CnnCfCPolicy
+    from .ltc_wrapper import LtcEvalWrapper
+except Exception:  # pragma: no cover - torch/multiprocessing may raise AttributeError
     pass
 
 __all__ = [
     "BaseGameEnv",
+    "CnnCfCPolicy",
     "CnnEvalWrapper",
     "CnnObservationWrapper",
     "EntropyCollapseStrategy",
@@ -31,6 +39,7 @@ __all__ = [
     "EventRecorder",
     "GameOverDetector",
     "GameOverStrategy",
+    "LtcEvalWrapper",
     "MotionCessationStrategy",
     "RNDRewardWrapper",
     "SavegameInjector",
